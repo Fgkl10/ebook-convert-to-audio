@@ -1,0 +1,15 @@
+# Install PyTorch with CUDA first:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu124
+kokoro
+soundfile
+ebooklib
+beautifulsoup4
+lxml
+pymupdf
+pysbd
+fastapi
+uvicorn[standard]
+python-multipart
+zeroconf
+qrcode
+pytest
