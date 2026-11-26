@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ebook Audio</title>
+<style>
+  :root { --bg:#f6f5f2; --card:#fff; --fg:#1d1d1f; --muted:#6e6e73; --line:#e3e1dc; --accent:#2f6fed; --hl:#fff1b8; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#141416; --card:#1f1f23; --fg:#ececef; --muted:#9a9aa2; --line:#2e2e34; --accent:#6f9bff; --hl:#4a4020; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 900px; margin: 0 auto; padding: 24px 16px 140px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 28px 0 10px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+  input, select, button { font: inherit; color: inherit; background: var(--bg); border:1px solid var(--line); border-radius:8px; padding:7px 10px; }
+  button { cursor:pointer; }
+  button.primary { background: var(--accent); color:#fff; border-color: var(--accent); }
+  .bar { height:6px; background:var(--line); border-radius:3px; overflow:hidden; margin-top:6px; }
+  .bar > div { height:100%; background:var(--accent); width:0; transition: width .4s; }
+  .job { padding:10px 0; border-bottom:1px solid var(--line); }
+  .job:last-child { border-bottom:0; }
+  .books { display:grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap:14px; }
+  .book { cursor:pointer; }
+  .cover { aspect-ratio: 2/3; width:100%; object-fit:cover; border-radius:8px; background:var(--line); display:block; }
+  .book .t { font-weight:600; font-size:14px; margin-top:6px; line-height:1.3; }
+  #qr svg { width: 110px; height: 110px; background:#fff; padding:6px; border-radius:8px; }
+  #reader { display:none; }
+  .chapters { max-height: 200px; overflow:auto; }
+  .chapters div { padding:4px 8px; border-radius:6px; cursor:pointer; }
+  .chapters div.on { background: var(--hl); }
+  #text p { margin: 0 0 14px; font-size: 18px; line-height: 1.7; font-family: Georgia, "Times New Roman", serif; }
+  #text span { cursor:pointer; border-radius:4px; transition: background .15s; }
+  #text span:hover { text-decoration: underline dotted; }
+  #text span.cur { background: var(--hl); }
+  .player { position:fixed; left:0; right:0; bottom:0; background:var(--card); border-top:1px solid var(--line); padding:10px 16px; }
+  .player .inner { max-width:900px; margin:0 auto; }
+  audio { width:100%; }
+</style>
+</head>
+<body>
+<main>
+  <section id="home">
+    <div class="row" style="justify-content:space-between">
+      <div>
+        <h1>Ebook Audio</h1>
+        <div class="muted">Convert ebooks to audiobooks with Kokoro TTS. Phone app connects to: <b id="url">…</b></div>
+      </div>
+      <div id="qr"></div>
+    </div>
+
+    <h2>Convert a book</h2>
+    <form id="form" class="card row">
+      <input type="file" id="file" accept=".epub,.pdf,.txt" required>
+      <label>Voice <select id="voice"></select></label>
+      <label>Speed <input id="speed" type="number" min="0.5" max="2" step="0.05" value="1" style="width:80px"></label>
+      <button class="primary" type="submit">Convert</button>
+    </form>
+    <div id="jobs"></div>
+
+    <h2>Library</h2>
+    <div id="books" class="books"></div>
+  </section>
+
+  <section id="reader">
+    <button id="back">← Library</button>
+    <h1 id="rtitle" style="margin-top:14px"></h1>
+    <div class="muted" id="rauthor"></div>
+    <div class="card chapters" id="chapters" style="margin:14px 0"></div>
+    <div id="text"></div>
+  </section>
+</main>
+
+<div class="player" id="player" hidden>
+  <div class="inner">
+    <div class="row" style="justify-content:space-between">
+      <b id="nowch"></b>
+      <label class="muted">Speed <select id="rate"><option>0.75</option><option selected>1</option><option>1.25</option><option>1.5</option><option>1.75</option><option>2</option></select></label>
+    </div>
+    <audio id="audio" controls preload="auto"></audio>
+  </div>
+</div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const fmt = (ms) => { const s = Math.round(ms/1000), h = Math.floor(s/3600), m = Math.floor(s%3600/60); return h ? `${h}h ${m}m` : `${m}m ${s%60}s`; };
+const esc = (t) => t.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+async function loadInfo() {
+  const info = await (await fetch('/api/info')).json();
+  $('#url').textContent = info.url;
+  if (info.qr_svg) $('#qr').innerHTML = info.qr_svg;
+  $('#voice').innerHTML = info.voices.map(v => `<option ${v===info.default_voice?'selected':''}>${v}</option>`).join('');
+}
+
+async function loadBooks() {
+  const books = await (await fetch('/api/books')).json();
+  $('#books').innerHTML = books.length ? books.map(b => `
+    <div class="book" data-id="${b.id}">
+      ${b.cover ? `<img class="cover" src="/api/books/${b.id}/files/${b.cover}">` : `<div class="cover"></div>`}
+      <div class="t">${esc(b.title)}</div>
+      <div class="muted">${esc(b.author||'')}<br>${fmt(b.duration_ms)} · ${b.chapters} ch${b.complete?'':' · converting…'}</div>
+    </div>`).join('') : '<div class="muted">No books yet.</div>';
+  document.querySelectorAll('.book').forEach(el => el.onclick = () => openBook(el.dataset.id));
+}
+
+let lastJobsSig = '';
+async function pollJobs() {
+  const jobs = await (await fetch('/api/jobs')).json();
+  const active = jobs.filter(j => j.status !== 'done' || Date.now()/1000 - j.created < 600);
+  $('#jobs').innerHTML = active.length ? `<div class="card" style="margin-top:10px">${active.map(j => {
+    const pct = j.total ? (100*j.done/j.total).toFixed(1) : 0;
+    return `<div class="job"><div class="row" style="justify-content:space-between"><b>${esc(j.file)}</b><span class="muted">${j.status}${j.total?` · ${j.done}/${j.total} sentences · ${pct}%`:''}</span></div>
+      <div class="muted">${esc(j.error || j.message)}</div>${j.status==='running'?`<div class="bar"><div style="width:${pct}%"></div></div>`:''}</div>`;
+  }).join('')}</div>` : '';
+  const sig = jobs.map(j => j.status + j.done).join();
+  if (sig !== lastJobsSig) { lastJobsSig = sig; loadBooks(); }
+  setTimeout(pollJobs, 2000);
+}
+
+$('#form').onsubmit = async (e) => {
+  e.preventDefault();
+  const fd = new FormData();
+  fd.append('file', $('#file').files[0]);
+  fd.append('voice', $('#voice').value);
+  fd.append('speed', $('#speed').value);
+  const r = await fetch('/api/convert', { method: 'POST', body: fd });
+  if (!r.ok) alert((await r.json()).detail);
+  $('#file').value = '';
+};
+
+// ---------------- reader with sentence sync
+let book = null, chIdx = 0, starts = [], spans = [], cur = -1;
+const audio = $('#audio');
+
+async function openBook(id) {
+  book = await (await fetch(`/api/books/${id}`)).json();
+  $('#home').style.display = 'none'; $('#reader').style.display = 'block'; $('#player').hidden = false;
+  $('#rtitle').textContent = book.title; $('#rauthor').textContent = book.author || '';
+  $('#chapters').innerHTML = book.chapters.map((c, i) => `<div data-i="${i}">${esc(c.title)} <span class="muted">${fmt(c.duration_ms)}</span></div>`).join('');
+  document.querySelectorAll('#chapters div').forEach(el => el.onclick = () => loadChapter(+el.dataset.i, 0, true));
+  loadChapter(0, 0, false);
+}
+
+function loadChapter(i, atMs, play) {
+  chIdx = i; const ch = book.chapters[i];
+  document.querySelectorAll('#chapters div').forEach((el, k) => el.classList.toggle('on', k === i));
+  $('#nowch').textContent = ch.title;
+  const paras = [];
+  for (const s of ch.sentences) (paras[s.p] ||= []).push(s);
+  $('#text').innerHTML = paras.filter(Boolean).map(p => `<p>${p.map(s => `<span data-i="${s.i}">${esc(s.text)}</span>`).join(' ')}</p>`).join('');
+  spans = [...document.querySelectorAll('#text span')];
+  spans.forEach(el => el.onclick = () => { audio.currentTime = ch.sentences[+el.dataset.i].start_ms / 1000; audio.play(); });
+  starts = ch.sentences.map(s => s.start_ms); cur = -1;
+  audio.src = `/api/books/${book.id}/files/${ch.audio}`;
+  audio.playbackRate = +$('#rate').value;
+  audio.onloadedmetadata = () => { audio.currentTime = atMs / 1000; if (play) audio.play(); };
+}
+
+// Binary search: last sentence with start_ms <= t
+function sentenceAt(t) {
+  let lo = 0, hi = starts.length - 1, ans = 0;
+  while (lo <= hi) { const mid = (lo + hi) >> 1; if (starts[mid] <= t) { ans = mid; lo = mid + 1; } else hi = mid - 1; }
+  return ans;
+}
+
+let userScrollUntil = 0;
+addEventListener('wheel', () => userScrollUntil = Date.now() + 4000, { passive: true });
+addEventListener('touchmove', () => userScrollUntil = Date.now() + 4000, { passive: true });
+
+function tick() {
+  if (book && spans.length) {
+    const i = sentenceAt(audio.currentTime * 1000);
+    if (i !== cur) {
+      spans[cur]?.classList.remove('cur'); spans[i].classList.add('cur'); cur = i;
+      if (Date.now() > userScrollUntil) spans[i].scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+  }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+audio.onended = () => { if (chIdx + 1 < book.chapters.length) loadChapter(chIdx + 1, 0, true); };
+$('#rate').onchange = () => audio.playbackRate = +$('#rate').value;
+$('#back').onclick = () => { audio.pause(); $('#home').style.display = ''; $('#reader').style.display = 'none'; $('#player').hidden = true; book = null; };
+
+loadInfo(); pollJobs();
+</script>
+</body>
+</html>
