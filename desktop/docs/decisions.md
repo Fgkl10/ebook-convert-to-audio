@@ -566,3 +566,10 @@ separate frontend project or build step.
 - The page is still served by the same process, so the web UI and the API always match in version.
 - A new endpoint needs a model in `api.py`, a line in `EXPECTED_ROUTES` and a test.
 - There is still no authentication (D-011): the API is for a trusted home network.
+
+*Follow-up (page only):*
+- The Clean and Convert forms show their progress and errors under themselves instead of in pop-ups. A slow reply,
+  such as a refused upload arriving after a tab switch, can then never look as if the other form sent it.
+- An original book uploaded on the Convert page brings up "Clean it now?", which sends it to the Clean step.
+- The OCR menu reads "OCR (PDF only)". Disabled controls are visibly greyed out in both themes, and a line explains
+  that EPUB and TXT need no OCR.
