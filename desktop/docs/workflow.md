@@ -232,13 +232,27 @@ sequenceDiagram
     participant V as uvicorn
     participant P as Phone
 
+    Note over M: importing service loads drafts: cleaning → error, queued/converting → review (resume on approve)
     M->>M: create library/ if missing
+    M->>M: clean_leftovers(): delete *.tmp.m4a and *.npy.tmp under library/ and cache/ (D-036)
     M->>Z: register _ebookaudio._tcp.local. (LAN IP, port, path=/api/v1)
     Note over M,Z: on failure: print a hint and keep running without mDNS
-    M->>V: run on 0.0.0.0:port
+    M->>V: run on 0.0.0.0:port (timeout_graceful_shutdown = 1 s)
     P->>Z: browse _ebookaudio._tcp (M4+)
     P->>V: GET /api/v1/info (check api_version), GET /api/v1/books …
     Note over P,V: or scan the QR code from GET /api/v1/info shown in the web UI
+    Note over M,V: Ctrl+C: stop accepting; open requests (a chapter download) get 1 s, then are cut off;<br/>daemon worker threads stop with the process
     V-->>M: shutdown
     M->>Z: unregister + close
 ```
+
+### 4a. What a Ctrl+C at any point leaves behind (D-036)
+
+| Interrupted while… | On disk afterwards | Next start / next run |
+|---|---|---|
+| synthesizing a sentence | at most `<key>.npy.tmp` (never a half `<key>.npy`) | the temp file is deleted at start; the sentence is made again |
+| ffmpeg writing a chapter | `chNNN.tmp.m4a`; `book.json` lists only finished chapters | deleted at start (and never counted in the book's size); the chapter is encoded again from cached sentences |
+| writing `book.json` | the previous `book.json` (written via `book.tmp` + rename, D-008) | unchanged |
+| cleaning a book | the draft in `cleaning` | the draft is marked failed: upload again |
+| converting | the draft in `queued`/`converting` | the draft is back in review; approving again resumes from the cache |
+| a client downloading a chapter | nothing (read-only) | the client resumes with HTTP Range |

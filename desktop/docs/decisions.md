@@ -714,3 +714,40 @@ The user wanted to tick chapters on the Review page and add them to the same boo
 - No way yet to delete one chapter from a book.
 - The default ticks after an interrupted run are covered by the API data (`last_chapters`) but were not clicked in a
   browser.
+
+## D-036 Safe to stop with Ctrl+C at any point
+Status: Accepted · Milestone: M3
+**Context:**
+- The user stops the server with Ctrl+C, sometimes mid-conversion.
+- The sentence cache (D-007) was written with `np.save(<key>.npy)` directly, so an interrupted write could leave a
+  half file. A resumed conversion would then fail on `np.load`.
+- ffmpeg's `chNNN.tmp.m4a` (D-006) was never removed and was counted in the library size.
+- uvicorn's graceful shutdown waited for open connections. A phone downloading a chapter kept the server running:
+  in a live test it was still alive 30 s after the stop signal.
+**Decision:**
+- **Cache.** `CachedSynth` writes `<key>.npy.tmp` through a file handle, then `os.replace` to `<key>.npy`. It goes
+  through a handle because `np.save(path)` appends `.npy` to a name that lacks it. An entry that can't be loaded (a
+  cut-off file from an older version) is deleted and made again.
+- **Startup.** `service.clean_leftovers()` runs in `ebook-server`'s `main()` and deletes every `*.tmp.m4a` and
+  `*.npy.tmp` under `library/` and `cache/`. `list_books()` never counts them.
+- **Shutdown.** `uvicorn.run(..., timeout_graceful_shutdown=1)`: after the first Ctrl+C, open requests get 1 s, then
+  they are cancelled.
+- **Unchanged:**
+  - an interrupted conversion's draft goes back to review and resumes from the cache when approved;
+  - an interrupted cleaning is marked failed (SRV-25);
+  - `book.json` and `draft.json` were already written atomically (D-008).
+**Why:**
+- A temp-and-rename write is all-or-nothing on one filesystem, so no reader ever sees half a file.
+- Cleaning at start, not at shutdown, also covers crashes and power loss, and the shutdown path stays short.
+- 1 s is enough for a page load or an API call. A cut-off chapter download resumes with HTTP Range (D-032).
+**Consequences:**
+- The cleanup assumes one server per data folder: a second server on the same folder could delete the first one's
+  in-progress files. Tests and checks use their own `EBOOK_AUDIO_DATA` (D-032).
+- The CLI (`ebook-convert`) doesn't run the cleanup. A Ctrl+C there can leave a `.tmp.m4a` until the next server
+  start; the next CLI run overwrites it.
+- A Ctrl+C during a conversion also stops ffmpeg (same console). The worker may record "Conversion failed" just
+  before the process ends. Either way the draft is back in review after a restart.
+- **Checked live with a real SIGINT** (SRV-32, SRV-33):
+  - with a download open: exit after 1.5 s, code 0, with mDNS unregistered;
+  - mid-conversion: exit after 1.1 s, sentences cached; after a restart the draft was in review and resumed.
+- A cut-off download makes uvicorn print a `CancelledError` traceback at Ctrl+C. It is noise, not a failure.

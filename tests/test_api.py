@@ -344,6 +344,59 @@ def test_api22_library_says_converting_while_queued_or_running(api):  # noqa: F8
     assert b["converting"] is False and b["complete"] is True
 
 
+# ---------------------------------------------------------------- Ctrl+C at any point
+
+def test_api23_interrupted_chapter_write_is_cleaned_and_resumes(api, tmp_path, monkeypatch):  # noqa: F811
+    from desktop.tts import build
+    from tests.test_desktop import FOUR, CountingTTS, FakeTTS
+    src = tmp_path / "four.txt"
+    src.write_text(FOUR, encoding="utf-8")
+    real_run, calls = build.subprocess.run, []
+
+    def ffmpeg_then_ctrl_c(cmd, **kw):  # chapter 1 encodes; Ctrl+C while ffmpeg writes chapter 2
+        calls.append(cmd)
+        if len(calls) == 2:
+            Path(cmd[-1]).write_bytes(b"half an m4a")
+            raise KeyboardInterrupt
+        return real_run(cmd, **kw)
+
+    monkeypatch.setattr(build.subprocess, "run", ffmpeg_then_ctrl_c)
+    with pytest.raises(KeyboardInterrupt):
+        build.build_book(src, service.LIBRARY, tts=FakeTTS(), merge=True)
+    monkeypatch.setattr(build.subprocess, "run", real_run)
+    [d] = [p for p in service.LIBRARY.iterdir()]
+    assert sorted(f.name for f in d.iterdir()) == ["book.json", "ch000.m4a", "ch001.tmp.m4a"]
+    assert [c["audio"] for c in json.loads((d / "book.json").read_text(encoding="utf-8"))["chapters"]] == ["ch000.m4a"]
+    [summary] = api.get(f"{V1}/books").json()  # still listed and playable, the half file not counted
+    assert summary["size_bytes"] == (d / "book.json").stat().st_size + (d / "ch000.m4a").stat().st_size
+    assert api.get(f"{V1}/books/{d.name}/files/ch001.m4a").status_code == 404
+
+    (service.LIBRARY.parent / "cache" / "voice-samples").mkdir(parents=True)
+    sample_tmp = service.LIBRARY.parent / "cache" / "voice-samples" / "af_heart-1234abcd.tmp.m4a"
+    sample_tmp.write_bytes(b"half")
+    assert sorted(f.name for f in service.clean_leftovers()) == ["af_heart-1234abcd.tmp.m4a", "ch001.tmp.m4a"]
+    assert not (d / "ch001.tmp.m4a").exists() and (d / "ch000.m4a").exists()
+
+    resumed = CountingTTS()  # chapter 2 was fully synthesized before ffmpeg was cut off: all from the cache
+    build.build_book(src, service.LIBRARY, tts=resumed, merge=True)
+    assert "Chapter 2" not in resumed.calls and "Chapter 3" in resumed.calls
+    m = json.loads((d / "book.json").read_text(encoding="utf-8"))
+    assert [c["number"] for c in m["chapters"]] == [1, 2, 3, 4] and m["complete"] is True
+
+
+def test_api24_server_start_cleans_and_exits_promptly(monkeypatch):
+    from desktop.server import app as server_app
+    seen = {}
+    monkeypatch.setattr(server_app, "advertise", lambda port: None)
+    monkeypatch.setattr(service, "clean_leftovers", lambda: seen.setdefault("cleaned", True) and [])
+    monkeypatch.setattr("uvicorn.run", lambda app, **kw: seen.update(kw))
+    monkeypatch.setattr("sys.argv", ["ebook-server", "--port", "8799"])
+    server_app.main()
+    assert seen["cleaned"] and seen["port"] == 8799
+    # the first Ctrl+C waits at most this long for open downloads before closing them
+    assert seen["timeout_graceful_shutdown"] == server_app.SHUTDOWN_GRACE_S <= 2
+
+
 def test_api14_delete_book(api, book):  # noqa: F811
     assert api.delete(f"{V1}/books/{book.name}").json() == {"ok": True}
     assert not book.exists() and api.get(f"{V1}/books").json() == []

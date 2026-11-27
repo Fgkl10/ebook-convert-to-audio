@@ -153,11 +153,30 @@ def assemble_chapter(
     return np.concatenate(pieces), sentences
 
 
+TMP_SUFFIX = ".tmp"            # sentence cache: <key>.npy.tmp while it is written
+TMP_M4A_SUFFIX = ".tmp.m4a"    # chapter audio and voice samples: <name>.tmp.m4a while ffmpeg writes it
+LEFTOVER_SUFFIXES = (TMP_M4A_SUFFIX, ".npy" + TMP_SUFFIX)
+
+
+def remove_leftovers(*folders: Path) -> list[Path]:
+    """Delete half-written files that an interrupted run (Ctrl+C, crash) left in these folders, recursively.
+    Only call it when nothing else is writing there (server start)."""
+    removed = []
+    for folder in folders:
+        if not folder.exists():
+            continue
+        for f in folder.rglob("*"):
+            if f.name.endswith(LEFTOVER_SUFFIXES) and f.is_file():
+                f.unlink(missing_ok=True)
+                removed.append(f)
+    return removed
+
+
 def encode_m4a(audio: np.ndarray, out_path: Path) -> None:
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         raise RuntimeError("ffmpeg not found on PATH")
-    tmp = out_path.with_suffix(".tmp.m4a")
+    tmp = out_path.with_suffix(TMP_M4A_SUFFIX)
     cmd = [
         ffmpeg, "-y", "-loglevel", "error",
         "-f", "f32le", "-ar", str(SAMPLE_RATE), "-ac", "1", "-i", "pipe:0",
@@ -187,9 +206,17 @@ class CachedSynth:
     def __call__(self, text: str) -> np.ndarray:
         f = self.path(text)
         if f.exists():
-            return np.load(f)
+            try:
+                return np.load(f)
+            except (ValueError, EOFError, OSError):  # cut off by a version before atomic writes: make it again
+                f.unlink(missing_ok=True)
         audio = self.tts.synth(text)
-        np.save(f, audio)
+        # Atomic: a Ctrl+C mid-write leaves only <key>.npy.tmp (removed at server start), never a half <key>.npy.
+        # Through a file handle, because np.save(path) would append ".npy" to the temp name.
+        tmp = f.with_name(f.name + TMP_SUFFIX)
+        with open(tmp, "wb") as fh:
+            np.save(fh, audio)
+        os.replace(tmp, f)
         return audio
 
 

@@ -19,6 +19,7 @@ from .api import API_VERSION, PREFIX, lan_ip, router, service_error
 
 STATIC = PROJECT / "desktop" / "web"
 SERVICE_TYPE = "_ebookaudio._tcp.local."
+SHUTDOWN_GRACE_S = 1  # seconds a Ctrl+C waits for open requests (downloads, page loads) before closing them
 
 app = FastAPI(title="Ebook Audio Server", version=f"{API_VERSION}",
               description="Ebook to audiobook conversion. Clients use only the JSON API under " + PREFIX + ".")
@@ -64,13 +65,19 @@ def main() -> None:
     args = ap.parse_args()
     app.state.port = args.port
     service.LIBRARY.mkdir(parents=True, exist_ok=True)
+    removed = service.clean_leftovers()
+    if removed:
+        print(f"  Removed {len(removed)} half-written file(s) left by an interrupted run.")
 
     adv = advertise(args.port)
     print(f"\n  Ebook Audio Server\n  On this PC:   http://localhost:{args.port}\n"
           f"  On the phone: http://{lan_ip()}:{args.port}\n  API docs:     http://localhost:{args.port}/docs\n"
           f"  Data folder:  {service.LIBRARY.parent}\n")
     try:
-        uvicorn.run(app, host="0.0.0.0", port=args.port, log_level="warning")
+        # On Ctrl+C uvicorn waits for open connections to close; a phone downloading a chapter could hold it for
+        # minutes. After SHUTDOWN_GRACE_S it cuts them off (an interrupted download resumes with HTTP Range).
+        uvicorn.run(app, host="0.0.0.0", port=args.port, log_level="warning",
+                    timeout_graceful_shutdown=SHUTDOWN_GRACE_S)
     finally:
         if adv:
             zc, svc = adv
