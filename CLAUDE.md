@@ -25,6 +25,16 @@ Keep the docs in sync with the code:
 - Use Mermaid for diagrams so they render on GitHub.
 - Mark known gaps honestly, such as behavior that is untested or a known limitation.
 
+When to update the docs:
+- Do not update docs after every change. Update docs only once, when a task is finished or
+  after a major change, as the last step before the final commit.
+- While working, keep notes in your head and batch all doc edits together at the end.
+- If the conversation is close to its context limit, update the docs before it runs out.
+
+## Editing files
+- Always create and edit files with the Write/Edit tools. Never write file contents through
+  shell heredocs or echo.
+
 ## Git workflow
 - One branch + one PR per milestone, targeting `master`. Wait for the PR to merge before
   starting the next milestone.
