@@ -28,6 +28,8 @@ class Page:
     body: str  # inner HTML of <body>
     toc_title: str | None = None  # None: not in the TOC
     allow_short: bool = False  # set for pages meant to be dropped by MIN_CHAPTER_CHARS
+    epub_type: str | None = None  # label on a wrapping <section>, e.g. "copyright-page"
+    guide_type: str | None = None  # OPF <guide> reference type for this page, e.g. "copyright-page"
 
 
 @dataclass
@@ -69,7 +71,8 @@ def build_epub(path: Path, spec: Spec) -> Path:
         if not page.allow_short and _text_len(page.body) < MIN_CHAPTER_CHARS:
             raise ValueError(f"page {page.file_name} is shorter than MIN_CHAPTER_CHARS; set allow_short")
         item = epub.EpubHtml(title=page.toc_title or f"p{i}", file_name=page.file_name, lang="en")
-        item.content = f"<html><body>{page.body}</body></html>"
+        body = f'<section epub:type="{page.epub_type}">{page.body}</section>' if page.epub_type else page.body
+        item.content = f"<html><body>{body}</body></html>"
         book.add_item(item)
         items.append((page, item))
 
@@ -80,6 +83,8 @@ def build_epub(path: Path, spec: Spec) -> Path:
     else:
         book.toc = links
 
+    book.guide = [{"href": item.file_name, "title": page.toc_title or "", "type": page.guide_type}
+                  for page, item in items if page.guide_type]
     book.add_item(epub.EpubNcx())
     book.add_item(epub.EpubNav())
     book.spine = ["nav"] + [item for _, item in items]
@@ -89,28 +94,38 @@ def build_epub(path: Path, spec: Spec) -> Path:
 
 # ---------------------------------------------------------------- ready-made specs
 
+BLURB = ("<p>Over a million readers have followed the river.</p><p>" + FILLER * 2 + "</p>")
+
+
 def novel_spec() -> Spec:
-    """Front matter + three chapters in Text/, nested TOC, footnotes, cover item."""
+    """Labelled front matter + preface + three chapters in Text/, nested TOC, footnotes, cover item.
+
+    Front matter is found three ways: a labelled half title holding a long blurb (like real books),
+    a labelled copyright page, and an unlabelled page titled exactly "Contents".
+    """
     return Spec(
         title="The Quiet Mill",
         author="Ada Fictional",
         nested_toc=True,
         cover="item",
         pages=[
-            Page("Text/halftitle.xhtml", "<p>The Quiet Mill</p>", toc_title="Half Title", allow_short=True),
+            Page("Text/halftitle.xhtml", BLURB, toc_title="Half Title", epub_type="halftitlepage"),
             Page("Text/copyright.xhtml",
                  "<p>Copyright 2026 Ada Fictional. All rights reserved. No part of this book may be "
                  "reproduced without permission. First published 2026.</p>",
-                 toc_title="Copyright"),
+                 toc_title="Copyright", epub_type="copyright-page"),
             Page("Text/contents.xhtml",
                  "<p>Contents</p><p>1 The River</p><p>2 The Mill</p><p>3 The Storm</p>"
                  "<p>Notes and acknowledgements follow the final chapter.</p>",
                  toc_title="Contents"),
+            Page("Text/preface.xhtml", "<h1>Preface</h1>" + para(), toc_title="Preface", epub_type="preface"),
             Page("Text/ch1.xhtml",
                  "<h1>One</h1><p>The river remembered everything<sup><a href=\"#fn1\">1</a></sup> "
                  "that had ever fallen into it.</p>" + para(),
                  toc_title="1 The River"),
-            Page("Text/ch2.xhtml", "<h1>Two</h1>" + para(3), toc_title="2 The Mill"),
+            Page("Text/ch2.xhtml",
+                 '<h1>Two</h1><span epub:type="pagebreak" role="doc-pagebreak" id="p7"/>' + para(3),
+                 toc_title="2 The Mill", epub_type="chapter"),
             Page("Text/ch3.xhtml",
                  "<h1>Three</h1><p>Thunder rolled<sup>2</sup> over the hills.</p>" + para(),
                  toc_title="3 The Storm"),
@@ -127,6 +142,19 @@ def untitled_spec() -> Spec:
             Page("a.xhtml", "<h2>Opening Heading</h2>" + para()),
             Page("b.xhtml", para()),  # no heading → "Section 2"
             Page("c.xhtml", "<p>Tiny.</p>", allow_short=True),  # dropped
+        ],
+    )
+
+
+def guide_spec() -> Spec:
+    """No epub:type labels: front matter known only from the OPF guide; near-miss titles are kept."""
+    return Spec(
+        title="Guide Only",
+        pages=[
+            Page("legal.xhtml", "<p>All rights reserved by the imaginary publisher of this book.</p>",
+                 toc_title="Legal Notice", guide_type="copyright-page"),
+            Page("law.xhtml", "<h1>Copyright Law</h1>" + para(), toc_title="Copyright Law"),
+            Page("contents-of-the-heart.xhtml", para(), toc_title="Contents of the Heart"),
         ],
     )
 

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import posixpath
 import re
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -51,11 +52,39 @@ def load_book(path: str | Path) -> Book:
 _BLOCK_TAGS = ["p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote", "pre", "dd", "dt", "td", "figcaption"]
 _HEADINGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
 
+# Front matter that is never read aloud (decision D-016). Detected from the book's own labels
+# (epub:type / ARIA role on page-level elements, OPF <guide> types) or an exact page title.
+_FRONT_MATTER_TYPES = {"cover", "titlepage", "halftitlepage", "copyright-page", "toc"}
+_FRONT_MATTER_ROLES = {"doc-cover", "doc-toc"}
+_FRONT_MATTER_GUIDE = {"cover", "title-page", "copyright-page", "toc"}
+_FRONT_MATTER_TITLES = {"copyright", "contents", "table of contents", "title page", "half title", "half title page"}
+_PAGE_LEVEL_TAGS = ["body", "section", "div", "nav", "article"]
 
-def _html_to_paragraphs(html: bytes) -> tuple[list[str], str | None]:
-    from bs4 import BeautifulSoup
 
-    soup = BeautifulSoup(html, "lxml")
+def _front_matter_labels(soup) -> set[str]:
+    """epub:type / role tokens on page-level elements that mark the page as front matter."""
+    found: set[str] = set()
+    for el in soup.find_all(_PAGE_LEVEL_TAGS):
+        found |= set((el.get("epub:type") or "").split()) & _FRONT_MATTER_TYPES
+        found |= set((el.get("role") or "").split()) & _FRONT_MATTER_ROLES
+    return found
+
+
+def _is_front_matter_title(title: str | None) -> bool:
+    norm = re.sub(r"[\s\-_]+", " ", (title or "").lower()).strip(" .:")
+    return norm in _FRONT_MATTER_TITLES
+
+
+def _html_to_paragraphs(html: bytes) -> tuple[list[str], str | None, set[str]]:
+    from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
+
+    # EPUB chapters are XHTML. The lenient HTML parser is deliberate (malformed markup is common in
+    # real books, and a strict XML parse can lose text), so silence its "this looks like XML" warning
+    # (decision D-015).
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
+        soup = BeautifulSoup(html, "lxml")
+    labels = _front_matter_labels(soup)
     for tag in soup(["script", "style", "head", "nav"]):
         tag.decompose()
     # Footnote reference markers like <sup><a href="#fn1">1</a></sup> read badly.
@@ -83,7 +112,7 @@ def _html_to_paragraphs(html: bytes) -> tuple[list[str], str | None]:
             line = re.sub(r"\s+", " ", line).strip()
             if line:
                 paragraphs.append(line)
-    return paragraphs, heading
+    return paragraphs, heading, labels
 
 
 def _flatten_toc(toc, out: dict[str, str]) -> None:
@@ -115,16 +144,20 @@ def _load_epub(path: Path) -> Book:
     _flatten_toc(eb.toc, toc_titles)
     # TOC hrefs are relative to the nav file; normalise to basenames for matching.
     toc_by_name = {posixpath.basename(k): v for k, v in toc_titles.items()}
+    guide_front = {posixpath.basename(g.get("href", "").split("#")[0])
+                   for g in eb.guide if g.get("type", "").lower() in _FRONT_MATTER_GUIDE}
 
     for idref, _linear in eb.spine:
         item = eb.get_item_with_id(idref)
         if item is None or item.get_type() != ebooklib.ITEM_DOCUMENT:
             continue
-        paragraphs, heading = _html_to_paragraphs(item.get_content())
+        paragraphs, heading, labels = _html_to_paragraphs(item.get_content())
         if not paragraphs:
             continue
         name = item.get_name()
         title = toc_titles.get(name) or toc_by_name.get(posixpath.basename(name)) or heading
+        if labels or posixpath.basename(name) in guide_front or _is_front_matter_title(title):
+            continue  # front matter: not read aloud
         book.chapters.append(Chapter(title=title or "", text="\n".join(paragraphs)))
 
     for i, ch in enumerate(book.chapters):

@@ -7,11 +7,8 @@ from bs4 import XMLParsedAsHTMLWarning
 
 from desktop import build
 from desktop.parse import load_book
-from tests.epub_factory import JPG_BYTES, PNG_BYTES, build_epub, empty_spec, novel_spec, untitled_spec
+from tests.epub_factory import JPG_BYTES, PNG_BYTES, build_epub, empty_spec, guide_spec, novel_spec, untitled_spec
 from tests.test_desktop import FakeTTS
-
-FRONT_MATTER = {"Half Title", "Copyright", "Contents"}
-
 
 @pytest.fixture
 def novel(tmp_path):
@@ -23,17 +20,13 @@ def untitled(tmp_path):
     return build_epub(tmp_path / "untitled.epub", untitled_spec())
 
 
-def body_chapters(book):
-    return [c for c in book.chapters if c.title not in FRONT_MATTER]
-
-
 def test_par05_metadata_spine_order_and_toc_titles(novel):
     book = load_book(novel)
     assert book.title == "The Quiet Mill"
     assert book.author == "Ada Fictional"
     # Nested (Section, [Link...]) TOC with hrefs under Text/ still maps to every chapter.
-    assert [c.title for c in body_chapters(book)] == ["1 The River", "2 The Mill", "3 The Storm"]
-    assert body_chapters(book)[0].text.startswith("One\nThe river remembered")
+    assert [c.title for c in book.chapters] == ["Preface", "1 The River", "2 The Mill", "3 The Storm"]
+    assert book.chapters[1].text.startswith("One\nThe river remembered")
 
 
 def test_par06_title_fallbacks_without_toc(untitled):
@@ -63,18 +56,34 @@ def test_par13_epub_without_text_raises(tmp_path):
         load_book(build_epub(tmp_path / "empty.epub", empty_spec()))
 
 
-def test_par14_short_pages_dropped(novel, untitled):
-    assert "Half Title" not in [c.title for c in load_book(novel).chapters]
+def test_par14_short_pages_dropped(untitled):
     assert len(load_book(untitled).chapters) == 2  # "Tiny." page removed
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="PAR-15 gap: front matter is read aloud as chapters")
 def test_par15_front_matter_not_spoken(novel):
+    """Labelled half title (with blurb) and copyright page, plus a page titled exactly "Contents"."""
+    book = load_book(novel)
+    assert [c.title for c in book.chapters] == ["Preface", "1 The River", "2 The Mill", "3 The Storm"]
+    assert all("million readers" not in c.text for c in book.chapters)
+
+
+def test_par15_front_matter_from_opf_guide(tmp_path):
+    book = load_book(build_epub(tmp_path / "guide.epub", guide_spec()))
+    titles = [c.title for c in book.chapters]
+    assert "Legal Notice" not in titles  # guide type copyright-page
+    assert titles == ["Copyright Law", "Contents of the Heart"]  # title match is exact only
+
+
+def test_par15_preface_and_pagebreak_chapters_kept(novel):
+    """Regression guard: other labels (preface, chapter, pagebreak spans) never cause skipping."""
     titles = [c.title for c in load_book(novel).chapters]
-    assert not FRONT_MATTER & set(titles)
+    assert "Preface" in titles and "2 The Mill" in titles
 
 
-@pytest.mark.xfail(strict=True, raises=XMLParsedAsHTMLWarning, reason="PAR-16 gap: XHTML parsed with the HTML parser warns per chapter")
+def test_par15_unlabelled_book_unchanged(untitled):
+    assert [c.title for c in load_book(untitled).chapters] == ["Opening Heading", "Section 2"]
+
+
 def test_par16_no_xml_parser_warning(novel):
     with warnings.catch_warnings():
         warnings.simplefilter("error", XMLParsedAsHTMLWarning)
