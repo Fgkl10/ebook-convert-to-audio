@@ -254,7 +254,11 @@ def test_api19_download_names_are_safe_and_keep_unicode(api):  # noqa: F811
                      "What Why A Tale - Ch 03 - Line break pipe.m4a"]
     long = _write_book("long-book-0123abcd", "T" * 300, [f"c{i}" for i in range(120)])
     name = service.download_name(long.name, "ch007.m4a")
-    assert name.endswith(".m4a") and len(name) <= 150 and " - " not in name  # cut inside the long title
+    assert name.endswith(".m4a") and len(name.encode()) <= 200 and " - " not in name  # cut inside the long title
+    cjk = _write_book("cjk-book-0123abcd", "长" * 60, ["章" * 40])  # 300 bytes of UTF-8 before the cut
+    name = service.download_name(cjk.name, "ch000.m4a")
+    assert name.endswith(".m4a") and len(name.encode()) <= 200 and not name.endswith("-.m4a")
+    assert name.startswith("长" * 60 + " - Ch 01 - 章")  # cut between whole characters, never inside one
     assert service.download_name(long.name, "ch119.m4a").startswith("T")
     short = _write_book("short-book-0123abcd", "Short", [f"c{i}" for i in range(120)])
     assert service.download_name(short.name, "ch007.m4a") == "Short - Ch 008 - c7.m4a"  # 3 digits for 100+ chapters

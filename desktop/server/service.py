@@ -436,7 +436,7 @@ def book_file(book_id: str, name: str) -> Path:
 
 
 _UNSAFE_NAME_RE = re.compile(r'[\\/:*?"<>|\x00-\x1f\x7f]')
-_MAX_NAME = 150
+_MAX_NAME_BYTES = 200  # UTF-8 bytes, under the common 255-byte file name limit
 
 
 def _safe_name_part(text: str) -> str:
@@ -468,7 +468,12 @@ def download_name(book_id: str, name: str) -> str:
     if not stem:
         return name
     suffix = f.suffix
-    return stem[:_MAX_NAME - len(suffix)].rstrip(". ") + suffix
+    budget = _MAX_NAME_BYTES - len(suffix.encode())
+    if len(stem.encode()) > budget:  # trim whole characters; filesystems limit bytes (255 on ext4/f2fs)
+        while len(stem.encode()) > budget:
+            stem = stem[:-1]
+        stem = stem.rstrip(". -")  # no dangling " - " separator after the cut
+    return stem + suffix
 
 
 def delete_book(book_id: str) -> None:

@@ -644,7 +644,8 @@ it is in a Downloads folder or on a phone. The user wanted a download button per
   - A file that isn't a chapter gets `<book title> - <stem>.<ext>` (the cover).
   - Characters reserved on Windows or Android (`\ / : * ? " < > |`) and control characters become spaces, then
     whitespace collapses and trailing dots and spaces are trimmed.
-  - Empty parts are dropped. The whole name is capped at 150 characters, keeping the extension. If nothing is left,
+  - Empty parts are dropped. The whole name is capped at 200 UTF-8 bytes (filesystems such as ext4 and f2fs limit names to 255 bytes, not
+    characters), cut between whole characters and keeping the extension. If nothing is left,
     the stored name is used.
 - In the reader, each chapter row has a ⬇ link (`<a download href="…?download=1">`). Its click stops propagating, so
   downloading doesn't switch or start a chapter.
@@ -657,4 +658,4 @@ it is in a Downloads folder or on a phone. The user wanted a download button per
 **Consequences:**
 - For a book converted from a chapter selection (e.g. `…-ch4`), the first chapter is "Ch 01", not its number in the
   original book.
-- The ⬇ click-through hasn't been tested in a real browser yet (UI-24 is manual).
+- The saved file name has been checked with curl but not yet in a browser (UI-24).
