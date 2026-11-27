@@ -723,7 +723,7 @@ Status: Accepted · Milestone: M3
   half file. A resumed conversion would then fail on `np.load`.
 - ffmpeg's `chNNN.tmp.m4a` (D-006) was never removed and was counted in the library size.
 - uvicorn's graceful shutdown waited for open connections. A phone downloading a chapter kept the server running:
-  still alive 30 s after Ctrl+Break in a live test.
+  in a live test it was still alive 30 s after the stop signal.
 **Decision:**
 - **Cache.** `CachedSynth` writes `<key>.npy.tmp` through a file handle, then `os.replace` to `<key>.npy`. It goes
   through a handle because `np.save(path)` appends `.npy` to a name that lacks it. An entry that can't be loaded (a
@@ -747,3 +747,7 @@ Status: Accepted · Milestone: M3
   start; the next CLI run overwrites it.
 - A Ctrl+C during a conversion also stops ffmpeg (same console). The worker may record "Conversion failed" just
   before the process ends. Either way the draft is back in review after a restart.
+- **Checked live with a real SIGINT** (SRV-32, SRV-33):
+  - with a download open: exit after 1.5 s, code 0, with mDNS unregistered;
+  - mid-conversion: exit after 1.1 s, sentences cached; after a restart the draft was in review and resumed.
+- A cut-off download makes uvicorn print a `CancelledError` traceback at Ctrl+C. It is noise, not a failure.
