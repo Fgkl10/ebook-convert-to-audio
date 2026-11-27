@@ -64,7 +64,7 @@ Status: Accepted · Milestone: M2
 **Why:** Downstream code (segmentation, build) stays format-agnostic. The 40-char floor removes cover pages and blank
 separators that would become near-empty chapters.
 **Consequences:** Format-specific chapter heuristics live only in `parse.py`:
-- EPUB: chapters follow the spine. Titles come from the TOC, then the first heading.
+- EPUB: chapters follow the spine, with front matter skipped (D-016). Titles come from the TOC, then the first heading.
 - PDF: chapters come from the level-1 outline, falling back to 15-page parts. The cover is a render of page 1.
 - TXT: chapters come from heading lines ("Chapter N", "Part", "Prologue", …), falling back to ~20k-char parts. The encoding is tried as UTF-8, UTF-16, cp1252, then latin-1.
 
@@ -153,3 +153,36 @@ The factory refuses pages under `MIN_CHAPTER_CHARS` unless they are marked `allo
 be dropped by the parser without anyone noticing.
 **Consequences:** The fixtures are only as realistic as we make them. When a real book shows a new quirk, add
 a synthetic spec that reproduces it. Known gaps are encoded as `xfail(strict=True)` tests.
+
+## D-015 Keep the lenient HTML parser for XHTML and silence its warning
+Status: Accepted · Milestone: M3
+**Context:** EPUB chapters are XHTML, and BeautifulSoup warns (`XMLParsedAsHTMLWarning`) on every chapter
+when they are parsed with the lxml HTML parser (PAR-16).
+**Decision:** Keep `BeautifulSoup(html, "lxml")` and ignore that one warning category, only around that call.
+**Why:** Real EPUBs often contain HTML entities and markup that is not valid XML. A strict XML parse
+(`features="xml"`) can silently lose text, and the HTML parse had just been checked end to end
+(2,706 sentences). After the change the output was identical on the sample book.
+**Consequences:** Nothing changes in behavior. Other warnings still show. Silencing is local, so no global filter hides warnings from other code.
+
+## D-016 Skip EPUB front matter by label, OPF guide, or exact title
+Status: Accepted · Milestone: M3
+**Context:** The cover, title page, half title, copyright page and contents were read aloud as chapters
+(PAR-15). In the sample book the half title holds a 13-sentence marketing blurb.
+**Decision:** Skip a spine document if (a) a page-level element (`body`, `section`, `div`, `nav`,
+`article`) has `epub:type` in {cover, titlepage, halftitlepage, copyright-page, toc} or `role` in
+{doc-cover, doc-toc}, or (b) the OPF `<guide>` lists it as cover, title-page, copyright-page or toc,
+or (c) every TOC title pointing into it, normalized, is exactly "copyright", "contents", "table of contents",
+"title page", "half title" or "half title page". Dedication, foreword, preface and introduction are kept.
+Skipping is **per page, not per file**, because one XHTML file can hold front matter and real chapters (Word/Calibre
+conversions, single-file books). A labelled `section`/`div` is removed and the rest of the file is still read. A whole
+file is skipped only when its `body` is labelled, when all of its TOC titles are front matter, or when the guide lists it
+and no TOC entry points into the middle of it (`#fragment`). A file's chapter title is its first TOC title that isn't front matter.
+Headings are not used for skipping, only for titles.
+**Why:** The user's choices were labels plus title matching, with half titles skipped. Labels are what publishers use
+to mark these pages, and they don't overlap with chapter labels (`chapter`, `pagebreak`). Exact-title matching catches
+unlabelled books without catching chapters like "Copyright Law".
+**Consequences:** Unlabelled front matter with other titles is still read, as is an unlabelled title page sharing
+a file with chapter 1 (PAR-18, accepted). The first version decided per file and dropped whole single-file books.
+PAR-17 tests guard against that. A book whose real
+content has exactly one of those titles would lose that chapter, which is very unlikely. Applies to EPUB only. PDF and TXT
+have no such labels.
