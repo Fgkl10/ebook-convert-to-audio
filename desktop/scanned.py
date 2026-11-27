@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 import statistics
+from collections import Counter
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -45,7 +46,8 @@ class ScanResult:
     chapters: list[Chapter]
     removed: list[tuple[str, str]] = field(default_factory=list)  # (reason, first 80 chars)
     unconfirmed: list[str] = field(default_factory=list)  # contents entries never found as headings
-    notes: list[str] = field(default_factory=list)  # per-chapter decisions and things to check
+    notes: list[str] = field(default_factory=list)  # per-chapter decisions (answer placement)
+    checks: list[str] = field(default_factory=list)  # things to look at by hand (missed big first letters)
 
 
 def _key(text: str) -> str:
@@ -133,6 +135,51 @@ def _drop_cap(line: Line) -> bool:
             and first.height > 1.2 * statistics.median(w.height for w in rest))
 
 
+def _join_cap(letter: str, rest: list[str], counts: Counter) -> str:
+    """Join a big first letter to its word, using the words the book itself uses:
+    'S ome' -> 'Some', 'A ll' -> 'All', 'I t's' -> "It's" (the joined word appears in the book);
+    'I he' -> 'The', 'I here's' -> "There's" (docTR reads a big T as I or L; only the T form appears);
+    'A hospital', 'I can't' stay two words (A and I are words, and the next word appears on its own
+    elsewhere: 2+ times, since this line counts once)."""
+    nxt = rest[0].lower().strip(".,;:!?\"()")
+    joined, alone, as_t = counts[letter.lower() + nxt], counts[nxt], counts["t" + nxt]
+    # Frequencies, not mere presence: OCR glues words now and then ("Ican't" once vs "can't" 23 times).
+    if letter in "IL" and as_t > max(joined, alone):
+        return "T" + " ".join(rest)
+    if letter in "AI" and alone >= 2 and alone > joined:
+        return letter + " " + " ".join(rest)
+    return letter + " ".join(rest)
+
+
+def _merge_cap_lines(page: Page) -> Page:
+    """docTR often returns a big first letter as a line of its own (['S'] beside ['ome', 'days', …]).
+    Put it back at the start of the line it sits next to."""
+    out: Page = []
+    i = 0
+    while i < len(page):
+        ln = page[i]
+        nxt = page[i + 1] if i + 1 < len(page) else None
+        if (nxt is not None and len(ln.words) == 1 and len(ln.text) == 1 and ln.text.isupper()
+                and abs(nxt.box[1] - ln.box[1]) < 0.015 and nxt.box[0] > ln.box[0]):
+            out.append(Line(ln.words + nxt.words))
+            i += 2
+        else:
+            out.append(ln)
+            i += 1
+    return out
+
+
+def _cap_letter(line: Line, first_after_heading: bool) -> bool:
+    """A big first letter: one capital set apart from its word. Its box is often taller than the line
+    (_drop_cap), but not always, so the first line after a heading also counts when it opens with a
+    lone capital followed by a lowercase fragment ('S ome days', 'A ll of us')."""
+    if _drop_cap(line):
+        return True
+    w = line.words
+    return (first_after_heading and len(w) > 1 and len(w[0].text) == 1 and w[0].text.isupper()
+            and w[1].text[:1].islower())
+
+
 def paragraphs(pages: list[Page]) -> list[Para]:
     """Paragraphs in reading order. A heading is a line of capitals at the top of a page, before any body text."""
     spacing = statistics.median(
@@ -140,11 +187,12 @@ def paragraphs(pages: list[Page]) -> list[Para]:
         or [0.025])
     all_words = [w.lower().strip(".,;:!?\"'()") for page in pages for ln in page for w in ln.text.split()]
     vocabulary = {w for w in all_words if "-" in w.strip("-")}  # hyphenated words seen unbroken
-    words = set(all_words)
+    counts = Counter(all_words)
     paras: list[Para] = []
     for n, page in enumerate(pages):
         if not page:
             continue
+        page = _merge_cap_lines(page)
         body = [ln for ln in page if not (ln.box[1] < HEADING_ZONE and _is_caps(ln.text))] or page
         margin = statistics.median(ln.box[0] for ln in body) if len(body) >= 3 else min(ln.box[0] for ln in body)
         margin = min([margin] + [ln.box[0] for ln in body if abs(ln.box[0] - margin) < INDENT])
@@ -164,14 +212,12 @@ def paragraphs(pages: list[Page]) -> list[Para]:
                     paras.append(Para(text, n, heading=True))
                 prev = ln
                 continue
-            cap = _drop_cap(ln)
-            if cap:  # 'T he' -> 'The', but 'A hospital' stays two words
-                letter, nxt = ln.words[0].text, ln.words[1].text
-                glue = "" if letter not in "AI" or nxt.lower().strip(".,;:!?'") not in words else " "
-                text = letter + glue + " ".join(w.text for w in ln.words[1:])
             # Right after a heading the big first letter (read or not, e.g. 'ne day…') indents the
             # next line too, so that line continues the paragraph.
             first_after_heading = not in_body and bool(paras) and paras[-1].heading
+            cap = _cap_letter(ln, first_after_heading)
+            if cap:
+                text = _join_cap(ln.words[0].text, [w.text for w in ln.words[1:]], counts)
             text = re.sub(r"^(\d{1,2})\.0(?=[a-z])", r"\1. O", text)  # '1.0n a stroll' -> '1. On a stroll'
             item = ITEM.match(text)
             indented = x0 > margin + INDENT and not after_cap
@@ -324,8 +370,8 @@ def rebuild(pages: list[Page]) -> ScanResult:
             result.notes.append(f"{section.title}: {placement}")
         for part, body in (("text", section.quiz), ("answers", section.key)):
             if body and not body[0].numbered and not re.match(r"[A-Z0-9\"“'‘(]", body[0].text):
-                result.notes.append(f"{section.title}: check the first word of the {part} "
-                                    f"(big first letter not read?): {body[0].text[:40]!r}")
+                result.checks.append(f"{section.title}: first word of the {part} "
+                                     f"(big first letter not read?): {body[0].text[:40]!r}")
         result.chapters.append(Chapter(section.title, "\n".join(lines)))
     return result
 

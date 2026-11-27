@@ -57,7 +57,8 @@ class Report:
     chapters: list[tuple[str, int]] = field(default_factory=list)  # (title, characters)
     removed: list[tuple[str, str]] = field(default_factory=list)  # (reason, first 80 chars)
     unconfirmed: list[str] = field(default_factory=list)  # TOC entries with no matching heading
-    notes: list[str] = field(default_factory=list)  # decisions and things to check by hand
+    notes: list[str] = field(default_factory=list)  # decisions made per chapter (e.g. answer placement)
+    checks: list[str] = field(default_factory=list)  # things to look at by hand before converting
 
     def remove(self, reason: str, blocks: list[Block]) -> None:
         text = " ".join(b.text for b in blocks).strip()
@@ -65,7 +66,10 @@ class Report:
             self.removed.append((reason, text[:80] + ("…" if len(text) > 80 else "")))
 
     def render(self) -> str:
-        out = [f"Normalized: {self.source}", f"Method: {self.method}", "", f"Chapters ({len(self.chapters)}):"]
+        out = [f"Normalized: {self.source}", f"Method: {self.method}"]
+        if self.checks:  # first, so they aren't buried under the chapter list
+            out += ["", f"Check by hand ({len(self.checks)}):"] + [f"  {c}" for c in self.checks]
+        out += ["", f"Chapters ({len(self.chapters)}):"]
         out += [f"  {i:3}. {t}  ({n} chars)" for i, (t, n) in enumerate(self.chapters, 1)]
         out += ["", f"Removed ({len(self.removed)}):"] + [f"  [{r}] {t}" for r, t in self.removed]
         if self.unconfirmed:
@@ -355,6 +359,7 @@ def normalize(source: str | Path, out: str | Path | None = None, ignore_language
         report.removed += scan.removed
         report.unconfirmed += scan.unconfirmed
         report.notes += scan.notes
+        report.checks += scan.checks
     else:
         book = load_book(source)  # metadata, cover, front matter rules, and the fallback chapters
     if not ignore_language:

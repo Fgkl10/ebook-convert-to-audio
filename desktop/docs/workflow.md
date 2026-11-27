@@ -3,6 +3,7 @@
 ## 0. Clean a book, review it, then convert (`desktop.normalize`, D-019/D-020)
 
 The CLI only converts cleaned files (`.std.epub`). The web UI cleans automatically, with no review.
+EPUBs are cut at confirmed headings, scanned PDFs are rebuilt from OCR (0b), and text PDFs and TXT are repackaged.
 
 ```mermaid
 flowchart TD
@@ -54,11 +55,12 @@ flowchart TD
     M --> C["contents titles = capitals on pages headed CONTENTS<br/>(contents pages are then removed)"]
     C --> P["paragraphs: new at an indent, a gap or 'N.'<br/>join drop caps ('T he' → 'The') and hyphenated breaks<br/>headings = capitals at the top of a page"]
     P --> H["cut chapters at headings that fuzzy-match a contents<br/>title, in order; 'KEY TO …' opens the answer part"]
+    P -. "big first letter" .- DC["merge a one-letter line into its line;<br/>join by the book's word counts:<br/>S ome → Some, I he → The, A hospital stays"]
     H --> Q{"quiz items numbered 1..n in both parts<br/>and most items ask a question?"}
     Q -- yes --> I["intro, Q1, Key to …, key intro, A1, Q2, A2, …"]
     Q -- no --> BO["book order: quiz, Key to …, answers"]
     I --> W
-    BO --> W["write .std.epub + report<br/>(answer placement and 'check the first word' notes)"]
+    BO --> W["write .std.epub + report<br/>('Check by hand' first, then chapters, removed, notes)"]
 ```
 
 ## 1. Convert a book (`build_book`)

@@ -41,6 +41,22 @@ def test_scan02_paragraph_rebuild():
     assert "3. I will sleep on the porch tonight." in lost  # hanging indent continues the choice
 
 
+def test_scan02_drop_cap_a_and_i():
+    """A and I are words too: 'I magine' joins, 'A hospital' and 'I can't' stay apart when the book uses
+    those words elsewhere (the drop-cap line's own word doesn't count)."""
+    def opening(text, *elsewhere):
+        pages = [[line("A TEST PAGE", 0.16, 0.3), line(text, 0.29, 0.10, cap=True)], body(list(elsewhere))]
+        return paragraphs(pages)[1].text
+    assert opening("I magine a clear sky over the sea.", "The sky is blue.").startswith("Imagine a clear sky")
+    assert opening("A hospital is a busy place at night.", "The hospital was quiet.").startswith("A hospital is")
+    assert opening("I can't believe it happened again.", "You can't stop now.").startswith("I can't believe")
+    # docTR reads a big T as I; only the T form is a word in the book
+    assert opening("I he river was wide.", "Look at the river by the hill.").startswith("The river")
+    # a big letter boxed no taller than the line is still found right after a heading
+    pages = [[line("A TEST PAGE", 0.16, 0.3), line("S ome days are long.", 0.29, 0.10)], body(["Some say so."])]
+    assert paragraphs(pages)[1].text.startswith("Some days")
+
+
 def test_scan02_hyphen_kept_when_book_spells_it_unbroken():
     pages = [body(["We admire her self-confidence in all things.", "It took self-", "confidence to try."])]
     assert paragraphs(pages)[-1].text.endswith("It took self-confidence to try.")
@@ -142,6 +158,17 @@ def test_scan10_normalize_scanned_pdf(tmp_path, monkeypatch):
     assert book.chapters[0].text.split("\n")[3] == "Key to A Morning Walk"
     rendered = (tmp_path / "game.std.report.txt").read_text(encoding="utf-8")
     assert "scanned PDF read with OCR" in rendered and "answers read after each question" in rendered
+
+
+def test_scan10_missed_big_letter_listed_first_in_report(tmp_path, monkeypatch):
+    pages = quiz_book()
+    pages[5][2] = line("ou come home late and the key is gone. Which thought comes", 0.29, 0.16)  # 'Y' not read
+    monkeypatch.setattr(ocr, "make_engine", lambda: _fake_engine(pages))
+    _, report = normalize(_scanned_pdf(tmp_path / "game.pdf"))
+    assert report.checks == ["The Lost Key: first word of the text (big first letter not read?): "
+                             "'ou come home late and the key is gone. W'"]
+    rendered = report.render()
+    assert rendered.index("Check by hand (1):") < rendered.index("Chapters (2):")
 
 
 def test_scan11_language_checked_on_ocr_text(tmp_path, monkeypatch):

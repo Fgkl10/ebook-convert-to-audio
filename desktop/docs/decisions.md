@@ -223,8 +223,8 @@ chapters with footnote fragments (How to Take Smart Notes: 14 chapters in 4 file
 **Decision:** A separate step, `python -m desktop.normalize`, writes `<name>.std.epub` (one XHTML file per chapter)
 plus `<name>.std.report.txt`. On the CLI, `desktop.build` converts only files with the `ebook-audio:normalized`
 marker, recognised by metadata rather than file name, and refuses others with the command to run. `--list-chapters` works on any
-file. The web UI runs normalize, then build, automatically with no review. PDF/TXT are repackaged as parsed for now,
-so they can still be converted until the PDF cleaner exists. `normalize` runs the language check first.
+file. The web UI runs normalize, then build, automatically with no review. Scanned PDFs are rebuilt from OCR
+(D-021); text PDFs and TXT are still repackaged as parsed. `normalize` runs the language check first.
 The `.std.epub` stores the original file's sha1, and `make_book_id` prefers it, so re-cleaning or editing the
 cleaned file keeps the same `book_id` and cache. That Sigil keeps the custom `<meta>` entries when saving
 is not verified yet. Running normalize on a `.std.epub` with no `--out` writes nothing, so a hand-edited
@@ -280,8 +280,17 @@ reads them whole. Keeping OCR optional is a deliberate exception to D-013's "add
 requirements files". About 15 packages for one kind of book don't belong in every install or in CI.
 **Consequences:** Reading the whole 90-page Kokology takes about 40 s. The first run downloads about 100 MB of models.
 OCR errors remain in the text: glued words ("ofpressure"), a stray "1" for a quote mark, and big first letters that
-docTR misses entirely ("ne day", "a ot"). The report flags each chapter whose first word looks like a missed big
-first letter, for review in Sigil. A scan without a contents page falls back to one chapter per heading in capitals.
+docTR misses entirely ("ne day", "a ot"). The report lists these first, under "Check by hand", for review in Sigil.
+A scan without a contents page falls back to one chapter per heading in capitals.
+Big first letters ("drop caps") come back from docTR in three shapes: glued as a tall first word ("T he"), as a
+line of their own beside the first line (['S'] next to ['ome', 'days']), or as a normal-height letter. They are
+merged back onto their line and joined by the words the book itself uses, comparing how often each form appears:
+"S ome" → "Some", "I he" → "The" (docTR reads a big T as I), "A hospital" and "I can't" stay two words because
+those words are far more common on their own than glued. Measured on Kokology: every chapter and key opening
+reads correctly except the 3 letters docTR did not read at all.
+`is_scanned` sends a PDF to OCR when nearly every page is one full-page image, even with a real text layer. A
+born-digital PDF that puts a full-page background image on every page would be OCRed too, and without docTR it
+now fails with the install hint where it used to convert from its text layer (SCAN-16, a known gap).
 
 ## D-022 Quiz answers are read right after each question when the book numbers both the same
 Status: Accepted · Milestone: M3
