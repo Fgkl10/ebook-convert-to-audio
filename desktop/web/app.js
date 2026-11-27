@@ -245,8 +245,10 @@ async function openBook(id) {
   book = await getJSON(`/books/${id}`);
   show('#reader'); $('#player').hidden = false;
   $('#rtitle').textContent = book.title; $('#rauthor').textContent = book.author || '';
-  $('#chapters').innerHTML = book.chapters.map((c, i) => `<div data-i="${i}">${esc(c.title)} <span class="muted">${fmt(c.duration_ms)}</span></div>`).join('');
+  $('#chapters').innerHTML = book.chapters.map((c, i) => `<div data-i="${i}">${esc(c.title)} <span class="muted">${fmt(c.duration_ms)}</span>`
+    + `<a class="dl" href="${API}/books/${esc(book.id)}/files/${esc(c.audio)}?download=1" download title="Download this chapter" aria-label="Download ${esc(c.title)}">⬇</a></div>`).join('');
   document.querySelectorAll('#chapters div').forEach(el => el.onclick = () => loadChapter(+el.dataset.i, 0, true));
+  document.querySelectorAll('#chapters a.dl').forEach(a => a.onclick = e => e.stopPropagation());  // download only, no chapter switch
   loadChapter(0, 0, false);
 }
 

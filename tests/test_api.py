@@ -6,6 +6,7 @@ import os
 import re
 import time
 from pathlib import Path
+from urllib.parse import unquote
 
 import pytest
 
@@ -203,6 +204,62 @@ def test_api13_file_download_with_range(api, book):  # noqa: F811
     assert api.get(f"{V1}/books/{book.name}/files/cover.jpg").content.startswith(b"\xff\xd8")
     for name in ("missing.m4a", ".hidden", "..%2Fbook.json", "..%5Cbook.json"):
         assert api.get(f"{V1}/books/{book.name}/files/{name}").status_code == 404, name
+
+
+def _attachment_name(r) -> str:
+    """The saved file name a browser takes from Content-Disposition (filename* wins over filename)."""
+    cd = r.headers["content-disposition"]
+    assert cd.startswith("attachment;"), cd
+    m = re.search(r"filename\*=utf-8''([^;]+)", cd)
+    return unquote(m.group(1)) if m else re.search(r'filename="([^"]*)"', cd).group(1)
+
+
+def _write_book(book_id: str, title: str, chapter_titles: list[str]) -> Path:
+    d = service.LIBRARY / book_id
+    d.mkdir(parents=True)
+    chapters = []
+    for i, t in enumerate(chapter_titles):
+        (d / f"ch{i:03d}.m4a").write_bytes(AUDIO)
+        chapters.append({"index": i, "title": t, "audio": f"ch{i:03d}.m4a", "duration_ms": 1, "sentences": []})
+    (d / "book.json").write_text(json.dumps({"id": book_id, "title": title, "chapters": chapters}), encoding="utf-8")
+    return d
+
+
+def test_api18_chapter_download_name(api, book):  # noqa: F811
+    url = f"{V1}/books/{book.name}/files/ch000.m4a"
+    inline = api.get(url)  # the player's request: no attachment, so playback stays inline
+    assert inline.status_code == 200 and "content-disposition" not in inline.headers
+    r = api.get(url, params={"download": 1})
+    assert r.status_code == 200 and r.content == AUDIO
+    assert _attachment_name(r) == "A Made-Up Book - Ch 01 - One.m4a"
+    part = api.get(url, params={"download": 1}, headers={"Range": "bytes=2000-"})  # a resumed download
+    assert part.status_code == 206 and part.content == AUDIO[2000:]
+    assert _attachment_name(part) == "A Made-Up Book - Ch 01 - One.m4a"
+    cover = api.get(f"{V1}/books/{book.name}/files/cover.jpg", params={"download": 1})
+    assert _attachment_name(cover) == "A Made-Up Book - cover.jpg"
+    assert "content-disposition" not in api.get(f"{V1}/books/{book.name}/files/cover.jpg").headers
+    assert api.get(f"{V1}/books/{book.name}/files/missing.m4a", params={"download": 1}).status_code == 404
+    assert api.get(f"{V1}/books/nope/files/ch000.m4a", params={"download": 1}).status_code == 404
+    js = (STATIC / "app.js").read_text(encoding="utf-8")  # the reader's per-chapter button uses it
+    assert re.search(r"files/\$\{esc\(c\.audio\)\}\?download=1\" download", js)
+    assert "a.dl').forEach(a => a.onclick = e => e.stopPropagation())" in js  # downloading doesn't switch chapter
+
+
+def test_api19_download_names_are_safe_and_keep_unicode(api):  # noqa: F811
+    d = _write_book("odd-names-0123abcd", 'What/Why: "A" <Tale>?. ', ["中文 章节", "", "Line\nbreak|pipe..."])
+    names = [_attachment_name(api.get(f"{V1}/books/{d.name}/files/ch{i:03d}.m4a", params={"download": 1}))
+             for i in range(3)]
+    assert names == ["What Why A Tale - Ch 01 - 中文 章节.m4a",
+                     "What Why A Tale - Ch 02.m4a",
+                     "What Why A Tale - Ch 03 - Line break pipe.m4a"]
+    long = _write_book("long-book-0123abcd", "T" * 300, [f"c{i}" for i in range(120)])
+    name = service.download_name(long.name, "ch007.m4a")
+    assert name.endswith(".m4a") and len(name) <= 150 and " - " not in name  # cut inside the long title
+    assert service.download_name(long.name, "ch119.m4a").startswith("T")
+    short = _write_book("short-book-0123abcd", "Short", [f"c{i}" for i in range(120)])
+    assert service.download_name(short.name, "ch007.m4a") == "Short - Ch 008 - c7.m4a"  # 3 digits for 100+ chapters
+    untitled = _write_book("untitled-0123abcd", "", ["One"])
+    assert service.download_name(untitled.name, "ch000.m4a") == "Ch 01 - One.m4a"
 
 
 def test_api14_delete_book(api, book):  # noqa: F811

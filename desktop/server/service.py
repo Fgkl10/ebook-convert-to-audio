@@ -435,6 +435,42 @@ def book_file(book_id: str, name: str) -> Path:
     return f
 
 
+_UNSAFE_NAME_RE = re.compile(r'[\\/:*?"<>|\x00-\x1f\x7f]')
+_MAX_NAME = 150
+
+
+def _safe_name_part(text: str) -> str:
+    """Text usable in a file name on Windows, macOS and Android: no reserved characters, one-line, trimmed."""
+    text = " ".join(_UNSAFE_NAME_RE.sub(" ", text or "").split())
+    return text.rstrip(". ")
+
+
+def download_name(book_id: str, name: str) -> str:
+    """A readable file name for saving one of a book's files, e.g. "Book Title - Ch 01 - Chapter Title.m4a".
+
+    Chapters are numbered by their place in the book (as the reader lists them), padded to at least two digits.
+    Files that are not chapter audio (the cover) become "Book Title - cover.jpg". Falls back to the stored name.
+    """
+    f = book_file(book_id, name)
+    m = _read_manifest(f.parent)
+    book = _safe_name_part(m.get("title") or "")
+    chapters = m.get("chapters") or []
+    width = max(2, len(str(len(chapters))))
+    stem = None
+    for pos, ch in enumerate(chapters):
+        if ch.get("audio") == name:
+            parts = [book, f"Ch {pos + 1:0{width}d}", _safe_name_part(ch.get("title") or "")]
+            stem = " - ".join(p for p in parts if p)
+            break
+    else:
+        if book:
+            stem = f"{book} - {_safe_name_part(f.stem)}"
+    if not stem:
+        return name
+    suffix = f.suffix
+    return stem[:_MAX_NAME - len(suffix)].rstrip(". ") + suffix
+
+
 def delete_book(book_id: str) -> None:
     shutil.rmtree(_book_dir(book_id))
 

@@ -627,3 +627,34 @@ and one start command, and shorter commands than `python -m desktop.xxx`.
   and the CLI's own messages name the new commands. Scripts that used the old commands need the new names.
 - `pip install -e .` has to be run once in each venv. It writes `ebook_audio.egg-info/`, which is gitignored.
 - A new module must go into one of the packages and follow the import rule, or `test_layers` fails.
+
+## D-034 Per-chapter download with a readable file name
+Status: Accepted · Milestone: M3
+**Context:** The reader only played chapters. Saving one from the browser gave `ch000.m4a`, which says nothing once
+it is in a Downloads folder or on a phone. The user wanted a download button per chapter and names like
+"Book Title - Ch 01 - Chapter Title.m4a", with inline playback unchanged and no zip download.
+**Decision:**
+- `GET /api/v1/books/{id}/files/{name}` takes an optional `?download=1`.
+  - Without it, the response is the same as before, with no `Content-Disposition`.
+  - With it, the file is sent as `attachment` with a readable name. Starlette writes `filename*=utf-8''…`, so
+    non-ASCII titles survive.
+- The name is built in `service.download_name()`, with no HTTP:
+  - The parts are `<book title> - Ch <n> - <chapter title>.m4a`. `n` is the chapter's place in the manifest, the
+    same numbering the reader's list shows. It is padded to two digits, or more for books with 100+ chapters.
+  - A file that isn't a chapter gets `<book title> - <stem>.<ext>` (the cover).
+  - Characters reserved on Windows or Android (`\ / : * ? " < > |`) and control characters become spaces, then
+    whitespace collapses and trailing dots and spaces are trimmed.
+  - Empty parts are dropped. The whole name is capped at 150 characters, keeping the extension. If nothing is left,
+    the stored name is used.
+- In the reader, each chapter row has a ⬇ link (`<a download href="…?download=1">`). Its click stops propagating, so
+  downloading doesn't switch or start a chapter.
+- No zip or whole-book download.
+**Why:**
+- A query option instead of a new route keeps the v1 route list (and the Android contract) as it was. One URL serves
+  both uses, and Range requests still work for resumed downloads.
+- The filename lives on the server, so the web page, the phone app and `curl -OJ` all get the same name.
+- Numbering by list position matches what the listener sees in the reader.
+**Consequences:**
+- For a book converted from a chapter selection (e.g. `…-ch4`), the first chapter is "Ch 01", not its number in the
+  original book.
+- The ⬇ click-through hasn't been tested in a real browser yet (UI-24 is manual).

@@ -10,7 +10,7 @@ import socket
 from pathlib import Path
 from typing import Literal, Optional
 
-from fastapi import APIRouter, File, Form, Request, UploadFile
+from fastapi import APIRouter, File, Form, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -150,7 +150,8 @@ class BookChapter(BaseModel):
 
 
 class Book(BaseModel):
-    """The manifest (book.json). Download a book by fetching each chapter's audio file (HTTP Range works)."""
+    """The manifest (book.json). Download a book by fetching each chapter's audio file (HTTP Range works; add
+    ?download=1 for a readable file name)."""
     model_config = ConfigDict(extra="allow")
     id: str
     title: str
@@ -308,9 +309,18 @@ def get_book(book_id: str) -> dict:
 
 @router.get("/books/{book_id}/files/{name}", response_class=FileResponse, responses={404: {"model": Error}},
             tags=["library"])
-def get_file(book_id: str, name: str) -> FileResponse:
-    """A chapter's audio (.m4a) or the cover. Supports HTTP Range, so downloads resume and players seek."""
-    return FileResponse(service.book_file(book_id, name))
+def get_file(book_id: str, name: str,
+             download: bool = Query(False, description="Send as an attachment with a readable file name, "
+                                                       "e.g. \"Book Title - Ch 01 - Chapter Title.m4a\"")
+             ) -> FileResponse:
+    """A chapter's audio (.m4a) or the cover. Supports HTTP Range, so downloads resume and players seek.
+
+    Without `download` the file is served inline (no Content-Disposition), for players and <img>.
+    """
+    path = service.book_file(book_id, name)
+    if download:
+        return FileResponse(path, filename=service.download_name(book_id, name), content_disposition_type="attachment")
+    return FileResponse(path)
 
 
 @router.delete("/books/{book_id}", response_model=Ok, responses={404: {"model": Error}}, tags=["library"])

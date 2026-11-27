@@ -204,7 +204,7 @@ Not under `/api/v1`: `GET /` (the web page), `/static/*` (its files), `/docs` an
 | `GET /jobs/{id}` | One job's progress |
 | `GET /books` | Library summary (`BookSummary`: title, author, cover, chapters, duration, size, complete) |
 | `GET /books/{id}` | The full `book.json` (`Book`) |
-| `GET /books/{id}/files/{name}` | A chapter's audio or the cover, with HTTP Range (206). To download a book, fetch each chapter's `audio` file from the manifest; an interrupted download resumes with `Range: bytes=<have>-` |
+| `GET /books/{id}/files/{name}` | A chapter's audio or the cover, with HTTP Range (206). To download a book, fetch each chapter's `audio` file from the manifest; an interrupted download resumes with `Range: bytes=<have>-`. Without a query the file is served inline (no `Content-Disposition`), for `<audio>` and `<img>`. With `?download=1` it is sent as an attachment named `Book Title - Ch 01 - Chapter Title.m4a` (cover: `Book Title - cover.jpg`), with RFC 5987 `filename*` so non-ASCII titles survive (D-034) |
 | `DELETE /books/{id}` | Delete a book folder |
 
 Book and draft IDs are validated against `^[a-z0-9\-]{1,80}$` (a draft id must also be a known draft), and file
