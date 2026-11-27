@@ -76,6 +76,8 @@ starts passing, pytest reports XPASS as a failure, and you remove the marker and
 | BLD-08 | Clipping guard | Synth returns a peak > 1.0 | The audio is normalized before encoding, with no clipping | Manual |
 | BLD-09 | Cover written | Source with a cover | `cover.<ext>` exists and `manifest.cover` names it | Automated `test_bld09_epub_build_writes_cover_and_toc_titles` |
 | BLD-10 | CLI | `python -m desktop.build book.epub --voice am_adam --speed 1.1` | Progress line updates, prints "Wrote … in Ns", and the manifest records the voice and speed | Manual |
+| BLD-12 | Convert selected chapters | `--chapters 2` on a 3-chapter book after a full build; also the specs `3`, `2-4`, `1,3,5-5`, and the bad specs `0`, `6`, `4-2`, `x` | Output goes to `<book_id>-ch2/` with only "Chapter 2", `complete=true`, `chapter_selection="2"`. The full book folder is untouched. Bad specs raise `ValueError` before TTS loads | Automated `test_bld12_parse_chapter_spec`, `test_bld12_build_selected_chapters_into_separate_folder` |
+| BLD-13 | List chapters | `python -m desktop.build book.epub --list-chapters` | Numbered chapters with sentence counts, the same numbers `--chapters` uses. No TTS is loaded | Manual |
 | BLD-11 | Re-convert with fewer chapters | Rebuild the same file after the parser drops a chapter | **Gap:** stale `chNNN.m4a` files from the previous run remain in the folder (unreferenced) | Gap |
 
 ## Server API (`server.py`)

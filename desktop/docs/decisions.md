@@ -186,3 +186,14 @@ a file with chapter 1 (PAR-18, accepted). The first version decided per file and
 PAR-17 tests guard against that. A book whose real
 content has exactly one of those titles would lose that chapter, which is very unlikely. Applies to EPUB only. PDF and TXT
 have no such labels.
+
+## D-017 Partial conversions with --chapters go to their own folder
+Status: Accepted · Milestone: M3
+**Context:** Most conversions of the user's sample books are only tests. A full book took about 10 minutes of GPU time,
+while one chapter takes about 20 seconds.
+**Decision:** `desktop.build` takes `--chapters` (1-based, `3`, `2-4`, `1,3,5-6`) and `--list-chapters`. The selected
+chapters are written to `library/<book_id>-ch<spec>/` with `chapter_selection` recorded in `book.json`.
+The numbering is the one `--list-chapters` prints, after front matter is skipped.
+**Why:** A separate folder means a test never overwrites or mixes with the full book, and the stale-file
+problem (BLD-11) cannot hit the full book. Validation runs before the TTS model loads, so typos fail instantly.
+**Consequences:** Partial books show up in the library as their own entries. Only the CLI has this option, not the web UI.
