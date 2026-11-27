@@ -28,12 +28,14 @@
       <form id="form" class="card row">
         <input type="file" id="file" accept=".epub,.pdf,.txt" required>
         <label title="PDF only. Auto: OCR when the PDF is a scan. Always: OCR every page (garbled text layer, partly scanned book). Never: the PDF's own text only.">
-          OCR <select id="ocr" disabled><option value="auto">Auto</option><option value="always">Always</option><option value="never">Never</option></select></label>
+          OCR (PDF only) <select id="ocr" disabled><option value="auto">Auto</option><option value="always">Always</option><option value="never">Never</option></select></label>
         <label>Voice <select id="voice"></select></label><button type="button" class="hear" data-for="#voice" title="Hear this voice">▶</button>
         <label>Speed <input id="speed" type="number" min="0.5" max="2" step="0.05" value="1" style="width:80px"></label>
         <label><input type="checkbox" id="auto"> Convert right after cleaning (skip review)</label>
         <button class="primary" type="submit" id="go">Clean</button>
       </form>
+      <div class="muted formmsg" id="ocrhint">OCR reads scanned PDFs. Pick a PDF to choose a mode; EPUB and TXT files have their own text, so they need no OCR.</div>
+      <div class="muted formmsg" id="cleanmsg"></div>
       <h2>Cleaning &amp; review</h2>
       <div id="drafts"></div>
     </div>
@@ -44,9 +46,10 @@
         <input type="file" id="stdfile" accept=".epub" required>
         <label>Voice <select id="stdvoice"></select></label><button type="button" class="hear" data-for="#stdvoice" title="Hear this voice">▶</button>
         <label>Speed <input id="stdspeed" type="number" min="0.5" max="2" step="0.05" value="1" style="width:80px"></label>
-        <button class="primary" type="submit">Convert</button>
+        <button class="primary" type="submit" id="stdgo">Convert</button>
       </form>
-      <div class="muted" style="margin-top:6px">A .std.epub cleaned with the command line or edited in Sigil. Books approved on the Clean page appear below too.</div>
+      <div class="muted formmsg">Only for a <b>.std.epub</b> that is already cleaned (from the command line, or edited in Sigil). To convert an original book, use the Clean page. Books approved there appear below too.</div>
+      <div class="muted formmsg" id="stdmsg"></div>
       <h2>Approved books</h2>
       <div id="approved"></div>
       <h2>Conversion progress</h2>

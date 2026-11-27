@@ -12,6 +12,9 @@ h2 { font-size: 16px; margin: 28px 0 10px; }
 .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
 input, select, button { font: inherit; color: inherit; background: var(--bg); border:1px solid var(--line); border-radius:8px; padding:7px 10px; }
 button { cursor:pointer; }
+select:disabled, input:disabled, button:disabled { opacity: .4; cursor: not-allowed; }
+.formmsg { margin-top: 6px; }
+.formmsg:empty { display: none; }
 button.primary { background: var(--accent); color:#fff; border-color: var(--accent); }
 .bar { height:6px; background:var(--line); border-radius:3px; overflow:hidden; margin-top:6px; }
 .bar > div { height:100%; background:var(--accent); width:0; transition: width .4s; }

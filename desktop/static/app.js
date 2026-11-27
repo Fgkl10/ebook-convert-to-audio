@@ -87,7 +87,8 @@ function draftList(target, drafts, empty) {
 }
 
 let lastJobsSig = '';
-async function pollJobs() {
+const pollNow = () => refresh();  // one extra refresh; the 2 s interval keeps running
+async function refresh() {
   try {
     const [jobs, drafts] = await Promise.all([getJSON('/jobs'), getJSON('/drafts')]);
     renderDrafts(drafts);
@@ -99,36 +100,79 @@ async function pollJobs() {
     }).join('')}</div>` : '<div class="muted">No conversions running.</div>';
     const sig = jobs.map(j => j.status + j.done).join();
     if (sig !== lastJobsSig) { lastJobsSig = sig; loadBooks(); }
-  } catch (e) { /* server restarting: try again */ }
-  setTimeout(pollJobs, 2000);
+  } catch (e) { /* server restarting: try again on the next tick */ }
+}
+
+// Each form reports under itself (not in a pop-up), so a slow reply can't look like it came from the other page.
+function formMsg(sel, text, isError = false) { $(sel).textContent = text; $(sel).classList.toggle('err', isError); }
+
+// Upload a book to clean; used by the Clean form and by "Clean it now?" on the Convert page.
+async function cleanUpload(file, voice, speed, auto, ocr) {
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('voice', voice);
+  fd.append('speed', speed);
+  fd.append('auto', auto);
+  fd.append('ocr', ocr);
+  const r = await fetch(`${API}/drafts`, { method: 'POST', body: fd });
+  return r.ok ? null : await errText(r);
 }
 
 $('#auto').onchange = () => $('#go').textContent = $('#auto').checked ? 'Clean & convert' : 'Clean';
 $('#form').onsubmit = async (e) => {
   e.preventDefault();
-  const fd = new FormData();
-  fd.append('file', $('#file').files[0]);
-  fd.append('voice', $('#voice').value);
-  fd.append('speed', $('#speed').value);
-  fd.append('auto', $('#auto').checked);
-  fd.append('ocr', $('#ocr').value);
-  const r = await fetch(`${API}/drafts`, { method: 'POST', body: fd });
-  if (!r.ok) alert(await errText(r));
-  $('#file').value = ''; $('#ocr').disabled = true;
+  const file = $('#file').files[0];
+  $('#go').disabled = true;
+  formMsg('#cleanmsg', `Uploading ${file.name}…`);
+  const err = await cleanUpload(file, $('#voice').value, $('#speed').value, $('#auto').checked, $('#ocr').value);
+  $('#go').disabled = false;
+  if (err) { formMsg('#cleanmsg', err, true); return; }
+  formMsg('#cleanmsg', `${file.name}: uploaded, cleaning below.`);
+  $('#file').value = ''; ocrForFile();
+  pollNow();
 };
-// OCR only means something for a PDF
-$('#file').onchange = () => $('#ocr').disabled = !/\.pdf$/i.test($('#file').files[0]?.name || '');
+// OCR only means something for a PDF: greyed out otherwise, with the reason shown.
+function ocrForFile() {
+  const pdf = /\.pdf$/i.test($('#file').files[0]?.name || '');
+  $('#ocr').disabled = !pdf;
+  $('#ocrhint').textContent = pdf ? '' : 'OCR reads scanned PDFs. Pick a PDF to choose a mode; ' +
+    'EPUB and TXT files have their own text, so they need no OCR.';
+}
+$('#file').onchange = () => { ocrForFile(); formMsg('#cleanmsg', ''); };
 
 $('#stdform').onsubmit = async (e) => {
   e.preventDefault();
+  const file = $('#stdfile').files[0];
+  const [voice, speed] = [$('#stdvoice').value, $('#stdspeed').value];
   const fd = new FormData();
-  fd.append('file', $('#stdfile').files[0]);
-  fd.append('voice', $('#stdvoice').value);
-  fd.append('speed', $('#stdspeed').value);
+  fd.append('file', file);
+  fd.append('voice', voice);
+  fd.append('speed', speed);
+  $('#stdgo').disabled = true;
+  formMsg('#stdmsg', `Uploading ${file.name}…`);
   const r = await fetch(`${API}/drafts/cleaned`, { method: 'POST', body: fd });
-  if (!r.ok) alert(await errText(r));
-  $('#stdfile').value = '';
+  $('#stdgo').disabled = false;
+  if (r.ok) {
+    formMsg('#stdmsg', `${file.name}: converting, see below.`);
+    $('#stdfile').value = ''; pollNow(); return;
+  }
+  const err = await errText(r);
+  // An original book on this page: offer to clean it instead of only refusing (D-032 follow-up).
+  if (r.status === 400 && /Not a cleaned book/.test(err) && /\.(epub|pdf|txt)$/i.test(file.name)) {
+    formMsg('#stdmsg', `${file.name} is not cleaned yet.`, true);
+    if (confirm(`"${file.name}" is not cleaned yet, so it can't be converted directly.\n\nClean it now? ` +
+                'It will appear on the Clean page for review.')) {
+      formMsg('#stdmsg', `Uploading ${file.name} to clean…`);
+      const cleanErr = await cleanUpload(file, voice, speed, false, 'auto');
+      if (cleanErr) { formMsg('#stdmsg', cleanErr, true); return; }
+      formMsg('#stdmsg', ''); $('#stdfile').value = '';
+      goTab('clean'); formMsg('#cleanmsg', `${file.name}: uploaded, cleaning below.`); pollNow();
+    }
+    return;
+  }
+  formMsg('#stdmsg', err, true);
 };
+$('#stdfile').onchange = () => formMsg('#stdmsg', '');
 
 async function discard(id) {
   if (!confirm('Discard this cleaned book? The uploaded file and the cleaned version are deleted.')) return false;
@@ -248,4 +292,4 @@ audio.onended = () => { if (chIdx + 1 < book.chapters.length) loadChapter(chIdx 
 $('#rate').onchange = () => audio.playbackRate = +$('#rate').value;
 $('#back').onclick = () => { audio.pause(); goTab('library'); $('#player').hidden = true; book = null; };
 
-showTab(); loadInfo(); pollJobs();
+showTab(); ocrForFile(); loadInfo(); refresh(); setInterval(refresh, 2000);

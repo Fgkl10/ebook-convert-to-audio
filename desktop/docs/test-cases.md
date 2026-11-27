@@ -211,21 +211,22 @@ All paths are under `/api/v1` unless they start with `/`. The tests are in `test
 
 ## Web UI (`static/index.html`, `app.js`, `app.css`)
 
-**Gap:** after the split into three files (D-032), the UI has not been clicked through in a browser. `app.js` passes
-`node --check`, the page and its files load on a live server, and API-03 checks every URL it calls. The UI rows below
-stay Manual.
+The rows marked "checked in Chrome" were clicked through in headless Chrome (driven over the DevTools protocol,
+using made-up files) against a live server with real Kokoro. That run is not part of CI. **Gap:** it hasn't been run
+in Firefox.
 
 | ID | Case | Steps | Expected | Status |
 |---|---|---|---|---|
 | UI-01 | Home loads | Open `http://localhost:8000` | LAN URL, QR code, voice list (default selected), and library are shown | Manual |
 | UI-02 | Convert progress | Approve a book | The job card under "Converting" shows a progress bar with done/total sentences, and the library refreshes when the job changes | Manual |
 | UI-19 | Tabs | Click Clean / Convert / Library; reload the page | Only that page shows, its tab is marked, and a reload stays on it (`#clean`, `#convert`, `#library`); Approve & convert lands on Convert, closing the reader lands on Library | Manual |
-| UI-20 | OCR dropdown | Pick an EPUB, then a PDF, on the Clean page | OCR (Auto / Always / Never) is greyed out for the EPUB and usable for the PDF; the hover text explains the three modes | Manual |
+| UI-20 | OCR dropdown | Load the Clean page; pick a PDF, then an EPUB | "OCR (PDF only)" is visibly greyed out (also in dark mode), with a line under the form saying EPUB and TXT need no OCR; a PDF makes it usable and hides the line; an EPUB greys it out again; the hover text explains the three modes | Manual (checked in Chrome) |
+| UI-23 | Form messages | Clean an EPUB; upload a bad file | "Uploading <name>…" under the form with the button disabled, then "<name>: uploaded, cleaning below." (or the error in red) under the same form, with no pop-up | Manual (checked in Chrome) |
 | UI-22 | Hear a voice | Pick a voice, click ▶ next to it (Clean form, Convert form, review page); click again | "…" while the first sample is made (up to ~10 s when the model loads), then ■ while ~5 s of that voice play; a second click stops; ▶ on another list stops the first sample | Manual |
-| UI-21 | Convert a cleaned book | On the Convert page upload a `.std.epub`; then a plain EPUB | The cleaned book appears under "Approved books" and converts; the plain one shows "clean it on the Clean page first" | Manual |
-| UI-13 | Clean and review | Upload with the checkbox off | The button says "Clean"; the draft appears under "Cleaning & review" (with a page bar during OCR), then "ready for review" with a Review button; nothing converts | Manual |
-| UI-14 | Review page | Click Review | File name, method, "Check by hand" highlighted at the top, numbered chapter list with sizes; clicking a chapter shows its text; Removed / TOC entries ignored / Notes collapsed with counts; the action bar stays visible while scrolling | Manual |
-| UI-15 | Approve from review | Pick a voice and speed, Approve & convert | Back on the home page; the draft shows "waiting to convert" / "converting", the job appears under "Converting"; when done the draft offers Listen | Manual |
+| UI-21 | Convert a cleaned book | On the Convert page upload a `.std.epub`; then an original EPUB | The cleaned book appears under "Approved books" and converts. For the original, a question "not cleaned yet … Clean it now?" appears: Yes uploads it to cleaning and switches to the Clean page, where it is listed; No leaves "not cleaned yet" under the Convert form | Manual (original EPUB with Yes checked in Chrome) |
+| UI-13 | Clean and review | Upload with the checkbox off | The button says "Clean"; the draft appears under "Cleaning & review" (with a page bar during OCR), then "ready for review" with a Review button; nothing converts | Manual (checked in Chrome) |
+| UI-14 | Review page | Click Review | File name, method, "Check by hand" highlighted at the top, numbered chapter list with sizes; clicking a chapter shows its text; Removed / TOC entries ignored / Notes collapsed with counts; the action bar stays visible while scrolling | Manual (chapter list and text checked in Chrome) |
+| UI-15 | Approve from review | Pick a voice and speed, Approve & convert | Lands on the Convert page; the draft shows "waiting to convert" / "converting", the job appears under "Conversion progress"; when done the draft offers Listen, which opens the reader with the chapter's audio | Manual (checked in Chrome, real Kokoro) |
 | UI-16 | Sigil round-trip | Download .std.epub, edit it in Sigil, Upload edited .std.epub | The review page reloads with the edited chapters and the "edited" note | Manual |
 | UI-17 | Skip review | Tick "Convert right after cleaning" | The button says "Clean & convert", and the book converts with no review stop | Manual |
 | UI-18 | Discard | Discard from the list or the review page | A confirmation, then the draft disappears | Manual |
