@@ -1,9 +1,12 @@
 # Desktop component: architecture
 
 The desktop component converts an ebook into a sentence-timestamped audiobook and serves the
-library over the LAN. It is a Python package (`desktop/`) with two entry points:
+library over the LAN. It is a Python package (`desktop/`) with three entry points:
 
-- `python -m desktop.build <file>`: command-line converter. `--list-chapters` prints numbered chapters, and
+- `python -m desktop.normalize <file>`: cleans any EPUB/PDF/TXT into `<name>.std.epub` plus
+  `<name>.std.report.txt` for manual review (D-019). `--ignore-language` skips the English check
+- `python -m desktop.build <file.std.epub>`: command-line converter. It only converts cleaned files and
+  refuses anything else with the normalize command to run. `--list-chapters` prints numbered chapters, and
   `--ignore-language` skips the English check (D-018).
   `--chapters 3` / `2-4` / `1,3,5-6` converts only those (1-based, after front matter is skipped) into
   `library/<book_id>-ch<spec>/`, a separate folder, so test conversions never touch the full book
@@ -33,6 +36,11 @@ flowchart LR
     PHONE["Phone / browser<br/>(Android app in M4+)"]
     MDNS["zeroconf<br/>_ebookaudio._tcp"]
 
+    NORM["normalize.py<br/>clean → .std.epub"]
+    REVIEW(["you: review .std.epub<br/>(CLI only)"])
+    NORM --> REVIEW --> CLI
+    SRV -- "auto, no review" --> NORM
+    NORM --> PARSE
     CLI --> BUILD
     SRV -- "Jobs worker thread" --> BUILD
     SRV --> UP
@@ -56,6 +64,7 @@ flowchart LR
 |---|---|---|
 | `parse.py` | Read EPUB / PDF / TXT (`.md` too) into a uniform `Book` of `Chapter`s. Chapter text is one paragraph per line. Drops chapters under 40 chars. Skips EPUB front matter (cover, title, half title, copyright, contents) using the book's labels, its OPF guide, or exact titles. Extracts the cover. | `load_book(path) -> Book` |
 | `segment.py` | Split chapter text into paragraphs of sentences (pysbd). Splits sentences over 350 chars at soft breaks. Attaches punctuation-only fragments to the previous sentence. | `split_text(text) -> list[list[str]]` |
+| `normalize.py` | Cleans a book into a standard EPUB: one XHTML file per chapter, with title, author, language, cover and the markers `ebook-audio:normalized` + `ebook-audio:source-sha1`. For EPUB it confirms TOC / contents-page entries against headings in the text and cuts there, dropping front matter, contents pages, bibliography and index. PDF/TXT are repackaged as parsed. It writes a report of chapters, removed text and ignored TOC entries. | `normalize(source, out, ignore_language) -> (path, Report)` |
 | `language.py` | Refuses books whose text isn't in a language the voices speak (English today), judged from the share of English function words in text sampled across the book. Metadata is only a hint. Called by `build_book` before TTS loads. | `check_language(book)`, `english_score(book)` |
 | `tts.py` | Wrapper around Kokoro-82M. One call per sentence, mono float32 at 24 kHz. Uses CUDA when available. | `KokoroTTS(voice, speed).synth(text)`, `VOICES`, `SAMPLE_RATE` |
 | `build.py` | Orchestrates the pipeline: plan, synthesize (cached), stitch with silence gaps, compute timestamps, encode m4a with ffmpeg, write `book.json` after each chapter. | `build_book(source, out_root, voice, speed, progress, tts) -> Path` |
@@ -65,12 +74,14 @@ flowchart LR
 ## On-disk layout
 
 ```
-library/<book_id>/          book_id = <title-slug, max 40 chars>-<sha1(file)[:8]>
+<name>.std.epub            cleaned book next to its source (e.g. samples/), plus <name>.std.report.txt
+library/<book_id>/          book_id = <title-slug, max 40 chars>-<sha1(original file)[:8]>;
+                            a .std.epub carries the original's sha1, so cleaning or editing keeps the id
     book.json               manifest (below)
     ch000.m4a, ch001.m4a…   AAC 64 kbps mono 24 kHz, +faststart
     cover.<ext>             optional
 cache/<book_id>/<sha1>.npy  per-sentence audio, key = sha1("voice|speed|text"); deleted when the book completes
-uploads/<rand>_<name>       files uploaded through the server (never cleaned up)
+uploads/<rand>_<name>       files uploaded through the server (never cleaned up), plus their .std.epub
 ```
 
 ## `book.json` manifest

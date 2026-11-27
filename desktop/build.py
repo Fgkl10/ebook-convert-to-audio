@@ -1,7 +1,8 @@
 """Convert an ebook into library/<book_id>/ with one .m4a per chapter + book.json.
 
 Usage:
-    python -m desktop.build path/to/book.epub [--voice af_heart] [--speed 1.0] [--out library]
+    python -m desktop.normalize path/to/book.epub     # first: writes book.std.epub to review
+    python -m desktop.build path/to/book.std.epub [--voice af_heart] [--speed 1.0] [--out library]
     python -m desktop.build path/to/book.epub --list-chapters
     python -m desktop.build path/to/book.epub --chapters 3        # or 2-4, or 1,3,5-6
     python -m desktop.build path/to/book.epub --ignore-language   # skip the English check
@@ -44,7 +45,9 @@ ProgressFn = Callable[[int, int, str], None]
 
 def make_book_id(book: Book, source: Path) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", book.title.lower()).strip("-")[:40] or "book"
-    digest = hashlib.sha1(source.read_bytes()).hexdigest()[:8]
+    # A standard EPUB carries the original file's hash, so re-normalizing or editing it in Sigil
+    # keeps the same book_id (and the per-sentence cache).
+    digest = (book.source_hash or hashlib.sha1(source.read_bytes()).hexdigest())[:8]
     return f"{slug}-{digest}"
 
 
@@ -243,11 +246,18 @@ def main(argv: list[str] | None = None) -> None:
                     help="skip the language check (for an English book that is wrongly refused)")
     args = ap.parse_args(argv)
 
-    if args.list_chapters:
+    try:
         book = load_book(args.source)
+    except ValueError as e:
+        sys.exit(f"error: {e}")
+    if args.list_chapters:
         for n, (ch, paras) in enumerate(zip(book.chapters, plan_chapters(book)), 1):
             print(f"{n:3}  {sum(map(len, paras)):5} sentences  {ch.title}")
         return
+    if not book.normalized:  # the CLI converts only reviewed, standard EPUBs (D-019)
+        sys.exit(f'error: {args.source} has not been cleaned yet. Run:\n'
+                 f'  python -m desktop.normalize "{args.source}"\n'
+                 f'then check the .std.epub it writes and convert that file.')
 
     start = time.time()
 

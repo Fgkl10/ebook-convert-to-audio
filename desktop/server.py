@@ -21,6 +21,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
 from .build import ROOT, build_book
+from .normalize import normalize
 from .tts import DEFAULT_VOICE, VOICES
 
 LIBRARY = ROOT / "library"
@@ -79,9 +80,13 @@ class Jobs:
                 job.update(done=done, total=total, message=msg)
 
             try:
+                # The web flow cleans automatically (no manual review step), before the model loads,
+                # so a refused language or an unreadable book fails fast (D-019).
+                job["message"] = "Cleaning the book"
+                std, _report = normalize(job["_path"])
                 job["message"] = "Loading TTS model"
                 tts = self._get_tts(job["voice"], job["speed"])
-                out = build_book(job["_path"], LIBRARY, job["voice"], job["speed"], progress, tts=tts)
+                out = build_book(std, LIBRARY, job["voice"], job["speed"], progress, tts=tts)
                 job.update(status="done", book_id=out.name, message="Done")
             except Exception as e:  # noqa: BLE001 - report any failure to the UI
                 traceback.print_exc()

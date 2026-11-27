@@ -26,6 +26,8 @@ class Book:
     cover: bytes | None = None
     cover_ext: str = ".jpg"
     language: str = ""  # from metadata if the format has it; only a hint (see desktop/language.py)
+    normalized: bool = False  # written by desktop.normalize (a standard EPUB)
+    source_hash: str = ""  # for a standard EPUB: sha1 of the original file, so book_id stays stable
 
 
 MIN_CHAPTER_CHARS = 40  # skip cover pages, blank separators, etc.
@@ -73,7 +75,8 @@ def _is_front_matter_title(title: str | None) -> bool:
     return norm in _FRONT_MATTER_TITLES
 
 
-def _html_to_paragraphs(html: bytes) -> tuple[list[str], str | None]:
+def parse_html(html: bytes):
+    """BeautifulSoup for one EPUB XHTML file. Every EPUB parse goes through here."""
     from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
 
     # EPUB chapters are XHTML. The lenient HTML parser is deliberate (malformed markup is common in
@@ -81,10 +84,16 @@ def _html_to_paragraphs(html: bytes) -> tuple[list[str], str | None]:
     # (decision D-015).
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
-        soup = BeautifulSoup(html, "lxml")
+        return BeautifulSoup(html, "lxml")
+
+
+def clean_body(html: bytes):
+    """Parse one XHTML file and strip what is never read aloud. Returns the <body> (or None when the
+    whole file is labelled front matter). Shared with normalize.py so both see the same text."""
+    soup = parse_html(html)
     body = soup.body or soup
     if body.name == "body" and _is_front_matter_element(body):
-        return [], None
+        return None
     # Remove only the labelled front-matter elements; the rest of the file is still read.
     for el in body.find_all(_PAGE_LEVEL_TAGS):
         if not el.decomposed and _is_front_matter_element(el):
@@ -97,24 +106,43 @@ def _html_to_paragraphs(html: bytes) -> tuple[list[str], str | None]:
             sup.decompose()
     for br in soup.find_all("br"):
         br.replace_with("\n")
+    return body
 
+
+def _lines(text: str) -> list[str]:
+    out = []
+    for line in text.split("\n"):
+        line = re.sub(r"\s+", " ", line).strip()
+        if line:
+            out.append(line)
+    return out
+
+
+def body_blocks(body) -> list[tuple[object, list[str]]]:
+    """Leaf text blocks of a cleaned body in reading order: (element, its paragraph lines).
+    A body without block tags becomes one pseudo-block (element = body)."""
+    leaf = [b for b in body.find_all(_BLOCK_TAGS) if not b.find(_BLOCK_TAGS)]
+    if not leaf:
+        lines = _lines(body.get_text("\n"))
+        return [(body, lines)] if lines else []
+    out = []
+    for b in leaf:
+        lines = _lines(b.get_text(""))
+        if lines:
+            out.append((b, lines))
+    return out
+
+
+def _html_to_paragraphs(html: bytes) -> tuple[list[str], str | None]:
+    body = clean_body(html)
+    if body is None:
+        return [], None
     heading = None
     paragraphs: list[str] = []
-    blocks = body.find_all(_BLOCK_TAGS)
-    leaf_blocks = [b for b in blocks if not b.find(_BLOCK_TAGS)]
-    if leaf_blocks:
-        for b in leaf_blocks:
-            for line in b.get_text("").split("\n"):
-                line = re.sub(r"\s+", " ", line).strip()
-                if line:
-                    paragraphs.append(line)
-                    if heading is None and b.name in _HEADINGS:
-                        heading = line
-    else:
-        for line in body.get_text("\n").split("\n"):
-            line = re.sub(r"\s+", " ", line).strip()
-            if line:
-                paragraphs.append(line)
+    for el, lines in body_blocks(body):
+        paragraphs.extend(lines)
+        if heading is None and getattr(el, "name", None) in _HEADINGS:
+            heading = lines[0]
     return paragraphs, heading
 
 
@@ -149,7 +177,11 @@ def _load_epub(path: Path) -> Book:
         vals = eb.get_metadata("DC", name)
         return vals[0][0].strip() if vals else ""
 
-    book = Book(title=meta("title") or path.stem, author=meta("creator"), language=meta("language"))
+    creators = [v[0].strip() for v in eb.get_metadata("DC", "creator") if v[0]]
+    book = Book(title=meta("title") or path.stem, author=", ".join(creators), language=meta("language"))
+    opf = {attrs.get("name"): attrs.get("content", "") for _, attrs in eb.get_metadata("OPF", "meta")}
+    book.normalized = opf.get("ebook-audio:normalized") == "1"
+    book.source_hash = opf.get("ebook-audio:source-sha1", "")
 
     toc_titles: dict[str, list[str]] = {}
     toc_anchored: set[str] = set()

@@ -63,7 +63,8 @@ Status: Accepted · Milestone: M2
 `text` has one paragraph per line. Chapters shorter than 40 chars are dropped.
 **Why:** Downstream code (segmentation, build) stays format-agnostic. The 40-char floor removes cover pages and blank
 separators that would become near-empty chapters.
-**Consequences:** Format-specific chapter heuristics live only in `parse.py`:
+**Consequences:** Since D-019, "one file = one chapter" holds by construction for cleaned books. The
+normalizer writes exactly one XHTML file per chapter. Format-specific chapter heuristics live only in `parse.py`:
 - EPUB: chapters follow the spine, with front matter skipped (D-016). Titles come from the TOC, then the first heading.
 - PDF: chapters come from the level-1 outline, falling back to 15-page parts. The cover is a render of page 1.
 - TXT: chapters come from heading lines ("Chapter N", "Part", "Prologue", …), falling back to ~20k-char parts. The encoding is tried as UTF-8, UTF-16, cp1252, then latin-1.
@@ -212,3 +213,42 @@ is 0.00 and German/French/Spanish/Dutch prose 0.00 to 0.08. Words common in othe
 are excluded. The text decides because metadata is unreliable.
 **Consequences:** Only English versus not-English is detected, with no identification of the actual language. A wrongly refused English book can be
 forced through with the CLI flag `--ignore-language` (LANG-07). The web UI has no override. Adding a language means adding voices and a detector for it.
+
+## D-019 Clean every book into a standard EPUB, reviewed before CLI conversion
+Status: Accepted · Milestone: M3
+**Context:** Internet EPUBs (often Calibre conversions) split files by size, not chapter, and their TOCs mix
+chapters with footnote fragments (How to Take Smart Notes: 14 chapters in 4 files, chapters 9 to 14 as one
+1,707-sentence "chapter", a 400-character sentence and bare numbers as titles, the bibliography read aloud).
+**Decision:** A separate step, `python -m desktop.normalize`, writes `<name>.std.epub` (one XHTML file per chapter)
+plus `<name>.std.report.txt`. On the CLI, `desktop.build` converts only files with the `ebook-audio:normalized`
+marker, recognised by metadata rather than file name, and refuses others with the command to run. `--list-chapters` works on any
+file. The web UI runs normalize, then build, automatically with no review. PDF/TXT are repackaged as parsed for now,
+so they can still be converted until the PDF cleaner exists. `normalize` runs the language check first.
+The `.std.epub` stores the original file's sha1, and `make_book_id` prefers it, so re-cleaning or editing the
+cleaned file in Sigil keeps the same `book_id` and cache.
+**Why:** It was the user's design. The parser stays simple, the user gets a checkpoint before GPU time, any reader can
+show the result, and Sigil can fix it. One intermediate format serves EPUB, PDF and TXT.
+**Consequences:** The CLI needs two commands. The report is the only place to see what was removed, so it lists every
+removed block (first 80 chars) and every ignored TOC entry. `Book.author` now joins all `dc:creator`
+entries instead of keeping only the first, so the cleaned file round-trips.
+
+## D-020 Chapters are cut only at headings confirmed in the text
+Status: Accepted · Milestone: M3
+**Context:** In Smart Notes, TOC and contents-page anchors are page markers (`#page_76`) from the print edition,
+not chapter starts. "12 Develop Ideas" points mid-list on the page where chapter 12 begins. The navigation TOC
+missed chapters 5 and 9, and the book's own contents page listed all of them.
+**Decision:** Candidates come from the navigation TOC plus links on contents pages (≥5 link paragraphs, ≥60% of the
+page). Links in one paragraph sharing an href are joined, as when one title is split over two links. Candidates are
+dropped if implausible (over 120 chars, fewer than 3 letters, lowercase first letter, ending in a glued footnote number
+like `)11`) or if they are an `N.M` subsection of an existing chapter `N`. A whole-file entry cuts at the
+file start, unless the file is a contents page or listed in the guide as front matter. Otherwise the cleaner
+searches from the anchor for a block whose opening element, or first lines joined (up to 3), equals the
+title. Unconfirmed candidates are ignored and reported. With no confirmed cut, it falls back to one chapter per file.
+A heading that opens a paragraph gets its own line, so it is spoken with a pause. Part headings under 40 chars
+are read with the next chapter.
+**Why:** Text confirmation is also the junk filter, and nothing relies on Calibre class names (the test fixture
+uses random ones). On the real books, Smart Notes gives Preface, Introduction, 1 to 14, Afterword and Appendix,
+and Counselling for Toads comes out identical (16 chapters, same text).
+**Consequences:** Text before the first confirmed chapter is removed as front matter, so a prologue missing from
+the TOC would be dropped, though it is shown in the report. Footnote texts inside chapters are still read aloud. An empty file
+(only labelled front matter) is skipped, so a TOC entry for it can't borrow the next file's start.

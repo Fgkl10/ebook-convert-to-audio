@@ -1,5 +1,35 @@
 # Desktop component: workflows
 
+## 0. Clean a book, review it, then convert (`desktop.normalize`, D-019/D-020)
+
+The CLI only converts cleaned files (`.std.epub`). The web UI cleans automatically, with no review.
+
+```mermaid
+flowchart TD
+    A([book.epub / .pdf / .txt]) --> L["load_book() for metadata, cover,<br/>labelled front matter"]
+    L --> LANG{English?}
+    LANG -- no --> X([refused: error names metadata language<br/>--ignore-language to override])
+    LANG -- yes --> F{format}
+    F -- "PDF / TXT" --> P["repackage parsed chapters"]
+    F -- EPUB --> B["flatten spine into text blocks<br/>map every id anchor to a block<br/>mark contents pages (≥5 link paragraphs)"]
+    B --> C["candidates = navigation TOC + contents-page links<br/>drop N.M subsections when chapter N exists"]
+    C --> D{"plausible title?<br/>≤120 chars, ≥3 letters, capital first,<br/>no glued footnote number"}
+    D -- no --> IGN["ignored (in report)"]
+    D -- yes --> E{"whole-file entry<br/>(no #anchor)?"}
+    E -- yes --> CUT["cut at the file start"]
+    E -- no --> H["search for a heading equal to the title,<br/>starting at the anchor: a block's opening element,<br/>or its first lines joined (split headings)"]
+    H -- found --> CUT
+    H -- "not found" --> IGN
+    CUT --> G{"any cut?"}
+    G -- no --> FB["fallback: one chapter per file"]
+    G -- yes --> R["text before first cut, contents pages,<br/>front-matter titles, Bibliography / References / Index<br/>→ removed (in report)<br/>short part headings → read with next chapter"]
+    R --> W
+    P --> W
+    FB --> W["write &lt;name&gt;.std.epub (one file per chapter)<br/>+ &lt;name&gt;.std.report.txt"]
+    W --> REV(["you: open in a reader, check chapters,<br/>fix in Sigil if needed"])
+    REV --> BUILD(["python -m desktop.build &lt;name&gt;.std.epub"])
+```
+
 ## 1. Convert a book (`build_book`)
 
 Used by both the CLI and the server worker.
@@ -74,6 +104,7 @@ sequenceDiagram
         UI->>API: GET /api/books (when job signature changes)
     end
     Q->>Q: take next job → status=running
+    Q->>Q: normalize(upload) → .std.epub (auto, no review; language refused here)
     Q->>Q: _get_tts(voice, speed) (reuse model if same language)
     Q->>B: build_book(path, LIBRARY, ..., progress, tts)
     B-->>Q: progress(done, total, msg)
