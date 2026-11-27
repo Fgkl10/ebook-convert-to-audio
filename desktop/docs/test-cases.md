@@ -53,6 +53,28 @@ starts passing, pytest reports XPASS as a failure, and you remove the marker and
 | PAR-18 | Unlabelled front matter with another title | A copyright page titled e.g. "Legal Notice" with no labels and no guide entry, an unlabelled title page sharing a file with chapter 1, or a page whose only title is its heading "Contents" (no TOC entry) | **Gap (accepted):** read aloud, because guessing from content would risk skipping real text | Gap |
 | PAR-16 | No XHTML parser warning | Load any XHTML-based EPUB | No `XMLParsedAsHTMLWarning`, and the extracted text is unchanged (checked on the `samples/` book: identical output for all chapters) (D-015) | Automated `test_par16_no_xml_parser_warning` |
 
+## Cleaner (`normalize.py`)
+
+| ID | Case | Steps / input | Expected | Status |
+|---|---|---|---|---|
+| NORM-01 | Calibre-shaped book | Synthetic book (`calibre_spec`): size-split files, page anchors away from headings, contents page with shared anchors, heading opening a paragraph, heading split over two paragraphs, footnote junk and a missing chapter in the navigation TOC, short part heading, subsection, unlabelled front matter, bibliography | Chapters exactly Preface, 1, 2, 3. The heading gets its own line, the subsection stays inside its chapter, and the part heading is read with chapter 2. Front matter, contents and bibliography are removed and junk entries ignored, all listed in the report | Automated `test_norm01_calibre_book_cut_at_confirmed_headings`, `test_norm01_removed_and_ignored_are_reported` |
+| NORM-02 | Well-formed book unchanged | `novel_spec` (labelled front matter, one file per chapter); `samples/` Counselling for Toads | Identical chapters and text before and after cleaning | Automated `test_norm02_well_formed_book_unchanged`; Counselling Manual (checked: 16 chapters, identical) |
+| NORM-03 | Round trip and idempotent | Clean, read back, clean the `.std.epub` again | Read-back equals the report. A second run changes nothing. Title and author kept | Automated `test_norm03_round_trip_and_idempotent` |
+| NORM-04 | Stable book id | Clean the same book twice | Original and both `.std.epub` give the same `book_id` | Automated `test_norm04_book_id_stable_across_runs` |
+| NORM-05 | Fallback | Book with no confirmable TOC | One chapter per file, same as the parser, and the report says fallback | Automated `test_norm05_no_confirmed_toc_falls_back_to_files` |
+| NORM-06 | TXT / PDF repackaged | A TXT; `samples/` Kokology PDF | `.std.epub` with the parsed chapters. PDF front-matter titles (Copyright, Contents) are removed and reported | TXT Automated `test_norm06_txt_repackaged`; PDF Manual (checked) |
+| NORM-07 | Language refused before review | Hungarian TXT | `ValueError` and no `.std.epub` written. `ignore_language=True` writes it | Automated `test_norm07_language_refused_before_review` |
+| NORM-08 | CLI requires a cleaned file | `desktop.build raw.epub --chapters 1`; `--list-chapters` on the raw file and on the `.std.epub` | Refused with the normalize command. Listing works on both | Automated `test_norm08_cli_build_refuses_uncleaned_book` |
+| NORM-09 | Real Calibre book | `samples/` How to Take Smart Notes | Preface, Introduction, 1 to 14, Afterword, Appendix, with no bibliography or fake index. `--chapters 6` converts "4 A Few Things to Keep in Mind" (47 sentences, timestamps line up) | Manual (checked) |
+| NORM-10 | Web UI cleans automatically | Upload a Calibre-shaped EPUB in the web UI | The job shows "Cleaning the book", then converts the cleaned chapters | Manual |
+| NORM-11 | Footnotes read aloud | Book with footnote paragraphs inside chapters | **Gap:** footnote texts ("15 Ryfe and Kemmelmeier…") are read in the middle of chapters | Gap |
+| NORM-13 | Sparse TOC | 4 chapter files with `<h1>`, TOC lists only chapter 1; TOC lists only part titles | Every file that opens with an h-tag stays its own chapter (same as the parser) | Automated `test_norm13_sparse_toc_keeps_untitled_chapter_files`, `test_norm13_toc_with_only_parts_keeps_chapters` |
+| NORM-14 | Repeated titles | Two "Interlude" chapters in different files | Both kept as separate chapters | Automated `test_norm14_repeated_titles_are_separate_chapters` |
+| NORM-15 | Endnotes with backlinks | Notes file with 6 notes each opening with `<a href="ch1.xhtml#rN">N</a>` | Kept as a chapter, not removed as a contents page | Automated `test_norm15_endnotes_with_backlinks_are_kept` |
+| NORM-16 | Cleaned file not overwritten | `normalize x.std.epub` with no `--out` | Report printed, file byte-identical, nothing written | Automated `test_norm16_std_epub_never_rewritten_in_place` |
+| NORM-17 | Edit in Sigil keeps the id | Open a `.std.epub` in Sigil, edit, save, list chapters | **Gap:** not verified that Sigil keeps the `ebook-audio:*` meta; if it drops them the CLI refuses the file | Manual (not yet run) |
+| NORM-12 | Prologue missing from the TOC | Real chapter before the first TOC entry | **Gap (accepted):** removed as front matter, but shown in the report for review | Gap |
+
 ## Language check (`language.py`)
 
 | ID | Case | Steps / input | Expected | Status |

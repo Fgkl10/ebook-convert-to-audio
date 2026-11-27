@@ -189,3 +189,55 @@ def single_file_spec(variant: str) -> Spec:
 
 def empty_spec() -> Spec:
     return Spec(title="Empty", pages=[Page("a.xhtml", "<p>   </p>", allow_short=True)])
+
+
+def calibre_spec() -> Spec:
+    """Shaped like a Calibre conversion found online (see How to Take Smart Notes in D-020):
+    files split by size, page-marker anchors that are not at the headings, a contents page whose
+    links share anchors, headings that open a paragraph, a heading split over two paragraphs,
+    footnote junk in the navigation TOC, a chapter missing from it, a short part heading,
+    unlabelled front matter, and a bibliography. Class names are random on purpose."""
+    link = '<span class="k2"><a href="split_001.xhtml" class="w5"><b class="v1">{}</b></a></span>'
+    return Spec(
+        title="The Quiet Mill",
+        author="Ada Fictional",
+        pages=[
+            Page("Text/split_000.xhtml",
+                 '<p class="q1">Ada Fictional</p><p class="q1">The Quiet Mill</p>'
+                 '<p class="q3">All rights reserved by the imaginary publisher of this book.</p>'),
+            Page("Text/split_001.xhtml",
+                 '<h2 class="h7">CONTENTS</h2>'
+                 '<p class="c4"><a href="split_002.xhtml#pg_1">PREFACE</a></p>'
+                 '<p class="c4"><a href="split_002.xhtml#pg_3">1 The River</a></p>'
+                 '<p class="c4"><a href="split_003.xhtml#pg_9">PART TWO</a></p>'
+                 '<p class="c4"><a href="split_003.xhtml#pg_9">2 The Mill</a></p>'
+                 '<p class="c4"><a href="split_003.xhtml#pg_12">3 The</a> <a href="split_003.xhtml#pg_12">Storm</a></p>'
+                 '<p class="c4"><a href="split_004.xhtml">BIBLIOGRAPHY</a></p>'),
+            Page("Text/split_002.xhtml",
+                 f'<p class="z9" id="pg_1">{link.format("PREFACE")}</p>' + para()
+                 + '<p class="b3">The preface ends <span id="pg_3"></span>with a long look at the water.</p>'
+                 + f'<p class="z9">{link.format("1 The River")} The river remembered everything that had '
+                   'ever fallen into it.</p>'
+                 + '<p class="z9"><span class="k2"><b class="v1">1.1 Morning</b></span></p>' + para()
+                 + '<p class="fn"><a href="#r1">1</a> A note about rivers and the mills built beside them.</p>'),
+            Page("Text/split_003.xhtml",
+                 '<p class="z9" id="pg_9">PART TWO</p>'
+                 + f'<p class="z9">{link.format("2 The Mill")}</p>' + para()
+                 + '<p class="b3">The mill went quiet <span id="pg_12"></span>for the night.</p>'
+                 + '<p class="z9">3 The</p><p class="z9">Storm</p>' + para()),
+            Page("Text/split_004.xhtml",
+                 '<p class="z9">BIBLIOGRAPHY</p><p class="b3">Fictional, Ada. 2026. Rivers. Nowhere Press.</p>'
+                 '<p class="b3">Writer, Imaginary. 2025. Mills and Water. Nowhere Press.</p>'),
+        ],
+        toc=[
+            ("Text/split_002.xhtml", "PREFACE"),
+            ("Text/split_002.xhtml#pg_3", "1 The River"),
+            ("Text/split_002.xhtml", "chapter and show how the river can be followed from the mill to the sea, "
+                                     "which is what the rest of this little book is about"),
+            ("Text/split_002.xhtml#pg_3", ",1"),
+            ("Text/split_003.xhtml#pg_12", "1997)11"),
+            ("Text/split_003.xhtml#pg_12", "address.”12"),
+            ("Text/split_003.xhtml#pg_12", "3 The Storm"),
+            ("Text/split_004.xhtml", "BIBLIOGRAPHY"),
+        ],  # "2 The Mill" is missing here, as chapters 5 and 9 were in the real book
+    )

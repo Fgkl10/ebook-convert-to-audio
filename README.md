@@ -27,8 +27,10 @@ py -3.10 -m venv .venv
 
 ## Usage
 ```powershell
-# Convert from the command line
-.venv\Scripts\python -m desktop.build path\to\book.epub --voice af_heart
+# Convert from the command line: clean first, check the result, then convert
+.venv\Scripts\python -m desktop.normalize path\to\book.epub      # writes book.std.epub + book.std.report.txt
+.venv\Scripts\python -m desktop.build path\to\book.std.epub --voice af_heart
+.venv\Scripts\python -m desktop.build path\to\book.std.epub --chapters 1   # quick test: one chapter
 
 # Or run the server and use the web UI (also reachable from the phone)
 .venv\Scripts\python -m desktop.server
