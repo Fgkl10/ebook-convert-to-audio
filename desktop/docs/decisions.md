@@ -705,8 +705,9 @@ The user wanted to tick chapters on the Review page and add them to the same boo
 - Per-chapter voice keeps the choice with the user: re-converting the whole book in one voice is one click
   ("all").
 **Consequences:**
-- The old `-ch` test folders keep position numbers. They can't be told apart otherwise, and merge never touches
-  them.
+- Old `-ch` test folders get their numbers from the stored spec, so the user's `…-ch4` Kokology book now reads
+  "Ch 04". If an empty chapter inside the spec was skipped, the spec and the folder don't line up, and the position
+  is used. Checked read-only against the 3 real library books: `-ch1` → 1, `-ch4` → 4, the full book → 1–38.
 - A Sigil edit that adds or removes chapters shifts the numbers. Chapters converted earlier keep their old number and
   audio. Only the `text_sha1` check flags them (as not converted), and they are not removed. Delete the book and
   convert again to start clean.

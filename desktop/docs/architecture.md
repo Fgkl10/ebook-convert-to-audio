@@ -191,7 +191,8 @@ Invariants:
 - `chapter_selection` is `null` except in a CLI `--chapters` test folder, where it holds the spec (e.g. `"2-4"`).
 - Books written before D-035 have no `number`, `voice`/`speed` per chapter, `text_sha1` or `chapters_total`.
   `build.chapter_number()` takes the number from the audio name for a full book (exact even when an empty chapter
-  was skipped), or the position for an old test folder. A chapter with no hash counts as converted.
+  was skipped). For an old test folder it takes the number from `chapter_selection` when the spec selects as many
+  chapters as the folder holds, otherwise from the position. A chapter with no hash counts as converted.
 
 ## HTTP API v1 (D-032)
 

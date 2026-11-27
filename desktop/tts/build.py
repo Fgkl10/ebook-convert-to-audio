@@ -97,13 +97,21 @@ _AUDIO_NAME_RE = re.compile(r"ch(\d{3,})\.m4a")
 def chapter_number(chapter: dict, pos: int, manifest: dict) -> int:
     """A manifest chapter's 1-based number in the cleaned book. Books written before D-035 have no "number": for a
     full book the audio name holds the original index (empty chapters were skipped, so the position can be off);
-    for an old --chapters test folder only the position is known."""
+    an old --chapters test folder named its audio by place in the selection, so the number comes from its spec
+    when the spec selects exactly as many chapters as the folder holds, else from the position."""
     if chapter.get("number"):
         return int(chapter["number"])
-    m = _AUDIO_NAME_RE.fullmatch(chapter.get("audio") or "")
-    if m and not manifest.get("chapter_selection"):
-        return int(m.group(1)) + 1
-    return pos + 1
+    spec = manifest.get("chapter_selection")
+    if not spec:
+        m = _AUDIO_NAME_RE.fullmatch(chapter.get("audio") or "")
+        return int(m.group(1)) + 1 if m else pos + 1
+    try:
+        selected = parse_chapter_spec(str(spec), 10**6)
+    except ValueError:
+        return pos + 1
+    if len(selected) == len(manifest.get("chapters") or []):
+        return selected[pos] + 1
+    return pos + 1  # an empty chapter inside the selection was skipped: which one is unknown
 
 
 def plan_chapters(book: Book) -> list[list[list[str]]]:

@@ -187,7 +187,11 @@ def test_bld17_old_manifest_merges_by_audio_name(tmp_path, monkeypatch):
     (out / "book.json").write_text(json.dumps({"id": out.name, "title": "Four", "complete": True, "created": 5,
                                                "chapter_selection": None, "chapters": old}), encoding="utf-8")
     assert [build.chapter_number(c, i, {"chapter_selection": None}) for i, c in enumerate(old)] == [1, 3, 4]
-    assert build.chapter_number(old[1], 1, {"chapter_selection": "2-4"}) == 2  # an old test folder: position only
+    # an old --chapters test folder: the number comes from its spec when it matches the chapters it holds
+    assert build.chapter_number(old[0], 0, {"chapter_selection": "4", "chapters": old[:1]}) == 4
+    assert build.chapter_number(old[1], 1, {"chapter_selection": "2-4", "chapters": old}) == 3
+    assert build.chapter_number(old[1], 1, {"chapter_selection": "2-5", "chapters": old}) == 2  # a skip: position
+    assert build.chapter_number(old[1], 1, {"chapter_selection": "bad", "chapters": old}) == 2
 
     build.build_book(src, tmp_path / "lib", tts=FakeTTS(), chapters=[3], merge=True)
     m = _manifest(out)
