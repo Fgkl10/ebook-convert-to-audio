@@ -1,0 +1,14 @@
+# CI dependencies: everything the automated tests import.
+# Kokoro and PyTorch are left out on purpose; tests use a fake TTS (see desktop/docs/decisions.md D-013).
+numpy
+ebooklib
+beautifulsoup4
+lxml
+pymupdf
+pysbd
+fastapi
+uvicorn[standard]
+python-multipart
+zeroconf
+qrcode
+pytest
