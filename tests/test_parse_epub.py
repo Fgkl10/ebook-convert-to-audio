@@ -5,8 +5,8 @@ import warnings
 import pytest
 from bs4 import XMLParsedAsHTMLWarning
 
-from desktop import build
-from desktop.parse import load_book
+from desktop.core.parse import load_book
+from desktop.tts import build
 from tests.epub_factory import (
     JPG_BYTES, PNG_BYTES, build_epub, empty_spec, guide_spec, novel_spec, single_file_spec, untitled_spec,
 )
@@ -45,7 +45,7 @@ def test_par07_footnote_markers_removed(novel):
 
 
 def test_par07_note_links_without_sup_removed_cross_references_kept():
-    from desktop.parse import body_blocks, clean_body
+    from desktop.core.parse import body_blocks, clean_body
 
     html = ("<html><body>"
             '<p>The mill stopped at noon. <a href="#page_3"><span class="c9">2</span></a> It was quiet.</p>'
@@ -66,7 +66,7 @@ def test_par07_note_links_without_sup_removed_cross_references_kept():
 
 
 def test_par07_footnote_paragraphs_removed():
-    from desktop.parse import body_blocks, clean_body
+    from desktop.core.parse import body_blocks, clean_body
 
     html = ("<html><body><div class='calibre'>"
             '<p>The mill stopped at noon.<a href="#n1">1</a> The miller went home.</p>'
@@ -93,7 +93,7 @@ def test_par07_footnote_paragraphs_removed():
 
 
 def test_par07_note_without_an_end_keeps_following_lines():
-    from desktop.parse import MAX_NOTE_LINES, body_blocks, clean_body
+    from desktop.core.parse import MAX_NOTE_LINES, body_blocks, clean_body
 
     lines = "".join(f"<p>Body line {i} of a long passage.</p>" for i in range(MAX_NOTE_LINES + 3))
     small = "".join(f'<p><span class="c9">Small line {i} of a long passage.</span></p>' for i in range(MAX_NOTE_LINES + 3))

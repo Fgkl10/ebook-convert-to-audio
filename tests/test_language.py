@@ -1,9 +1,9 @@
 """Language check (desktop/language.py, D-018). All non-English text here is written for these tests."""
 import pytest
 
-from desktop import build
-from desktop.language import MIN_WORDS, check_language, english_score
-from desktop.parse import Book, Chapter, load_book
+from desktop.core.language import MIN_WORDS, check_language, english_score
+from desktop.core.parse import Book, Chapter, load_book
+from desktop.tts import build
 from tests.epub_factory import build_epub, novel_spec
 
 EN = ("The river ran quietly past the old mill while the morning light grew warmer. The old miller got up "

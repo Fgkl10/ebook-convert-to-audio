@@ -9,11 +9,12 @@ from pathlib import Path
 
 import pytest
 
-from desktop import api as api_module
-from desktop import service
+from desktop import PROJECT
+from desktop.server import api as api_module
+from desktop.server import service
 from tests.test_server import STORY, V1, _upload, _wait, api  # noqa: F401 - api is a fixture
 
-STATIC = Path(service.__file__).resolve().parent / "static"
+STATIC = PROJECT / "desktop" / "web"
 
 # The whole v1 surface. Changing the API means changing this list on purpose (the Android app depends on it).
 EXPECTED_ROUTES = {
@@ -98,9 +99,8 @@ def test_api04_backend_has_no_http_in_it():
 
 
 def test_api05_test_data_folder_is_not_the_project():
-    project = Path(service.__file__).resolve().parent.parent
     data = Path(os.environ["EBOOK_AUDIO_DATA"]).resolve()
-    assert data != project and service.DRAFTS.parent == data  # conftest moved it before the import
+    assert data != PROJECT and service.DRAFTS.parent == data  # conftest moved it before the import
 
 
 # ---------------------------------------------------------------- page and static files

@@ -573,3 +573,57 @@ separate frontend project or build step.
 - An original book uploaded on the Convert page brings up "Clean it now?", which sends it to the Clean step.
 - The OCR menu reads "OCR (PDF only)". Disabled controls are visibly greyed out in both themes, and a line explains
   that EPUB and TXT need no OCR.
+
+## D-033 Subpackages core / ocr / tts / server / web, one-way imports, installed commands
+Status: Accepted · Milestone: M3 · Move-only (no behavior change except the command names)
+**Context:** `desktop/` was 13 flat modules. Book-text code, OCR, TTS and the web server sat side by side, and nothing
+stopped, say, the parser from importing the server. The user wanted clear parts in the same project, with one venv
+and one start command, and shorter commands than `python -m desktop.xxx`.
+**Decision:**
+- Files moved, with history kept (`git mv`). Old name → new name:
+
+  | Old | New |
+  |---|---|
+  | `parse.py`, `segment.py`, `normalize.py`, `language.py` | `core/` (same names) |
+  | `ocr.py` | `ocr/engine.py` |
+  | `scanned.py`, `words.py` | `ocr/` (same names) |
+  | `tts.py` | `tts/kokoro.py` |
+  | `build.py` | `tts/build.py` |
+  | `server.py` | `server/app.py` |
+  | `service.py`, `api.py` | `server/` (same names) |
+  | `static/` | `web/` (still served at `/static`) |
+
+  Earlier entries in this log keep the old names.
+- Imports go one way:
+  - `core` imports nothing else;
+  - `ocr` and `tts` import only `core`;
+  - `server` may import all three;
+  - nothing imports `server`, and `web` holds no Python.
+
+  `tests/test_layers.py` checks every import in the source, including imports inside functions.
+- Two existing imports crossed the new lines, and each was fixed without changing behavior:
+  - `SUPPORTED_LANGUAGES` moved from the TTS module to `core/language.py`, its only user;
+  - `normalize()` imports `desktop.ocr` inside the function, only for a PDF, instead of at the top of the module.
+- Paths that depended on a module's own location (`build.ROOT`, the static folder) now start from
+  `desktop.PROJECT`. Moving a file one level deeper would otherwise have moved `library/` and `cache/`.
+- `pyproject.toml` installs three commands with `pip install -e .`: `ebook-server`, `ebook-normalize` and
+  `ebook-convert` (the old `desktop.build`; a Python package named `build` already exists). `python -m desktop.server`
+  still works.
+- `pyproject.toml` lists no dependencies. The requirements files stay the source of truth, because PyTorch must come
+  from its CUDA index.
+**Why:**
+- Each part can be read, tested and replaced on its own. The Android app (M4+) only needs `server`'s API.
+- A one-way rule enforced by a test stays true. A rule written only in a doc drifts.
+- Installed commands are shorter and work from any folder while the venv is active.
+- **OCR as a pip extra (`pip install -e .[ocr]`) was considered and left out.** docTR needs `torchvision`; resolving
+  it from PyPI would install a CPU torchvision, or replace the CUDA torch, and the TTS would lose the GPU (the reason
+  for the pins in D-021).
+- OCR is still optional:
+  - docTR is installed only from `requirements-ocr.txt`;
+  - `core` loads `desktop.ocr` only when it reads a PDF;
+  - LAY-04 checks that cleaning a TXT loads no OCR, TTS or web module.
+**Consequences:**
+- The commands changed: `python -m desktop.normalize` / `desktop.build` became `ebook-normalize` / `ebook-convert`,
+  and the CLI's own messages name the new commands. Scripts that used the old commands need the new names.
+- `pip install -e .` has to be run once in each venv. It writes `ebook_audio.egg-info/`, which is gitignored.
+- A new module must go into one of the packages and follow the import rule, or `test_layers` fails.

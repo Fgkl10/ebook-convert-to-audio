@@ -1,4 +1,4 @@
-# Optional: OCR for scanned PDFs (desktop/ocr.py, decision D-021). Install after requirements.txt:
+# Optional: OCR for scanned PDFs (desktop/ocr/, decisions D-021, D-033). Install after requirements.txt:
 #   .venv\Scripts\python -m pip install -r requirements-ocr.txt
 # torch and torchvision are pinned to the CUDA build requirements.txt installs. Without the pins,
 # pip would replace it with the newest CPU torch and the TTS would lose the GPU.

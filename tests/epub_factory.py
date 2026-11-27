@@ -11,7 +11,7 @@ from pathlib import Path
 
 from ebooklib import epub
 
-from desktop.parse import MIN_CHAPTER_CHARS
+from desktop.core.parse import MIN_CHAPTER_CHARS
 
 FILLER = "The river ran quietly past the old mill while the morning light grew warmer. "
 # 1x1 PNG / minimal JPEG header bytes: enough for the parser, which only copies cover bytes.
