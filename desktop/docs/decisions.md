@@ -289,12 +289,12 @@ Status: Accepted · Milestone: M3
 listener hears all the questions and then all the answers. The user asked for each answer right after its
 question, and otherwise for a reading experience the same as the book ("follow the book exactly as written").
 Measured on all 55 chapters, about 13 quizzes ask numbered questions that the key answers with the same numbers.
-Most others number the choices of a single question ("1. The bird turns white."), and some have no numbers.
+Most others number the choices of a single question (like "3. I will sleep on the porch tonight." in the test fixture), and some have no numbers.
 **Decision:** The rule is applied only when the quiz items and the key items are both numbered 1..n (n ≥ 2), and at least half
 of the quiz items contain a "?" outside quoted speech. Then the order is: intro, Q1, the "Key to …" heading as printed,
 the key's theme paragraph, A1, Q2, A2, and so on. Everything else keeps book order. The report records which rule each chapter
 got and why ("multiple choice", "no numbered questions", "question and answer numbers differ").
-**Why:** Choices like '"Isn't that a beautiful picture?"' are quoted, so the quote rule keeps them as choices.
+**Why:** Choices that are quoted speech, like '"Where did I put it?"', are still choices, so the quote rule keeps them that way.
 Interleaving choices with their answers would give the answer away before all the choices are read. When OCR loses an item
 number, the numbers differ and the chapter falls back to book order, which is always safe.
 **Consequences:** A quiz whose numbering OCR damaged keeps book order instead of interleaving, and the report shows it.

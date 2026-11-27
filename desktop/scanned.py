@@ -279,7 +279,7 @@ def _items(paras: list[Para]) -> tuple[list[Para], list[list[Para]]]:
 
 
 def _asks(item: list[Para]) -> bool:
-    """A question outside quoted speech: choices like '"Isn't that a beautiful picture?"' don't count."""
+    """A question outside quoted speech: choices like '"Where did I put it?"' don't count."""
     text = re.sub(r'["“][^"”]*["”]', "", " ".join(p.text for p in item))
     return "?" in text
 
