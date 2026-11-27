@@ -233,6 +233,12 @@ names reject `/`, `\`, and a leading `.` (path-traversal guard).
   (one TTS model in memory). docTR is freed after OCR, so both fit on the GPU.
 - One `KokoroTTS` is loaded on first use (`Jobs.model()`, its own lock) and kept for every job and voice sample, in
   both voice languages. Only the conversion worker sets its current voice; a sample passes its own.
+- Ctrl+C (D-036): uvicorn gets `timeout_graceful_shutdown=1`, so open requests such as a chapter download are cut
+  off after 1 s instead of holding the server open. Both workers are daemon threads and stop with the process.
+  Every file is written to a temp name and renamed (`*.npy.tmp`, `*.tmp.m4a`, `book.tmp`, `draft.tmp`); at start,
+  `service.clean_leftovers()` deletes the `*.npy.tmp` and `*.tmp.m4a` left under `library/` and `cache/`, and
+  `list_books()` never counts them. This assumes one server per data folder (a second server needs its own
+  `EBOOK_AUDIO_DATA`).
 - Drafts are saved to `draft.json` on every change and reloaded at startup. Jobs live in memory only; a draft whose
   conversion was cut off by a restart goes back to review and resumes from the sentence cache when approved again.
 

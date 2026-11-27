@@ -21,8 +21,8 @@ from typing import BinaryIO
 
 from ..core.normalize import OCR_MODES, normalize, write_std_epub
 from ..core.parse import load_book
-from ..tts.build import (ROOT, build_book, chapter_number, chapter_text_sha1, encode_m4a, make_book_id,
-                         select_chapters)
+from ..tts.build import (LEFTOVER_SUFFIXES, ROOT, build_book, chapter_number, chapter_text_sha1, encode_m4a,
+                         make_book_id, remove_leftovers, select_chapters)
 from ..tts.kokoro import DEFAULT_VOICE, VOICES
 
 LIBRARY = ROOT / "library"
@@ -430,6 +430,13 @@ def _read_manifest(d: Path) -> dict:
     return json.loads((d / "book.json").read_text(encoding="utf-8"))
 
 
+def clean_leftovers() -> list[Path]:
+    """At server start: delete half-written chapter audio (*.tmp.m4a) and sentence-cache files (*.npy.tmp) that a
+    Ctrl+C or crash left in library/ and cache/. Finished chapters and cached sentences stay, so an interrupted
+    conversion still resumes. Assumes no other server uses the same data folder."""
+    return remove_leftovers(LIBRARY, LIBRARY.parent / "cache")
+
+
 def _library_manifest(book_id: str) -> dict | None:
     """The library book's manifest, or None if the book has not been converted yet."""
     try:
@@ -449,7 +456,8 @@ def list_books() -> list[dict]:
                 m = _read_manifest(d)
             except (OSError, json.JSONDecodeError):
                 continue
-            size = sum(f.stat().st_size for f in d.iterdir() if f.is_file())
+            size = sum(f.stat().st_size for f in d.iterdir()
+                       if f.is_file() and not f.name.endswith(LEFTOVER_SUFFIXES))  # not a half-written chapter
             books.append({
                 "id": m["id"], "title": m["title"], "author": m.get("author", ""), "cover": m.get("cover"),
                 "voice": m.get("voice"), "complete": m.get("complete", False),

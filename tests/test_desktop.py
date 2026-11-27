@@ -200,6 +200,33 @@ def test_bld17_old_manifest_merges_by_audio_name(tmp_path, monkeypatch):
     assert m["complete"] is False and m["created"] == 5  # chapter 2 still missing
 
 
+def test_bld19_interrupted_cache_write_leaves_no_half_entry(tmp_path, monkeypatch):
+    synth = build.CachedSynth(FakeTTS(), tmp_path / "cache")
+    entry = synth.path("Hello there.")
+    real_save = np.save
+
+    def save_then_ctrl_c(fh, audio):
+        fh.write(b"\x93NUMPY half")  # some bytes reach the disk, then Ctrl+C
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(np, "save", save_then_ctrl_c)
+    with pytest.raises(KeyboardInterrupt):
+        synth("Hello there.")
+    assert not entry.exists()  # a resumed run will not load a half-written entry
+    assert [f.name for f in (tmp_path / "cache").iterdir()] == [entry.name + ".tmp"]
+    assert build.remove_leftovers(tmp_path / "cache") == [entry.with_name(entry.name + ".tmp")]
+
+    monkeypatch.setattr(np, "save", real_save)
+    expected = FakeTTS().synth("Hello there.")
+    assert np.array_equal(synth("Hello there."), expected) and entry.exists()
+    assert np.array_equal(synth("Hello there."), expected)  # now from the cache
+    assert [f.name for f in (tmp_path / "cache").iterdir()] == [entry.name]
+
+    entry.write_bytes(b"\x93NUMPY half")  # a cut-off entry from a version before atomic writes
+    assert np.array_equal(synth("Hello there."), expected)  # made again instead of breaking the conversion
+    assert np.array_equal(np.load(entry), expected)
+
+
 def test_bld18_interrupted_selection_keeps_its_cache(tmp_path, monkeypatch):
     src = _four(tmp_path, monkeypatch)
     lib = tmp_path / "lib"
