@@ -12,6 +12,10 @@ can merge. Cases that need the real Kokoro model (TTS-*) stay manual, because CI
 
 Status legend: Automated · Manual · Gap
 
+EPUB cases run on synthetic books built at test time by `tests/epub_factory.py` (made-up text, no
+binary fixtures; see D-014). Gap cases are `xfail(strict=True)`: when a gap gets fixed, the test
+starts passing, pytest reports XPASS as a failure, and you remove the marker and update the row.
+
 ---
 
 ## Segmentation (`segment.py`)
@@ -34,18 +38,18 @@ Status legend: Automated · Manual · Gap
 | PAR-02 | TXT without headings | ~50k chars, no headings | Chunked into "Part 1", "Part 2", … of ~20k chars each | Manual |
 | PAR-03 | TXT hard-wrapped lines | Paragraphs with single newlines inside | Single newlines are joined into spaces, and blank lines separate paragraphs | Manual |
 | PAR-04 | TXT encodings | Same text saved as UTF-8 with BOM, UTF-16, cp1252 | Text decodes correctly in every case, with no BOM character in the output | Manual |
-| PAR-05 | EPUB with TOC | A typical commercial EPUB | Chapters follow the spine order, titles come from the TOC, and the metadata title and author are read | Manual |
-| PAR-06 | EPUB without TOC titles | An EPUB with an empty or missing TOC | Titles fall back to the first heading, then to "Section N" | Manual |
-| PAR-07 | EPUB footnote markers | Text containing `<sup><a>1</a></sup>` | The marker digits are not in the chapter text | Manual |
-| PAR-08 | EPUB cover | An EPUB with a cover item / an image named "cover" | `cover` bytes are set, with the correct extension | Manual |
+| PAR-05 | EPUB with TOC | A typical commercial EPUB | Chapters follow the spine order, titles come from the TOC (nested Section TOC, hrefs under `Text/`), and the metadata title and author are read | Automated `test_par05_metadata_spine_order_and_toc_titles` |
+| PAR-06 | EPUB without TOC titles | An EPUB with an empty or missing TOC | Titles fall back to the first heading, then to "Section N" | Automated `test_par06_title_fallbacks_without_toc` |
+| PAR-07 | EPUB footnote markers | Text containing `<sup><a>1</a></sup>` | The marker digits are not in the chapter text (linked and bare-digit `<sup>`) | Automated `test_par07_footnote_markers_removed` |
+| PAR-08 | EPUB cover | An EPUB with a cover item / an image named "cover" | `cover` bytes are set, with the correct extension | Automated `test_par08_cover_from_cover_item`, `test_par08_cover_from_image_named_cover` |
 | PAR-09 | PDF with outline | A PDF with a level-1 outline of 2 or more entries | One chapter per outline entry, plus "Front matter" if the first entry is not on page 1 | Manual |
 | PAR-10 | PDF without outline | A 40-page PDF with no outline | Chapters "Pages 1–15", "Pages 16–30", "Pages 31–40" | Manual |
 | PAR-11 | PDF cleanup | A PDF with hyphenated line breaks and bare page numbers | Words are de-hyphenated and page numbers removed | Manual |
 | PAR-12 | Unsupported type | `load_book("x.docx")` | `ValueError: Unsupported file type` | Manual |
-| PAR-13 | No readable text | A scanned image-only PDF | `ValueError: No readable text found` | Manual |
-| PAR-14 | Short chapters dropped | A chapter with fewer than 40 chars | The chapter is removed | Manual |
-| PAR-15 | EPUB front matter | A commercial EPUB with a half title, title page, copyright page, and contents in the spine | **Gap:** each becomes a spoken chapter, e.g. the copyright page and the table of contents are read aloud (found with the `samples/` book: 4 front-matter chapters, 52 sentences) | Gap |
-| PAR-16 | XHTML parser warning | Load any XHTML-based EPUB | **Gap:** BeautifulSoup emits `XMLParsedAsHTMLWarning` for every chapter. Text is still extracted correctly, but the console output is noisy | Gap |
+| PAR-13 | No readable text | A scanned image-only PDF / an EPUB with no text | `ValueError: No readable text found` | EPUB: Automated `test_par13_epub_without_text_raises`; PDF: Manual |
+| PAR-14 | Short chapters dropped | A chapter with fewer than 40 chars | The chapter is removed | Automated `test_par14_short_pages_dropped` |
+| PAR-15 | EPUB front matter | A commercial EPUB with a half title, title page, copyright page, and contents in the spine | **Gap:** each becomes a spoken chapter, e.g. the copyright page and the table of contents are read aloud (found with the `samples/` book: 4 front-matter chapters, 52 sentences) | Gap; Automated xfail `test_par15_front_matter_not_spoken` |
+| PAR-16 | XHTML parser warning | Load any XHTML-based EPUB | **Gap:** BeautifulSoup emits `XMLParsedAsHTMLWarning` for every chapter. Text is still extracted correctly, but the console output is noisy | Gap; Automated xfail `test_par16_no_xml_parser_warning` |
 
 ## TTS (`tts.py`)
 
@@ -68,7 +72,7 @@ Status legend: Automated · Manual · Gap
 | BLD-06 | Partial book playable | Inspect `book.json` during the build | Valid JSON with `complete=false` and finished chapters only | Manual |
 | BLD-07 | ffmpeg missing | Remove ffmpeg from PATH | `RuntimeError: ffmpeg not found on PATH` | Manual |
 | BLD-08 | Clipping guard | Synth returns a peak > 1.0 | The audio is normalized before encoding, with no clipping | Manual |
-| BLD-09 | Cover written | Source with a cover | `cover.<ext>` exists and `manifest.cover` names it | Manual |
+| BLD-09 | Cover written | Source with a cover | `cover.<ext>` exists and `manifest.cover` names it | Automated `test_bld09_epub_build_writes_cover_and_toc_titles` |
 | BLD-10 | CLI | `python -m desktop.build book.epub --voice am_adam --speed 1.1` | Progress line updates, prints "Wrote … in Ns", and the manifest records the voice and speed | Manual |
 | BLD-11 | Re-convert with fewer chapters | Rebuild the same file after the parser drops a chapter | **Gap:** stale `chNNN.m4a` files from the previous run remain in the folder (unreferenced) | Gap |
 

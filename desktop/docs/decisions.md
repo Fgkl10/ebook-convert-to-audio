@@ -140,3 +140,16 @@ Ubuntu runners start fastest, and the code is platform-neutral.
 **Consequences:** CI does not prove that the full `requirements.txt` installs, or that the real TTS works.
 Those stay manual checks (TTS-* cases). When code starts importing a new package, add it to both
 requirements files.
+
+## D-014 Synthetic EPUB fixtures built at test time
+Status: Accepted · Milestone: M3
+**Context:** Parser tests need EPUBs with real-world structure (front matter, nested TOC, footnote
+markers, covers). The sample books available are copyrighted, and this repository is public.
+**Decision:** `tests/epub_factory.py` writes small EPUBs with ebooklib into pytest's `tmp_path` while the tests run.
+It uses only made-up text. Real sample books stay local in the git-ignored `samples/` folder for manual end-to-end runs.
+**Why:** Committing real books, or excerpts of them, would redistribute copyrighted text. Generated fixtures are
+diffable code rather than binaries, CI can run them, and each one targets one structure on purpose.
+The factory refuses pages under `MIN_CHAPTER_CHARS` unless they are marked `allow_short`, so a fixture can't
+be dropped by the parser without anyone noticing.
+**Consequences:** The fixtures are only as realistic as we make them. When a real book shows a new quirk, add
+a synthetic spec that reproduces it. Known gaps are encoded as `xfail(strict=True)` tests.
