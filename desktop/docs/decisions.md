@@ -223,7 +223,8 @@ chapters with footnote fragments (How to Take Smart Notes: 14 chapters in 4 file
 **Decision:** A separate step, `python -m desktop.normalize`, writes `<name>.std.epub` (one XHTML file per chapter)
 plus `<name>.std.report.txt`. On the CLI, `desktop.build` converts only files with the `ebook-audio:normalized`
 marker, recognised by metadata rather than file name, and refuses others with the command to run. `--list-chapters` works on any
-file. The web UI runs normalize, then build, automatically with no review. Scanned PDFs are rebuilt from OCR
+file. The web UI runs normalize, then build, automatically with no review (superseded by D-029: the web UI now stops
+for review too). Scanned PDFs are rebuilt from OCR
 (D-021); text PDFs and TXT are still repackaged as parsed. `normalize` runs the language check first.
 The `.std.epub` stores the original file's sha1, and `make_book_id` prefers it, so re-cleaning or editing the
 cleaned file keeps the same `book_id` and cache. That Sigil keeps the custom `<meta>` entries when saving
@@ -452,3 +453,30 @@ the one place every entry point (CLI, server, tests) passes through first.
 **Consequences:** A fresh checkout downloads the models into `models/` on first use. A value set in the environment still
 wins, so a shared cache can be used by setting `HF_HOME` / `DOCTR_CACHE_DIR`. Code that imports `kokoro` or `doctr`
 without importing `desktop` first would still use `~/.cache`.
+
+## D-029 Cleaning is its own step on the website, with review
+Status: Accepted · Milestone: M3 · Supersedes the web part of D-019
+**Context:** The website cleaned and converted in one go, so a badly cut book cost hours of GPU time before anyone saw
+it. Only the CLI had a review checkpoint. The user wants the same on the website: clean, look at the result, approve,
+and only then convert, with a way to skip the stop.
+**Decision:**
+- An upload becomes a *draft* in `drafts/<id>/`: the uploaded file under its own name, `book.std.epub`, `report.json`
+  (the `Report` as JSON) and `draft.json` (status, progress, voice, speed, the upload's sha1, job and book ids).
+  Statuses: `cleaning`, then `review`, `queued`, `converting`, `done`, or `error`.
+- A clean worker with its own queue runs `normalize()` and shows the OCR page count as progress. The conversion
+  worker (`Jobs`) gets only approved `.std.epub` files, so cleaning a new book never waits for a long conversion.
+- The review page shows "Check by hand" first, the chapter list, each chapter's text (served one chapter at a time),
+  and what was removed or ignored. From there: Approve & convert (voice, speed), download the `.std.epub`, upload an
+  edited one, or discard.
+- An uploaded edit is read with `load_book` and rewritten with `write_std_epub` and the draft's original sha1, so the
+  markers survive an editor that drops them and the book keeps its id and sentence cache.
+- "Convert right after cleaning (skip review)" (`auto`) approves as soon as cleaning succeeds. `POST /api/convert` is
+  kept as that one-step shortcut and now returns `{draft_id}`.
+- Drafts survive a restart: `cleaning` becomes an error, `queued`/`converting` go back to review with "approve again".
+**Why:** The review checkpoint is the reason the cleaner can stay cautious ("fewer cuts"). Drafts on disk, rather than in
+memory like jobs, are what make reviewing at leisure possible. Two workers keep the slow GPU conversion from blocking
+quick feedback on a new book. The Sigil round-trip covers edits without building an editor in the browser.
+**Consequences:** `uploads/` is no longer used; discarding a draft removes its files, but drafts are never removed
+automatically. Chapters cannot be edited in the browser, and a refused language cannot be overridden on the website
+(the CLI has `--ignore-language`). The drafts list is not paged. Approving a `done` draft again converts it again (for
+another voice).

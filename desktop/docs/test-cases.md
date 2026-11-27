@@ -74,7 +74,7 @@ starts passing, pytest reports XPASS as a failure, and you remove the marker and
 | NORM-14 | Repeated titles | Two "Interlude" chapters in different files | Both kept as separate chapters | Automated `test_norm14_repeated_titles_are_separate_chapters` |
 | NORM-15 | Endnotes with backlinks | Notes file with 6 notes each opening with `<a href="ch1.xhtml#rN">N</a>` | Removed as back matter ("back matter: Notes", D-025), never as a contents page | Automated `test_norm15_endnotes_are_back_matter_not_contents` |
 | NORM-16 | Cleaned file not overwritten | `normalize x.std.epub` with no `--out` | Report printed, file byte-identical, nothing written | Automated `test_norm16_std_epub_never_rewritten_in_place` |
-| NORM-17 | Edit in Sigil keeps the id | Open a `.std.epub` in Sigil, edit, save, list chapters | **Gap:** not verified that Sigil keeps the `ebook-audio:*` meta; if it drops them the CLI refuses the file | Manual (not yet run) |
+| NORM-17 | Edit in Sigil keeps the id | Open a `.std.epub` in Sigil, edit, save, list chapters | **Gap:** not verified that Sigil keeps the `ebook-audio:*` meta; if it drops them the CLI refuses the file. Uploading the edited file on the website's review page restores them (SRV-22) | Manual (not yet run) |
 | NORM-18 | Nested TOC with sections | `textbook_spec`: TOC children are sections inside the chapter file, chapter pages print "CHAPTER ONE" over the title, half-title page with its own `<h1>`, "Copyright Page" entry, a second contents page linking boxes inside chapters | Chapters "Hello", "1 The River Begins", "2 The Mill Turns" (TOC titles); sections and boxes inside their chapter; half title and copyright removed; only front-matter entries unmatched | Automated `test_norm18_nested_toc_sections_stay_in_their_chapter`, `test_norm18_chapter_label_matches_toc_number` |
 | NORM-18b | Real nested-TOC book | `samples/` The Art of Game Design | 38 chapters (Hello, 1–35, Goodbye, Acknowledgments); text as before minus half title, copyright, Endnotes and 145 figure labels; still 38 with the TOC flattened; other samples unchanged | Manual (checked) |
 | NORM-20 | Flat TOC listing sections | `flat_textbook_spec` (sections in `<h3>`, a box opening with `<p>`); `single_file_parts_spec` (one file: `<h1>` parts with no text, `<h2>` chapters, `<h3>` sections, all in a flat TOC) | Same 3 chapters as the nested version, sections and the box inside, report lists them; one file gives Chapter 1–4 with each part title read with its first chapter | Automated `test_norm20_flat_toc_with_sections_cut_at_chapter_level`, `test_norm20_single_file_parts_chapters_sections` |
@@ -123,7 +123,7 @@ All automated cases use made-up OCR lines and generated images (`tests/scan_fact
 | LANG-03 | Too short to judge | Fewer than 100 sampled words | Accepted | Automated `test_lang03_too_short_to_judge_is_accepted` |
 | LANG-04 | Wrong metadata | EPUB with `dc:language` = `hu` but English text | Accepted: the text decides, metadata is only a hint | Automated `test_lang04_text_wins_over_wrong_metadata` |
 | LANG-05 | Refused before work starts | `build_book` on a Hungarian TXT | Raises before TTS runs, and no library folder is created | Automated `test_lang05_build_refuses_before_tts` |
-| LANG-06 | Refusal in CLI and web UI | `python -m desktop.build <hungarian book>`; upload it in the web UI | CLI prints `error: …` and exits 1. The web UI job shows status error with the same message | CLI Manual (checked); web UI Manual |
+| LANG-06 | Refusal in CLI and web UI | `python -m desktop.build <hungarian book>`; upload it in the web UI | CLI prints `error: …` and exits 1. In the web UI the draft fails while cleaning, with the same message | CLI Manual (checked); web UI Automated `test_srv10_language_refusal_is_a_draft_error` |
 | LANG-07 | Override a wrong refusal | `build_book(..., ignore_language=True)` / CLI `--ignore-language` on a refused book | No language check, and the book converts. The refusal message suggests the flag | Automated `test_lang07_ignore_language_overrides` (CLI flag Manual) |
 
 ## TTS (`tts.py`)
@@ -166,24 +166,39 @@ All automated cases use made-up OCR lines and generated images (`tests/scan_fact
 | SRV-05 | File path traversal | `GET /api/books/{id}/files/..\book.json`, `/.hidden` | 404 | Manual |
 | SRV-06 | Range requests | `GET …/files/ch000.m4a` with `Range: bytes=1000-` | 206 Partial Content | Manual |
 | SRV-07 | Delete book | `DELETE /api/books/{id}` | `{ok:true}`, folder removed, then 404 afterwards | Manual |
-| SRV-08 | Convert validation | Unknown voice, speed 0.4 or 2.1, `.docx` upload | 400 with a clear message in each case | Manual |
-| SRV-09 | Convert happy path | Upload a small TXT | `{job_id}`, then the job goes queued, running, done, and the book appears in `/api/books` | Manual |
-| SRV-10 | Job error reporting | Upload a TXT with no readable text | Job `status=error` with the error message, and the worker keeps running for later jobs | Manual |
+| SRV-08 | Upload validation | `/api/clean` with an unknown voice, speed 2.5, a `.docx` upload | 400 with a clear message in each case | Automated `test_srv24_bad_ids_and_inputs` |
+| SRV-09 | One-step convert | `POST /api/convert` with a small TXT | `{draft_id}`; the draft is cleaned and converted with no review stop, and the book appears in `/api/books` | Automated `test_srv21_convert_endpoint_is_clean_with_auto` |
+| SRV-10 | Cleaning error reporting | Upload a Hungarian TXT | Draft `status=error` with the language message, no report, approve refused (409); the clean worker keeps running | Automated `test_srv10_language_refusal_is_a_draft_error` |
 | SRV-11 | Sequential jobs | Submit 2 conversions at once | The second stays `queued` until the first finishes | Manual |
 | SRV-12 | Model reuse | Two jobs with `af_*` then `am_*` voices | The model loads once, and the second job uses its own voice | Manual |
-| SRV-13 | Upload file name sanitizing | Upload `../../evil name.txt` | Saved as `uploads/<rand>_evil_name.txt` | Manual |
+| SRV-13 | Upload file name sanitizing | Upload `../../evil name.txt` | Saved as `drafts/<id>/evil name.txt` (path dropped, unsafe characters replaced; a name that clashes with the draft's own files becomes `book.<ext>`) | Manual |
 | SRV-14 | mDNS | Start the server and browse `_ebookaudio._tcp` from another device | The service is visible with the correct IP and port. If multicast is blocked, the server still runs and prints a hint | Manual |
-| SRV-15 | Restart loses jobs | Restart the server during a conversion | **Gap:** the job disappears. Re-uploading resumes from the cache | Gap |
+| SRV-15 | Restart during a conversion | Restart the server while a draft converts | The job list is empty again (jobs live in memory), but the draft comes back as "ready for review" with "approve again to resume"; approving resumes from the sentence cache (SRV-25) | Manual |
 | SRV-16 | Delete during conversion | `DELETE` a book that is still converting | **Gap:** undefined. The build may recreate the folder or fail | Gap |
-| SRV-17 | `.md` upload | Upload a `.md` file | **Gap:** rejected by `/api/convert` although `parse.py` supports `.md` | Gap |
-| SRV-18 | Uploads cleanup | After many conversions | **Gap:** `uploads/` is never cleaned | Gap |
+| SRV-17 | `.md` upload | Upload a `.md` file | **Gap:** rejected by `/api/clean` although `parse.py` supports `.md` | Gap |
+| SRV-18 | Uploads cleanup | After many conversions | Each upload lives in its draft folder and goes when the draft is discarded (SRV-23). **Gap:** drafts are never removed automatically, and the old `uploads/` folder is no longer used | Gap (partly) |
+| SRV-19 | Clean stops for review | `/api/clean` with a synthetic EPUB | Draft goes `cleaning` → `review`; `GET /api/drafts/{id}` gives the report; `/chapters/{n}` gives a chapter's title and paragraphs (404 past the end); no job is created; `/std.epub` downloads as `<name>.std.epub` | Automated `test_srv19_clean_stops_for_review` |
+| SRV-20 | Approve converts | Approve a reviewed TXT with voice `am_adam`, speed 1.1 | Draft `queued` → `converting` → `done` with `book_id`; the book is in the library with that voice and the TXT's own name as title; an unknown voice is refused (400) | Automated `test_srv20_approve_converts_into_library`; real Kokoro Manual (checked: a made-up TXT cleaned, approved with `bf_emma`, converted in 40 s, audio served) |
+| SRV-21 | Skip review | `/api/clean` with `auto=true` | Converted with no review stop | Automated `test_srv21_auto_converts_without_review` |
+| SRV-22 | Edited .std.epub upload | Download the std, rename a chapter, drop the `ebook-audio:*` markers (as an editor might), upload it back, approve | The report shows the new title and an "edited .std.epub uploaded" note; the book is converted with the new title and keeps the id from the original upload; a non-EPUB upload is refused (400) | Automated `test_srv22_edited_std_replaces_draft_and_keeps_book_id` |
+| SRV-23 | Discard | `DELETE /api/drafts/{id}` on a reviewed draft | `{ok:true}`, folder gone, 404 afterwards, list empty; refused (409) while cleaning or converting | Automated `test_srv23_discard_removes_draft` (the 409 is Manual) |
+| SRV-24 | Draft ids | `/api/drafts/nope`, `..%2Flibrary`, `Nope!/std.epub`, `abc/chapters/0` | 404 | Automated `test_srv24_bad_ids_and_inputs` |
+| SRV-25 | Drafts survive a restart | Draft folders left `cleaning`, `converting`, `review` | `cleaning` → error "interrupted by a server restart"; `converting` → review with "approve again"; `review` unchanged; saved to `draft.json` | Automated `test_srv25_restart_marks_interrupted_drafts` |
+| SRV-26 | Cleaning runs beside a conversion | Upload a book while another converts | It is cleaned and ready for review without waiting for the conversion (separate worker) | Manual |
+| SRV-27 | Real books through the server | Clean the Kokology PDF and The Art of Game Design through `/api/clean` | Kokology: OCR progress "Reading scanned pages n/90" in the draft message, then 55 chapters with 4 to check; AoGD: 38 chapters; both the same as the CLI | Manual (checked) |
 
 ## Web UI (`static/index.html`)
 
 | ID | Case | Steps | Expected | Status |
 |---|---|---|---|---|
 | UI-01 | Home loads | Open `http://localhost:8000` | LAN URL, QR code, voice list (default selected), and library are shown | Manual |
-| UI-02 | Convert progress | Submit a book | The job card shows a progress bar with done/total sentences, and the library refreshes when the job changes | Manual |
+| UI-02 | Convert progress | Approve a book | The job card under "Converting" shows a progress bar with done/total sentences, and the library refreshes when the job changes | Manual |
+| UI-13 | Clean and review | Upload with the checkbox off | The button says "Clean"; the draft appears under "Cleaning & review" (with a page bar during OCR), then "ready for review" with a Review button; nothing converts | Manual |
+| UI-14 | Review page | Click Review | File name, method, "Check by hand" highlighted at the top, numbered chapter list with sizes; clicking a chapter shows its text; Removed / TOC entries ignored / Notes collapsed with counts; the action bar stays visible while scrolling | Manual |
+| UI-15 | Approve from review | Pick a voice and speed, Approve & convert | Back on the home page; the draft shows "waiting to convert" / "converting", the job appears under "Converting"; when done the draft offers Listen | Manual |
+| UI-16 | Sigil round-trip | Download .std.epub, edit it in Sigil, Upload edited .std.epub | The review page reloads with the edited chapters and the "edited" note | Manual |
+| UI-17 | Skip review | Tick "Convert right after cleaning" | The button says "Clean & convert", and the book converts with no review stop | Manual |
+| UI-18 | Discard | Discard from the list or the review page | A confirmation, then the draft disappears | Manual |
 | UI-03 | Partial book label | During a conversion | The library card shows "converting…" | Manual |
 | UI-04 | Highlight follows audio | Play a chapter | Exactly one sentence is highlighted, matching the speech, and it stays highlighted through the pause after it | Manual |
 | UI-05 | Tap to seek | Click a sentence | Playback jumps to that sentence's start and plays | Manual |

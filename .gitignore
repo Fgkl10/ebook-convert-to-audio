@@ -6,6 +6,7 @@ cache/
 models/
 *.wav
 uploads/
+drafts/
 cache_install.log
 
 .pytest_cache/

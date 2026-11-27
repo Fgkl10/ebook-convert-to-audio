@@ -9,6 +9,7 @@ pysbd
 fastapi
 uvicorn[standard]
 python-multipart
+httpx
 zeroconf
 qrcode
 pytest

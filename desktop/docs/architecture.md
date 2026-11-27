@@ -31,7 +31,7 @@ flowchart LR
     end
 
     LIB[("library/&lt;book_id&gt;/<br/>book.json, chNNN.m4a, cover")]
-    UP[("uploads/")]
+    UP[("drafts/&lt;id&gt;/<br/>upload, book.std.epub,<br/>report.json, draft.json")]
     UI["static/index.html<br/>web UI + player"]
     PHONE["Phone / browser<br/>(Android app in M4+)"]
     MDNS["zeroconf<br/>_ebookaudio._tcp"]
@@ -42,12 +42,13 @@ flowchart LR
     WORDS["words.py<br/>English word list<br/>(Kokoro's misaki dictionary)"]
     NORM -- "scanned PDF" --> SCAN --> OCRM
     SCAN --> WORDS
-    REVIEW(["you: review .std.epub<br/>(CLI only)"])
+    REVIEW(["you: review .std.epub<br/>(CLI: in a reader / Sigil;<br/>web: review page)"])
     NORM --> REVIEW --> CLI
-    SRV -- "auto, no review" --> NORM
+    SRV -- "Drafts clean worker" --> NORM
     NORM --> PARSE
     CLI --> BUILD
-    SRV -- "Jobs worker thread" --> BUILD
+    REVIEW -- "Approve" --> SRV
+    SRV -- "Jobs convert worker<br/>(approved .std.epub)" --> BUILD
     SRV --> UP
     BUILD --> PARSE
     BUILD --> SEG
@@ -76,8 +77,8 @@ flowchart LR
 | `language.py` | Refuses books whose text isn't in a language the voices speak (English today), judged from the share of English function words in text sampled across the book. Metadata is only a hint. Called by `build_book` before TTS loads. | `check_language(book)`, `english_score(book)` |
 | `tts.py` | Wrapper around Kokoro-82M. One call per sentence, mono float32 at 24 kHz. Uses CUDA when available. | `KokoroTTS(voice, speed).synth(text)`, `VOICES`, `SAMPLE_RATE` |
 | `build.py` | Orchestrates the pipeline: plan, synthesize (cached), stitch with silence gaps, compute timestamps, encode m4a with ffmpeg, write `book.json` after each chapter. | `build_book(source, out_root, voice, speed, progress, tts) -> Path` |
-| `server.py` | REST API, single-worker conversion queue, static web UI, mDNS advertisement, QR code for the LAN URL. | FastAPI `app`, `Jobs`, `advertise()` |
-| `static/index.html` | Single-page UI: upload/convert, job progress, library grid, reader with sentence highlighting and tap-to-seek. | served at `/` |
+| `server.py` | REST API; drafts on disk with a clean worker (upload → `normalize` → review), a separate single-worker conversion queue for approved books (D-029); static web UI, mDNS advertisement, QR code for the LAN URL. | FastAPI `app`, `Drafts`, `Jobs`, `advertise()` |
+| `static/index.html` | Single-page UI: upload (clean, or clean & convert), "Cleaning & review" list, review page (check-by-hand list, chapters and their text, removed parts, approve / Sigil download and upload / discard), conversion progress, library grid, reader with sentence highlighting and tap-to-seek. | served at `/` |
 
 ## On-disk layout
 
@@ -91,7 +92,12 @@ library/<book_id>/          book_id = <title-slug, max 40 chars>-<sha1(original 
 models/huggingface/         Kokoro-82M (HF_HOME), downloaded on first use (D-028)
 models/doctr/               docTR OCR models (DOCTR_CACHE_DIR), downloaded on first use
 cache/<book_id>/<sha1>.npy  per-sentence audio, key = sha1("voice|speed|text"); deleted when the book completes
-uploads/<rand>_<name>       files uploaded through the server (never cleaned up), plus their .std.epub
+drafts/<id>/                one per book uploaded through the server (D-029); removed by Discard
+    <name>.<ext>            the upload, under its own (sanitized) name
+    book.std.epub           the cleaned book (replaced by an uploaded edit)
+    report.json             the cleaning Report: method, chapters, removed, unconfirmed, notes, checks
+    draft.json              id, file, status, message, done/total, auto, voice, speed, error,
+                            chapters, checks, job_id, book_id, source_sha1, created
 ```
 
 ## `book.json` manifest
@@ -140,17 +146,27 @@ Invariants:
 | `GET /api/books/{id}` | Full `book.json` |
 | `GET /api/books/{id}/files/{name}` | Audio/cover file, with HTTP Range support |
 | `DELETE /api/books/{id}` | Delete a book folder |
-| `POST /api/convert` | Multipart `file`, `voice`, `speed` (0.5–2.0) → `{job_id}` |
-| `GET /api/jobs` | All jobs (queued/running/done/error, progress) |
+| `POST /api/clean` | Multipart `file`, `voice`, `speed` (0.5–2.0), `auto` → `{draft_id}`; cleaned, then waits for review (or converts at once with `auto=true`) |
+| `POST /api/convert` | Same as `/api/clean` with `auto=true` → `{draft_id}` |
+| `GET /api/drafts` | All drafts (status, message, OCR progress, chapters, checks, job and book ids) |
+| `GET /api/drafts/{id}` | One draft plus its `report` (null until cleaned) |
+| `GET /api/drafts/{id}/chapters/{n}` | `{index, title, paragraphs}` of one cleaned chapter |
+| `GET /api/drafts/{id}/std.epub` | Download the cleaned book (for Sigil) |
+| `POST /api/drafts/{id}/std.epub` | Upload an edited `.std.epub` (multipart `file`); 400 if unreadable |
+| `POST /api/drafts/{id}/approve` | Form `voice`, `speed` → `{job_id}`; 409 unless the draft is in review or done |
+| `DELETE /api/drafts/{id}` | Discard a draft and its files; 409 while cleaning or converting |
+| `GET /api/jobs` | All conversion jobs (queued/running/done/error, progress, `draft_id`) |
 
-Book IDs are validated against `^[a-z0-9\-]{1,80}$` and file names reject `/`, `\`, and a leading `.`
-(path-traversal guard).
+Book and draft IDs are validated against `^[a-z0-9\-]{1,80}$` (a draft id must also be a known draft), and file
+names reject `/`, `\`, and a leading `.` (path-traversal guard).
 
 ## Concurrency model
-- One background daemon thread drains a `queue.Queue` of job IDs, so conversions run one at a time
-  (one GPU model in memory).
+- Two background daemon threads, each draining its own `queue.Queue`: the clean worker (`Drafts`) and the
+  conversion worker (`Jobs`). Cleaning a new book never waits for a conversion; conversions run one at a time
+  (one TTS model in memory). docTR is freed after OCR, so both fit on the GPU.
 - The loaded `KokoroTTS` is reused across jobs while the voice language prefix (`a`/`b`) is unchanged.
-- Job state lives in memory only and is lost when the server restarts.
+- Drafts are saved to `draft.json` on every change and reloaded at startup. Jobs live in memory only; a draft whose
+  conversion was cut off by a restart goes back to review and resumes from the sentence cache when approved again.
 
 ## External dependencies
 Python 3.10–3.12, PyTorch (CUDA build recommended), `kokoro`, `ebooklib`, `beautifulsoup4`, `lxml`,
