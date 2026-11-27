@@ -7,8 +7,11 @@ from bs4 import XMLParsedAsHTMLWarning
 
 from desktop import build
 from desktop.parse import load_book
-from tests.epub_factory import JPG_BYTES, PNG_BYTES, build_epub, empty_spec, guide_spec, novel_spec, untitled_spec
+from tests.epub_factory import (
+    JPG_BYTES, PNG_BYTES, build_epub, empty_spec, guide_spec, novel_spec, single_file_spec, untitled_spec,
+)
 from tests.test_desktop import FakeTTS
+
 
 @pytest.fixture
 def novel(tmp_path):
@@ -78,6 +81,16 @@ def test_par15_preface_and_pagebreak_chapters_kept(novel):
     """Regression guard: other labels (preface, chapter, pagebreak spans) never cause skipping."""
     titles = [c.title for c in load_book(novel).chapters]
     assert "Preface" in titles and "2 The Mill" in titles
+
+
+@pytest.mark.parametrize("variant", ["labelled", "toc-title", "guide"])
+def test_par17_single_file_book_keeps_chapters(tmp_path, variant):
+    """Skipping is per page: front matter sharing a file with chapter 1 must not drop the chapter."""
+    book = load_book(build_epub(tmp_path / f"{variant}.epub", single_file_spec(variant)))
+    assert [c.title for c in book.chapters] == ["Chapter One"]  # real title, never "Title Page"
+    assert "The river ran quietly" in book.chapters[0].text
+    if variant == "labelled":
+        assert "All rights reserved" not in book.chapters[0].text  # labelled section removed
 
 
 def test_par15_unlabelled_book_unchanged(untitled):

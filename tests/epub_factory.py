@@ -39,6 +39,7 @@ class Spec:
     pages: list[Page] = field(default_factory=list)
     nested_toc: bool = False  # wrap TOC entries in a Section, like (Section, [Link, ...])
     cover: str | None = None  # "item": proper cover item; "named-image": image called cover.png
+    toc: list[tuple[str, str]] | None = None  # explicit (href, title) entries, e.g. "book.xhtml#c1"
 
 
 def para(n: int = 2) -> str:
@@ -76,8 +77,11 @@ def build_epub(path: Path, spec: Spec) -> Path:
         book.add_item(item)
         items.append((page, item))
 
-    links = [epub.Link(item.file_name, page.toc_title, f"toc{i}")
-             for i, (page, item) in enumerate(items) if page.toc_title]
+    if spec.toc is not None:
+        links = [epub.Link(href, title, f"toc{i}") for i, (href, title) in enumerate(spec.toc)]
+    else:
+        links = [epub.Link(item.file_name, page.toc_title, f"toc{i}")
+                 for i, (page, item) in enumerate(items) if page.toc_title]
     if spec.nested_toc and links:
         book.toc = [(epub.Section("Part One", href=links[0].href), links)]
     else:
@@ -157,6 +161,29 @@ def guide_spec() -> Spec:
             Page("contents-of-the-heart.xhtml", para(), toc_title="Contents of the Heart"),
         ],
     )
+
+
+def single_file_spec(variant: str) -> Spec:
+    """Whole book in one XHTML file, as Word/Calibre conversions often produce.
+
+    "labelled": a labelled copyright <section> before chapter 1 in the same file.
+    "toc-title": the first TOC entry into the file is "Title Page" (anchor), then "Chapter One".
+    "guide": the OPF guide marks the file as copyright-page, but the TOC points to #c1 inside it.
+    """
+    chapter = f'<section id="c1"><h1>Chapter One</h1>{para()}</section>'
+    copyright_text = "<p>All rights reserved by the imaginary publisher of this book.</p>"
+    if variant == "labelled":
+        body = f'<section epub:type="copyright-page">{copyright_text}</section>{chapter}'
+        page, toc = Page("book.xhtml", body), [("book.xhtml#c1", "Chapter One")]
+    elif variant == "toc-title":
+        body = f'<div id="t"><p>Single</p></div>{chapter}'
+        page, toc = Page("book.xhtml", body), [("book.xhtml#t", "Title Page"), ("book.xhtml#c1", "Chapter One")]
+    elif variant == "guide":
+        body = f"<div>{copyright_text}</div>{chapter}"
+        page, toc = Page("book.xhtml", body, guide_type="copyright-page"), [("book.xhtml#c1", "Chapter One")]
+    else:
+        raise ValueError(variant)
+    return Spec(title="Single File", pages=[page], toc=toc)
 
 
 def empty_spec() -> Spec:

@@ -53,7 +53,8 @@ _BLOCK_TAGS = ["p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote
 _HEADINGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
 
 # Front matter that is never read aloud (decision D-016). Detected from the book's own labels
-# (epub:type / ARIA role on page-level elements, OPF <guide> types) or an exact page title.
+# (epub:type / ARIA role on page-level elements, OPF <guide> types) or exact TOC titles.
+# Decisions are per page, not per file: one XHTML file can hold front matter and real chapters.
 _FRONT_MATTER_TYPES = {"cover", "titlepage", "halftitlepage", "copyright-page", "toc"}
 _FRONT_MATTER_ROLES = {"doc-cover", "doc-toc"}
 _FRONT_MATTER_GUIDE = {"cover", "title-page", "copyright-page", "toc"}
@@ -61,13 +62,9 @@ _FRONT_MATTER_TITLES = {"copyright", "contents", "table of contents", "title pag
 _PAGE_LEVEL_TAGS = ["body", "section", "div", "nav", "article"]
 
 
-def _front_matter_labels(soup) -> set[str]:
-    """epub:type / role tokens on page-level elements that mark the page as front matter."""
-    found: set[str] = set()
-    for el in soup.find_all(_PAGE_LEVEL_TAGS):
-        found |= set((el.get("epub:type") or "").split()) & _FRONT_MATTER_TYPES
-        found |= set((el.get("role") or "").split()) & _FRONT_MATTER_ROLES
-    return found
+def _is_front_matter_element(el) -> bool:
+    return bool(set((el.get("epub:type") or "").split()) & _FRONT_MATTER_TYPES
+                or set((el.get("role") or "").split()) & _FRONT_MATTER_ROLES)
 
 
 def _is_front_matter_title(title: str | None) -> bool:
@@ -75,7 +72,7 @@ def _is_front_matter_title(title: str | None) -> bool:
     return norm in _FRONT_MATTER_TITLES
 
 
-def _html_to_paragraphs(html: bytes) -> tuple[list[str], str | None, set[str]]:
+def _html_to_paragraphs(html: bytes) -> tuple[list[str], str | None]:
     from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
 
     # EPUB chapters are XHTML. The lenient HTML parser is deliberate (malformed markup is common in
@@ -84,7 +81,13 @@ def _html_to_paragraphs(html: bytes) -> tuple[list[str], str | None, set[str]]:
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
         soup = BeautifulSoup(html, "lxml")
-    labels = _front_matter_labels(soup)
+    body = soup.body or soup
+    if body.name == "body" and _is_front_matter_element(body):
+        return [], None
+    # Remove only the labelled front-matter elements; the rest of the file is still read.
+    for el in body.find_all(_PAGE_LEVEL_TAGS):
+        if not el.decomposed and _is_front_matter_element(el):
+            el.decompose()
     for tag in soup(["script", "style", "head", "nav"]):
         tag.decompose()
     # Footnote reference markers like <sup><a href="#fn1">1</a></sup> read badly.
@@ -94,7 +97,6 @@ def _html_to_paragraphs(html: bytes) -> tuple[list[str], str | None, set[str]]:
     for br in soup.find_all("br"):
         br.replace_with("\n")
 
-    body = soup.body or soup
     heading = None
     paragraphs: list[str] = []
     blocks = body.find_all(_BLOCK_TAGS)
@@ -112,20 +114,28 @@ def _html_to_paragraphs(html: bytes) -> tuple[list[str], str | None, set[str]]:
             line = re.sub(r"\s+", " ", line).strip()
             if line:
                 paragraphs.append(line)
-    return paragraphs, heading, labels
+    return paragraphs, heading
 
 
-def _flatten_toc(toc, out: dict[str, str]) -> None:
+def _flatten_toc(toc, out: dict[str, list[str]], anchored: set[str]) -> None:
+    """out: file name -> every TOC title pointing into it, in order (fragments stripped).
+    anchored: files that some TOC entry points into the middle of (href has a #fragment)."""
     from ebooklib import epub
+
+    def add(href: str, title: str) -> None:
+        name, _, frag = href.partition("#")
+        out.setdefault(name, []).append(title)
+        if frag:
+            anchored.add(posixpath.basename(name))
 
     for entry in toc:
         if isinstance(entry, tuple):  # (Section, [children])
             section, children = entry
             if getattr(section, "href", None):
-                out.setdefault(section.href.split("#")[0], section.title)
-            _flatten_toc(children, out)
+                add(section.href, section.title)
+            _flatten_toc(children, out, anchored)
         elif isinstance(entry, epub.Link):
-            out.setdefault(entry.href.split("#")[0], entry.title)
+            add(entry.href, entry.title)
 
 
 def _load_epub(path: Path) -> Book:
@@ -140,24 +150,33 @@ def _load_epub(path: Path) -> Book:
 
     book = Book(title=meta("title") or path.stem, author=meta("creator"))
 
-    toc_titles: dict[str, str] = {}
-    _flatten_toc(eb.toc, toc_titles)
+    toc_titles: dict[str, list[str]] = {}
+    toc_anchored: set[str] = set()
+    _flatten_toc(eb.toc, toc_titles, toc_anchored)
     # TOC hrefs are relative to the nav file; normalise to basenames for matching.
-    toc_by_name = {posixpath.basename(k): v for k, v in toc_titles.items()}
-    guide_front = {posixpath.basename(g.get("href", "").split("#")[0])
-                   for g in eb.guide if g.get("type", "").lower() in _FRONT_MATTER_GUIDE}
+    toc_by_name: dict[str, list[str]] = {}
+    for k, v in toc_titles.items():
+        toc_by_name.setdefault(posixpath.basename(k), []).extend(v)
+    # Guide entries with a #fragment point at part of a file, so they never skip a whole file.
+    guide_front = {posixpath.basename(g.get("href", "")) for g in eb.guide
+                   if g.get("type", "").lower() in _FRONT_MATTER_GUIDE and "#" not in g.get("href", "")}
 
     for idref, _linear in eb.spine:
         item = eb.get_item_with_id(idref)
         if item is None or item.get_type() != ebooklib.ITEM_DOCUMENT:
             continue
-        paragraphs, heading, labels = _html_to_paragraphs(item.get_content())
+        paragraphs, heading = _html_to_paragraphs(item.get_content())
         if not paragraphs:
-            continue
+            continue  # empty, or only labelled front matter
         name = item.get_name()
-        title = toc_titles.get(name) or toc_by_name.get(posixpath.basename(name)) or heading
-        if labels or posixpath.basename(name) in guide_front or _is_front_matter_title(title):
-            continue  # front matter: not read aloud
+        titles = toc_titles.get(name) or toc_by_name.get(posixpath.basename(name)) or []
+        real_titles = [t for t in titles if not _is_front_matter_title(t)]
+        if titles and not real_titles:
+            continue  # every TOC entry into this file is front matter
+        base = posixpath.basename(name)
+        if base in guide_front and base not in toc_anchored:
+            continue  # guide marks the whole file; no TOC entry points into the middle of it
+        title = real_titles[0] if real_titles else heading
         book.chapters.append(Chapter(title=title or "", text="\n".join(paragraphs)))
 
     for i, ch in enumerate(book.chapters):

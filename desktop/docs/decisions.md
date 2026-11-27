@@ -171,11 +171,18 @@ Status: Accepted · Milestone: M3
 **Decision:** Skip a spine document if (a) a page-level element (`body`, `section`, `div`, `nav`,
 `article`) has `epub:type` in {cover, titlepage, halftitlepage, copyright-page, toc} or `role` in
 {doc-cover, doc-toc}, or (b) the OPF `<guide>` lists it as cover, title-page, copyright-page or toc,
-or (c) its title, normalized, is exactly "copyright", "contents", "table of contents", "title page",
-"half title" or "half title page". Dedication, foreword, preface and introduction are kept.
+or (c) every TOC title pointing into it, normalized, is exactly "copyright", "contents", "table of contents",
+"title page", "half title" or "half title page". Dedication, foreword, preface and introduction are kept.
+Skipping is **per page, not per file**, because one XHTML file can hold front matter and real chapters (Word/Calibre
+conversions, single-file books). A labelled `section`/`div` is removed and the rest of the file is still read. A whole
+file is skipped only when its `body` is labelled, when all of its TOC titles are front matter, or when the guide lists it
+and no TOC entry points into the middle of it (`#fragment`). A file's chapter title is its first TOC title that isn't front matter.
+Headings are not used for skipping, only for titles.
 **Why:** The user's choices were labels plus title matching, with half titles skipped. Labels are what publishers use
 to mark these pages, and they don't overlap with chapter labels (`chapter`, `pagebreak`). Exact-title matching catches
 unlabelled books without catching chapters like "Copyright Law".
-**Consequences:** Unlabelled front matter with other titles is still read (PAR-18, accepted). A book whose real
+**Consequences:** Unlabelled front matter with other titles is still read, as is an unlabelled title page sharing
+a file with chapter 1 (PAR-18, accepted). The first version decided per file and dropped whole single-file books.
+PAR-17 tests guard against that. A book whose real
 content has exactly one of those titles would lose that chapter, which is very unlikely. Applies to EPUB only. PDF and TXT
 have no such labels.
