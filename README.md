@@ -23,6 +23,8 @@ Requires Python 3.10–3.12, ffmpeg on PATH, NVIDIA GPU recommended.
 py -3.10 -m venv .venv
 .venv\Scripts\pip install torch --index-url https://download.pytorch.org/whl/cu124
 .venv\Scripts\pip install -r requirements.txt
+# Optional, only for scanned PDFs (OCR with docTR, keeps the CUDA torch):
+.venv\Scripts\pip install -r requirements-ocr.txt
 ```
 
 ## Usage
