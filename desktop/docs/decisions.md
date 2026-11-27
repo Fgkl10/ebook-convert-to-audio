@@ -125,3 +125,17 @@ Status: Accepted · Milestone: M3
 **Why:** There is nothing to install or bundle, and FastAPI serves it directly. It also serves as a reference implementation of
 the sentence-sync logic for the Android app (binary search over `start_ms`).
 **Consequences:** It will get harder to maintain if the UI grows. If it does, revisit this decision with a new entry.
+
+## D-013 CI with a lighter dependency set, required before merge
+Status: Accepted · Milestone: M3
+**Context:** Tests must pass before anything merges into `master`. The automated tests use a fake TTS
+and never import Kokoro or PyTorch, but `requirements.txt` pulls in `kokoro` and with it PyTorch
+(about 1 GB, several minutes to install on every CI run).
+**Decision:** A GitHub Actions workflow runs `pytest` on Ubuntu with Python 3.10 and ffmpeg, installing
+`requirements-ci.txt` (everything except `kokoro`/`soundfile`). Branch protection on `master`
+requires the `test` check to pass.
+**Why:** It keeps CI fast (about 1 minute), and `tts.py` imports torch/kokoro lazily, so nothing tested needs them.
+Ubuntu runners start fastest, and the code is platform-neutral.
+**Consequences:** CI does not prove that the full `requirements.txt` installs, or that the real TTS works.
+Those stay manual checks (TTS-* cases). When code starts importing a new package, add it to both
+requirements files.

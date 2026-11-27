@@ -6,6 +6,10 @@ known to be unhandled or untested, and they are candidates for new tests or fixe
 
 Run the automated cases with: `.venv\Scripts\python -m pytest tests/`
 
+CI (`.github/workflows/ci.yml`) runs every automated case on each PR into `master` and each push
+to `master` (Ubuntu, Python 3.10, ffmpeg, `requirements-ci.txt`). The check must pass before a PR
+can merge. Cases that need the real Kokoro model (TTS-*) stay manual, because CI does not install it.
+
 Status legend: Automated · Manual · Gap
 
 ---
