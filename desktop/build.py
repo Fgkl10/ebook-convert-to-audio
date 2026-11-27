@@ -4,6 +4,7 @@ Usage:
     python -m desktop.build path/to/book.epub [--voice af_heart] [--speed 1.0] [--out library]
     python -m desktop.build path/to/book.epub --list-chapters
     python -m desktop.build path/to/book.epub --chapters 3        # or 2-4, or 1,3,5-6
+    python -m desktop.build path/to/book.epub --ignore-language   # skip the English check
 
 --chapters converts only those chapters (1-based, as --list-chapters numbers them) into a
 separate library/<book_id>-ch<spec>/ folder, so a test conversion never touches the full book.
@@ -27,6 +28,7 @@ from typing import Callable
 
 import numpy as np
 
+from .language import check_language
 from .parse import Book, load_book
 from .segment import split_text
 from .tts import DEFAULT_VOICE, SAMPLE_RATE
@@ -144,10 +146,13 @@ def build_book(
     progress: ProgressFn | None = None,
     tts=None,
     chapters: str | None = None,
+    ignore_language: bool = False,
 ) -> Path:
     source = Path(source)
     out_root = Path(out_root)
     book = load_book(source)
+    if not ignore_language:
+        check_language(book)  # before the TTS model loads
     book_id = make_book_id(book, source)
     if chapters:
         selected = parse_chapter_spec(chapters, len(book.chapters))
@@ -234,6 +239,8 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--out", default=str(ROOT / "library"))
     ap.add_argument("--chapters", help="convert only these chapters, e.g. 3, 2-4 or 1,3,5-6 (see --list-chapters)")
     ap.add_argument("--list-chapters", action="store_true", help="print the numbered chapter list and exit")
+    ap.add_argument("--ignore-language", action="store_true",
+                    help="skip the language check (for an English book that is wrongly refused)")
     args = ap.parse_args(argv)
 
     if args.list_chapters:
@@ -250,7 +257,8 @@ def main(argv: list[str] | None = None) -> None:
         sys.stdout.flush()
 
     try:
-        out = build_book(args.source, args.out, args.voice, args.speed, progress, chapters=args.chapters)
+        out = build_book(args.source, args.out, args.voice, args.speed, progress, chapters=args.chapters,
+                         ignore_language=args.ignore_language)
     except ValueError as e:
         sys.exit(f"error: {e}")
     print(f"\nWrote {out} in {time.time() - start:.0f}s")
