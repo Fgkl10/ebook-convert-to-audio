@@ -14,8 +14,7 @@ VOICES = [
     "bf_emma", "bf_isabella", "bm_george", "bm_fable", "bm_lewis",
 ]
 DEFAULT_VOICE = "af_heart"
-# Languages the voices above can speak; desktop/language.py refuses books in any other language.
-SUPPORTED_LANGUAGES = {"en"}
+# The languages these voices speak are listed in desktop/core/language.py (SUPPORTED_LANGUAGES).
 
 
 REPO = "hexgrad/Kokoro-82M"

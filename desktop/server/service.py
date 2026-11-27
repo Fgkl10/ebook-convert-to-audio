@@ -1,6 +1,6 @@
 """The backend: cleaning, conversion and the library, with no HTTP in it (D-032).
 
-desktop/api.py is the only caller; it turns ServiceError into an HTTP status. Flow (D-029):
+desktop/server/api.py is the only caller; it turns ServiceError into an HTTP status. Flow (D-029):
 upload -> clean (drafts/<id>/, its own worker) -> review -> approve -> convert (Jobs worker) -> library/<book_id>/.
 """
 from __future__ import annotations
@@ -19,10 +19,10 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import BinaryIO
 
-from .build import ROOT, build_book, encode_m4a
-from .normalize import OCR_MODES, normalize, write_std_epub
-from .parse import load_book
-from .tts import DEFAULT_VOICE, VOICES
+from ..core.normalize import OCR_MODES, normalize, write_std_epub
+from ..core.parse import load_book
+from ..tts.build import ROOT, build_book, encode_m4a
+from ..tts.kokoro import DEFAULT_VOICE, VOICES
 
 LIBRARY = ROOT / "library"
 DRAFTS = ROOT / "drafts"
@@ -346,7 +346,7 @@ class Jobs:
         """The one TTS model, loaded on first use and kept (it speaks both voice languages, D-031)."""
         with self.model_lock:  # not self.lock: loading takes ~10 s and must not block the job list
             if self.tts is None:
-                from .tts import KokoroTTS
+                from ..tts.kokoro import KokoroTTS
 
                 self.tts = KokoroTTS()
             return self.tts

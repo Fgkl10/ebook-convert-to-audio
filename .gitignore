@@ -8,6 +8,8 @@ models/
 uploads/
 drafts/
 cache_install.log
+*.egg-info/
+build/
 
 .pytest_cache/
 pytest-cache-files-*/

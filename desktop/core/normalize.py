@@ -1,11 +1,11 @@
 """Clean any supported ebook into a standard EPUB: one XHTML file per chapter (decisions D-019, D-020).
 
 Usage:
-    python -m desktop.normalize path/to/book.epub [--out path/to/book.std.epub] [--ignore-language]
+    ebook-normalize path/to/book.epub [--out path/to/book.std.epub] [--ignore-language] [--ocr auto|always|never]
 
 Writes <name>.std.epub plus <name>.std.report.txt next to the source. Open the .std.epub in any
 reader to check the chapters, fix it (e.g. in Sigil) if needed, then convert it:
-    python -m desktop.build path/to/book.std.epub
+    ebook-convert path/to/book.std.epub
 
 Why: internet EPUBs (often Calibre conversions) split files by size, not by chapter, and their
 tables of contents mix real chapters with footnote fragments. The cleaner finds real chapters by
@@ -24,10 +24,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .language import check_language
-from .ocr import is_scanned
 from .parse import (MIN_CHAPTER_CHARS, Book, Chapter, _FRONT_MATTER_GUIDE, _is_front_matter_title, body_blocks,
                     clean_body, load_book, parse_html)
-from .scanned import load_scanned_pdf
 
 MARKER = "ebook-audio:normalized"
 SOURCE_HASH = "ebook-audio:source-sha1"
@@ -471,6 +469,9 @@ def normalize(source: str | Path, out: str | Path | None = None, ignore_language
     out = Path(out) if out else source.with_name(source.name.rsplit(".", 1)[0].removesuffix(".std") + ".std.epub")
     report = Report(str(source))
     pdf = source.suffix.lower() == ".pdf"
+    if pdf:  # OCR lives in desktop.ocr; core imports it only for a PDF, so core depends on nothing else (D-033)
+        from ..ocr.engine import is_scanned
+        from ..ocr.scanned import load_scanned_pdf
     scanned = pdf and (ocr == "always" or (ocr == "auto" and is_scanned(source)))
     if scanned:  # before load_book: an image-only scan has no text layer to load (D-021)
         book, scan = load_scanned_pdf(source, progress)
@@ -549,9 +550,9 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(f"error: {e}")
     print(report.render())
     if out == Path(args.source):
-        print(f"{out} is already cleaned; nothing written. Convert it with: python -m desktop.build \"{out}\"")
+        print(f"{out} is already cleaned; nothing written. Convert it with: ebook-convert \"{out}\"")
         return
-    print(f"Wrote {out}\nCheck it in an ebook reader, then: python -m desktop.build \"{out}\"")
+    print(f"Wrote {out}\nCheck it in an ebook reader, then: ebook-convert \"{out}\"")
 
 
 if __name__ == "__main__":

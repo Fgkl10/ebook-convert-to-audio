@@ -11,7 +11,9 @@ import zipfile
 import pytest
 from fastapi.testclient import TestClient
 
-from desktop import build, server, service
+from desktop.server import app as server
+from desktop.server import service
+from desktop.tts import build
 from tests.epub_factory import build_epub, novel_spec
 from tests.test_desktop import FakeTTS
 from tests.test_language import EN, HU

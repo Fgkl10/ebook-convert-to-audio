@@ -24,5 +24,12 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements-ci.txt
 
+      - name: Install the commands (D-033)
+        run: |
+          pip install -e .
+          ebook-normalize --help
+          ebook-convert --help
+          EBOOK_AUDIO_DATA="$RUNNER_TEMP/ebook-data" ebook-server --help
+
       - name: Run tests
         run: python -m pytest tests/ -v

@@ -1,11 +1,11 @@
 """Convert an ebook into library/<book_id>/ with one .m4a per chapter + book.json.
 
 Usage:
-    python -m desktop.normalize path/to/book.epub     # first: writes book.std.epub to review
-    python -m desktop.build path/to/book.std.epub [--voice af_heart] [--speed 1.0] [--out library]
-    python -m desktop.build path/to/book.epub --list-chapters
-    python -m desktop.build path/to/book.epub --chapters 3        # or 2-4, or 1,3,5-6
-    python -m desktop.build path/to/book.epub --ignore-language   # skip the English check
+    ebook-normalize path/to/book.epub     # first: writes book.std.epub to review
+    ebook-convert path/to/book.std.epub [--voice af_heart] [--speed 1.0] [--out library]
+    ebook-convert path/to/book.epub --list-chapters
+    ebook-convert path/to/book.epub --chapters 3        # or 2-4, or 1,3,5-6
+    ebook-convert path/to/book.epub --ignore-language   # skip the English check
 
 --chapters converts only those chapters (1-based, as --list-chapters numbers them) into a
 separate library/<book_id>-ch<spec>/ folder, so a test conversion never touches the full book.
@@ -30,14 +30,15 @@ from typing import Callable
 
 import numpy as np
 
-from .language import check_language
-from .parse import Book, load_book
-from .segment import split_text
-from .tts import DEFAULT_VOICE, SAMPLE_RATE
+from .. import PROJECT
+from ..core.language import check_language
+from ..core.parse import Book, load_book
+from ..core.segment import split_text
+from .kokoro import DEFAULT_VOICE, SAMPLE_RATE
 
 # Data folder for library/, cache/ and drafts/: the project, unless EBOOK_AUDIO_DATA points elsewhere (D-032), so a
 # second server (e.g. for testing) can run without touching the first one's books.
-ROOT = Path(os.environ.get("EBOOK_AUDIO_DATA") or Path(__file__).resolve().parent.parent).resolve()
+ROOT = Path(os.environ.get("EBOOK_AUDIO_DATA") or PROJECT).resolve()
 SENTENCE_GAP_S = 0.25
 PARAGRAPH_GAP_S = 0.6
 CHAPTER_LEAD_S = 0.3
@@ -177,7 +178,7 @@ def build_book(
 
     report("Loading TTS model")
     if tts is None:
-        from .tts import KokoroTTS
+        from .kokoro import KokoroTTS
 
         tts = KokoroTTS(voice=voice, speed=speed)
     synth = CachedSynth(tts, ROOT / "cache" / book_id)
@@ -259,7 +260,7 @@ def main(argv: list[str] | None = None) -> None:
         return
     if not book.normalized:  # the CLI converts only reviewed, standard EPUBs (D-019)
         sys.exit(f'error: {args.source} has not been cleaned yet. Run:\n'
-                 f'  python -m desktop.normalize "{args.source}"\n'
+                 f'  ebook-normalize "{args.source}"\n'
                  f'then check the .std.epub it writes and convert that file.')
 
     start = time.time()

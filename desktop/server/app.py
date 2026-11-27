@@ -1,23 +1,23 @@
-"""LAN server: one process holding the backend (desktop/service.py), its JSON API (desktop/api.py, under /api/v1)
-and the web page (desktop/static/, plain files that only call the API). D-032.
+"""LAN server: one process holding the backend (service.py), its JSON API (api.py, under /api/v1) and the web page
+(desktop/web/, plain files that only call the API, served at /static). D-032, D-033.
 
-Run:  .venv\\Scripts\\python -m desktop.server [--port 8000]
+Run:  ebook-server [--port 8000]      (or: python -m desktop.server)
 Then open http://localhost:8000 on the PC, or the printed LAN address on the phone. API docs: /docs.
 """
 from __future__ import annotations
 
 import argparse
 import socket
-from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
+from .. import PROJECT
 from . import service
 from .api import API_VERSION, PREFIX, lan_ip, router, service_error
 
-STATIC = Path(__file__).resolve().parent / "static"
+STATIC = PROJECT / "desktop" / "web"
 SERVICE_TYPE = "_ebookaudio._tcp.local."
 
 app = FastAPI(title="Ebook Audio Server", version=f"{API_VERSION}",

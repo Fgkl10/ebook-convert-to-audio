@@ -4,9 +4,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from desktop import build
-from desktop.segment import MAX_CHARS, split_paragraph, split_text
-from desktop.tts import SAMPLE_RATE
+from desktop.core.segment import MAX_CHARS, split_paragraph, split_text
+from desktop.tts import build
+from desktop.tts.kokoro import SAMPLE_RATE
 
 
 def test_abbreviations_and_quotes():

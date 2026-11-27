@@ -1,10 +1,10 @@
 """EPUB cleaner (desktop/normalize.py, D-019/D-020). IDs refer to desktop/docs/test-cases.md."""
 import pytest
 
-from desktop import build
-from desktop.build import make_book_id
-from desktop.normalize import normalize
-from desktop.parse import load_book
+from desktop.core.normalize import normalize
+from desktop.core.parse import load_book
+from desktop.tts import build
+from desktop.tts.build import make_book_id
 from tests.epub_factory import build_epub, calibre_spec, novel_spec, untitled_spec
 from tests.test_language import HU
 
@@ -95,7 +95,7 @@ def test_norm07_language_refused_before_review(tmp_path):
 def test_norm08_cli_build_refuses_uncleaned_book(calibre, capsys):
     with pytest.raises(SystemExit) as e:
         build.main([str(calibre), "--chapters", "1"])
-    assert "has not been cleaned yet" in str(e.value) and "desktop.normalize" in str(e.value)
+    assert "has not been cleaned yet" in str(e.value) and "ebook-normalize" in str(e.value)
     build.main([str(calibre), "--list-chapters"])  # listing is still allowed on any file
     out, _ = normalize(calibre)
     capsys.readouterr()
@@ -188,7 +188,7 @@ def test_norm20_single_file_parts_chapters_sections(tmp_path):
 
 
 def test_norm21_figure_labels_removed():
-    from desktop.normalize import drop_figure_labels
+    from desktop.core.normalize import drop_figure_labels
 
     text = "Intro line.\nFIGURE\n17.3\nNext line.\nFigure 2.1\nFig. 4b\nFigure 1.1 shows the loop.\nFIGURE\nA caption."
     assert drop_figure_labels(text) == ("Intro line.\nNext line.\nFigure 1.1 shows the loop.\nFIGURE\nA caption.", 3)
@@ -205,7 +205,7 @@ def test_norm21_figure_labels_removed_in_cleaned_book(tmp_path):
 
 
 def test_norm18_chapter_label_matches_toc_number():
-    from desktop.normalize import _key, _unlabel
+    from desktop.core.normalize import _key, _unlabel
 
     assert _unlabel(_key("CHAPTER ONE In the Beginning")) == _unlabel(_key("1 In the Beginning")) == "in the beginning"
     assert _unlabel(_key("Part 2 The Mill")) == "the mill" and _unlabel(_key("1984")) == "1984"

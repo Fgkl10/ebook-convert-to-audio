@@ -1,4 +1,4 @@
-"""Scanned-PDF cleaner: OCR layout rebuild and quiz answers (desktop/ocr.py, desktop/scanned.py, D-021/D-022).
+"""Scanned-PDF cleaner: OCR layout rebuild and quiz answers (desktop/ocr/engine.py, desktop/ocr/scanned.py, D-021/D-022).
 IDs refer to desktop/docs/test-cases.md. No docTR here: OCR output is synthetic (tests/scan_factory.py)."""
 import sys
 from collections import Counter
@@ -7,11 +7,12 @@ import numpy as np
 import pymupdf
 import pytest
 
-from desktop import ocr, scanned, words
-from desktop.normalize import normalize
-from desktop.parse import load_book
-from desktop.scanned import paragraphs, rebuild, strip_margins, title_case
-from desktop.words import Lexicon
+from desktop.core.normalize import normalize
+from desktop.core.parse import load_book
+from desktop.ocr import engine as ocr
+from desktop.ocr import scanned, words
+from desktop.ocr.scanned import paragraphs, rebuild, strip_margins, title_case
+from desktop.ocr.words import Lexicon
 from tests.scan_factory import STEP, body, line, quiz_book, spread_image
 from tests.test_language import HU
 

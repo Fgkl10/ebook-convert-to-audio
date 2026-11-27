@@ -18,7 +18,17 @@ starts passing, pytest reports XPASS as a failure, and you remove the marker and
 
 ---
 
-## Segmentation (`segment.py`)
+## Package layering (`tests/test_layers.py`, D-033)
+
+| ID | Case | Steps / input | Expected | Status |
+|---|---|---|---|---|
+| LAY-01 | Dependencies go one way | Read every import in `desktop/core`, `ocr`, `tts`, `server` (ast, including imports inside functions) | `core` imports no other package (except `normalize()`'s import of `desktop.ocr` inside the function); `ocr` and `tts` import only `core`; `server` may import all three | Automated `test_lay01_dependencies_go_one_way` |
+| LAY-02 | Nothing imports server or web | Same scan over `core`, `ocr`, `tts`; `desktop/web` | No import of `desktop.server` / `desktop.web`; `web` holds no Python | Automated `test_lay02_nothing_imports_server_or_web` |
+| LAY-03 | No web or GPU code where it doesn't belong | Same scan | No fastapi/starlette/uvicorn/pydantic/zeroconf/qrcode outside `server`; `core` never imports torch/kokoro/doctr/misaki; `ocr` and `tts` import them only inside functions | Automated `test_lay03_no_web_code_outside_server_and_no_gpu_imports_at_load` |
+| LAY-04 | OCR stays optional | In a fresh process: import `desktop.core.normalize`, clean a TXT | No `desktop.ocr`, `desktop.server`, `desktop.tts`, fastapi, torch or doctr module is loaded | Automated `test_lay04_cleaning_without_ocr_never_loads_it` |
+| LAY-05 | Installed commands | `pyproject.toml` `[project.scripts]` | Exactly `ebook-server`, `ebook-normalize`, `ebook-convert`, each pointing to an importable `main` | Automated `test_lay05_installed_commands_point_at_mains`; `pip install -e .` and `--help` of all three Manual (checked; the CUDA torch stayed) |
+
+## Segmentation (`core/segment.py`)
 
 | ID | Case | Steps / input | Expected | Status |
 |---|---|---|---|---|
@@ -30,7 +40,7 @@ starts passing, pytest reports XPASS as a failure, and you remove the marker and
 | SEG-06 | Long sentence with no spaces | a 600-char token with no spaces | Hard cuts at 350 chars and no empty parts | Manual |
 | SEG-07 | Empty and whitespace input | `split_text("")`, `split_text("\n \n")` | `[]` | Manual |
 
-## Parsing (`parse.py`)
+## Parsing (`core/parse.py`)
 
 | ID | Case | Steps / input | Expected | Status |
 |---|---|---|---|---|
@@ -55,7 +65,7 @@ starts passing, pytest reports XPASS as a failure, and you remove the marker and
 | PAR-18 | Unlabelled front matter with another title | A copyright page titled e.g. "Legal Notice" with no labels and no guide entry, an unlabelled title page sharing a file with chapter 1, or a page whose only title is its heading "Contents" (no TOC entry) | **Gap (accepted):** read aloud, because guessing from content would risk skipping real text | Gap |
 | PAR-16 | No XHTML parser warning | Load any XHTML-based EPUB | No `XMLParsedAsHTMLWarning`, and the extracted text is unchanged (checked on the `samples/` book: identical output for all chapters) (D-015) | Automated `test_par16_no_xml_parser_warning` |
 
-## Cleaner (`normalize.py`)
+## Cleaner (`core/normalize.py`)
 
 | ID | Case | Steps / input | Expected | Status |
 |---|---|---|---|---|
@@ -66,7 +76,7 @@ starts passing, pytest reports XPASS as a failure, and you remove the marker and
 | NORM-05 | Fallback | Book with no confirmable TOC | One chapter per file, same as the parser, and the report says fallback | Automated `test_norm05_no_confirmed_toc_falls_back_to_files` |
 | NORM-06 | TXT / text PDF repackaged | A TXT; a PDF with a real text layer | `.std.epub` with the parsed chapters. PDF front-matter titles (Copyright, Contents) are removed and reported. Scanned PDFs go through OCR instead (SCAN-*) | TXT Automated `test_norm06_txt_repackaged`; text PDF Manual |
 | NORM-07 | Language refused before review | Hungarian TXT | `ValueError` and no `.std.epub` written. `ignore_language=True` writes it | Automated `test_norm07_language_refused_before_review` |
-| NORM-08 | CLI requires a cleaned file | `desktop.build raw.epub --chapters 1`; `--list-chapters` on the raw file and on the `.std.epub` | Refused with the normalize command. Listing works on both | Automated `test_norm08_cli_build_refuses_uncleaned_book` |
+| NORM-08 | CLI requires a cleaned file | `ebook-convert raw.epub --chapters 1` (`build.main`); `--list-chapters` on the raw file and on the `.std.epub` | Refused with the `ebook-normalize` command to run. Listing works on both | Automated `test_norm08_cli_build_refuses_uncleaned_book` |
 | NORM-09 | Real Calibre book | `samples/` How to Take Smart Notes | Preface, Introduction, 1 to 14, Afterword, Appendix, with no bibliography or fake index. `--chapters 6` converts "4 A Few Things to Keep in Mind" (47 sentences, timestamps line up) | Manual (checked) |
 | NORM-10 | Web UI cleans automatically | Upload a Calibre-shaped EPUB in the web UI | The job shows "Cleaning the book", then converts the cleaned chapters | Manual |
 | NORM-11 | Footnotes read aloud | Book with footnote paragraphs inside chapters; note references in the text | Footnote paragraphs and linked reference numbers are removed (D-026, D-027; PAR-07b, PAR-07c). **Gap:** unlinked plain-text markers ("SQ4R,8") are still read, and a note whose continuation lines use body style keeps those lines as a fragment | Gap (partly) |
@@ -84,7 +94,7 @@ starts passing, pytest reports XPASS as a failure, and you remove the marker and
 | NORM-19 | Single file with parts, chapters as anchors | Nested TOC: parts at the top level, chapters as anchors inside one file | **Gap:** only the parts become chapters (D-024); no sample has this shape | Gap |
 | NORM-12 | Prologue missing from the TOC | Real chapter before the first TOC entry | **Gap (accepted):** removed as front matter, but shown in the report for review | Gap |
 
-## Scanned PDF cleaner (`ocr.py`, `scanned.py`)
+## Scanned PDF cleaner (`ocr/engine.py`, `ocr/scanned.py`, `ocr/words.py`)
 
 All automated cases use made-up OCR lines and generated images (`tests/scan_factory.py`) and a fake OCR engine, so CI needs no docTR.
 
@@ -116,7 +126,7 @@ All automated cases use made-up OCR lines and generated images (`tests/scan_fact
 | SCAN-20 | Capitals and stray "1" | "the ZOO, then SO I'd", "CD case", "AS you" at a paragraph start, '"stop." 1 Then', "over. 1", "page 1 Then" | "zoo", "so", "CD" kept, "As you", the 1s after punctuation dropped, "page 1" kept; fixes listed in the report notes | Automated `test_scan20_capitals_and_stray_one`, `test_scan20_fixes_listed_in_report` |
 | SCAN-21 | Fixes on the real book | Kokology with the misaki list | 94 fixes listed in the notes; recount of unknown words leaves names, invented words and ~8 misreads | Manual (checked) |
 
-## Language check (`language.py`)
+## Language check (`core/language.py`)
 
 | ID | Case | Steps / input | Expected | Status |
 |---|---|---|---|---|
@@ -125,10 +135,10 @@ All automated cases use made-up OCR lines and generated images (`tests/scan_fact
 | LANG-03 | Too short to judge | Fewer than 100 sampled words | Accepted | Automated `test_lang03_too_short_to_judge_is_accepted` |
 | LANG-04 | Wrong metadata | EPUB with `dc:language` = `hu` but English text | Accepted: the text decides, metadata is only a hint | Automated `test_lang04_text_wins_over_wrong_metadata` |
 | LANG-05 | Refused before work starts | `build_book` on a Hungarian TXT | Raises before TTS runs, and no library folder is created | Automated `test_lang05_build_refuses_before_tts` |
-| LANG-06 | Refusal in CLI and web UI | `python -m desktop.build <hungarian book>`; upload it in the web UI | CLI prints `error: …` and exits 1. In the web UI the draft fails while cleaning, with the same message | CLI Manual (checked); web UI Automated `test_srv10_language_refusal_is_a_draft_error` |
+| LANG-06 | Refusal in CLI and web UI | `ebook-convert <hungarian book>`; upload it in the web UI | CLI prints `error: …` and exits 1. In the web UI the draft fails while cleaning, with the same message | CLI Manual (checked); web UI Automated `test_srv10_language_refusal_is_a_draft_error` |
 | LANG-07 | Override a wrong refusal | `build_book(..., ignore_language=True)` / CLI `--ignore-language` on a refused book | No language check, and the book converts. The refusal message suggests the flag | Automated `test_lang07_ignore_language_overrides` (CLI flag Manual) |
 
-## TTS (`tts.py`)
+## TTS (`tts/kokoro.py`)
 
 | ID | Case | Steps / input | Expected | Status |
 |---|---|---|---|---|
@@ -139,7 +149,7 @@ All automated cases use made-up OCR lines and generated images (`tests/scan_fact
 | DEV-01 | Model caches inside the project | Import `desktop` with `HF_HOME` / `DOCTR_CACHE_DIR` unset, then preset | Unset: both point to `models/huggingface` and `models/doctr` in the project; preset: the user's values are kept (D-028) | Automated `test_dev01_model_caches_inside_project`, `test_dev01_preset_cache_kept` |
 | DEV-02 | Models load from the project offline | `HF_HUB_OFFLINE=1`, `KokoroTTS().synth(…)` and `ocr.make_engine()` | Both load from `models/` with no download, and nothing is written to `~/.cache` | Manual (checked after the move) |
 
-## Build pipeline (`build.py`)
+## Build pipeline (`tts/build.py`, command `ebook-convert`)
 
 | ID | Case | Steps / input | Expected | Status |
 |---|---|---|---|---|
@@ -152,12 +162,12 @@ All automated cases use made-up OCR lines and generated images (`tests/scan_fact
 | BLD-07 | ffmpeg missing | Remove ffmpeg from PATH | `RuntimeError: ffmpeg not found on PATH` | Manual |
 | BLD-08 | Clipping guard | Synth returns a peak > 1.0 | The audio is normalized before encoding, with no clipping | Manual |
 | BLD-09 | Cover written | Source with a cover | `cover.<ext>` exists and `manifest.cover` names it | Automated `test_bld09_epub_build_writes_cover_and_toc_titles` |
-| BLD-10 | CLI | `python -m desktop.build book.epub --voice am_adam --speed 1.1` | Progress line updates, prints "Wrote … in Ns", and the manifest records the voice and speed | Manual |
+| BLD-10 | CLI | `ebook-convert book.epub --voice am_adam --speed 1.1` | Progress line updates, prints "Wrote … in Ns", and the manifest records the voice and speed | Manual |
 | BLD-12 | Convert selected chapters | `--chapters 2` on a 3-chapter book after a full build; also the specs `3`, `2-4`, `1,3,5-5`, and the bad specs `0`, `6`, `4-2`, `x` | Output goes to `<book_id>-ch2/` with only "Chapter 2", `complete=true`, `chapter_selection="2"`. The full book folder is untouched. Bad specs raise `ValueError` before TTS loads | Automated `test_bld12_parse_chapter_spec`, `test_bld12_build_selected_chapters_into_separate_folder` |
-| BLD-13 | List chapters | `python -m desktop.build book.epub --list-chapters` | Numbered chapters with sentence counts, the same numbers `--chapters` uses. No TTS is loaded | Manual |
+| BLD-13 | List chapters | `ebook-convert book.epub --list-chapters` | Numbered chapters with sentence counts, the same numbers `--chapters` uses. No TTS is loaded | Manual |
 | BLD-11 | Re-convert with fewer chapters | Rebuild the same file after the parser drops a chapter | **Gap:** stale `chNNN.m4a` files from the previous run remain in the folder (unreferenced) | Gap |
 
-## Server API v1 (`api.py` + `service.py`, D-032)
+## Server API v1 (`server/api.py` + `server/service.py`, D-032)
 
 All paths are under `/api/v1` unless they start with `/`. The tests are in `tests/test_server.py` (the flow) and
 `tests/test_api.py` (one test per endpoint, plus the contract).
@@ -166,8 +176,8 @@ All paths are under `/api/v1` unless they start with `/`. The tests are in `test
 |---|---|---|---|---|
 | API-01 | Exact route list | `GET /openapi.json` | Exactly the 17 (method, path) pairs of the v1 table; version "1"; schemas `Draft`, `DraftDetail`, `Job`, `BookSummary`, `Book`, `Info`, `ApproveRequest`, `Error`; `/docs` loads | Automated `test_api01_routes_are_exactly_v1` |
 | API-02 | Old routes gone | `GET /api/books`, `/api/jobs`, `POST /api/clean`, `/api/convert` | 404 | Automated `test_api02_old_unversioned_routes_are_gone` |
-| API-03 | Page calls only the API | Scan `static/app.js` | Every `${API}/…` and `getJSON('/…')` path matches a v1 route; no other `/api/` path; `index.html` has no inline `<script>` or `<style>` | Automated `test_api03_page_calls_only_existing_v1_routes` |
-| API-04 | Backend has no HTTP | Read `service.py` | No `fastapi` or `HTTPException`; `NotFound` 404, `Conflict` 409, `Invalid` 400 | Automated `test_api04_backend_has_no_http_in_it` |
+| API-03 | Page calls only the API | Scan `desktop/web/app.js` | Every `${API}/…` and `getJSON('/…')` path matches a v1 route; no other `/api/` path; `index.html` has no inline `<script>` or `<style>` | Automated `test_api03_page_calls_only_existing_v1_routes` |
+| API-04 | Backend has no HTTP | Read `server/service.py` | No `fastapi` or `HTTPException`; `NotFound` 404, `Conflict` 409, `Invalid` 400 | Automated `test_api04_backend_has_no_http_in_it` |
 | API-05 | Tests never touch real data | `tests/conftest.py` sets `EBOOK_AUDIO_DATA` | The service's data folder is a temp folder, not the project | Automated `test_api05_test_data_folder_is_not_the_project` |
 | API-06 | Page and static files | `GET /`, `/static/app.css`, `/static/app.js`, `/static/nope.js` | HTML that loads `app.js`; CSS and JS with their types; 404 for a missing file | Automated `test_api06_page_and_static_files` |
 | API-08 | Draft list and detail | Upload with `bf_emma`, 1.2 | The detail has the voice, speed and report; the list has the draft without the report | Automated `test_api08_draft_list_and_detail` |
@@ -209,7 +219,7 @@ All paths are under `/api/v1` unless they start with `/`. The tests are in `test
 | SRV-29 | Upload a cleaned book | `POST /drafts/cleaned` with a std downloaded from a draft; with a plain EPUB, a TXT, a non-zip | The std is converted at once (no cleaning) under the same book id as the original upload; the others are refused (400, "clean it on the Clean page first") and leave no draft | Automated `test_srv29_upload_cleaned_book_converts_directly`; real Kokoro Manual (checked) |
 | SRV-27 | Real books through the server | Clean the Kokology PDF and The Art of Game Design through `/api/clean` (before D-032; the same code now behind `POST /drafts`) | Kokology: OCR progress "Reading scanned pages n/90" in the draft message, then 55 chapters with 4 to check; AoGD: 38 chapters; both the same as the CLI | Manual (checked) |
 
-## Web UI (`static/index.html`, `app.js`, `app.css`)
+## Web UI (`web/index.html`, `app.js`, `app.css`, served at `/static`)
 
 The rows marked "checked in Chrome" were clicked through in headless Chrome (driven over the DevTools protocol,
 using made-up files) against a live server with real Kokoro. That run is not part of CI. **Gap:** it hasn't been run

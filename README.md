@@ -14,7 +14,11 @@ Convert ebooks (EPUB / PDF / TXT) into audiobooks on a Windows PC using a **loca
 ## Components
 | Folder | What |
 |---|---|
-| `desktop/` | Python converter (`build.py`); one server process (`server.py`) with the backend (`service.py`), a JSON API under `/api/v1` (`api.py`) and the web page (`static/`) |
+| `desktop/core/` | Book text: parsing, chapter splitting, cleaning (no web or GPU code) |
+| `desktop/ocr/` | Scanned-PDF OCR (optional, docTR) |
+| `desktop/tts/` | Kokoro speech, sentence timing, the converter |
+| `desktop/server/` | Backend and the JSON API under `/api/v1` |
+| `desktop/web/` | The web page (HTML/JS/CSS) |
 | `android/` | Kotlin app (Media3 player, sentence sync) — *coming in M4/M5* |
 
 ## Setup (Windows)
@@ -23,6 +27,7 @@ Requires Python 3.10–3.12, ffmpeg on PATH, NVIDIA GPU recommended.
 py -3.10 -m venv .venv
 .venv\Scripts\pip install torch --index-url https://download.pytorch.org/whl/cu124
 .venv\Scripts\pip install -r requirements.txt
+.venv\Scripts\pip install -e .            # installs the commands below (ebook-server, ebook-normalize, ebook-convert)
 # Optional, only for scanned PDFs (OCR with docTR, keeps the CUDA torch):
 .venv\Scripts\pip install -r requirements-ocr.txt
 ```
@@ -30,15 +35,16 @@ The models (Kokoro ~313 MB, docTR ~120 MB) download on first use into `models/` 
 Set `HF_HOME` / `DOCTR_CACHE_DIR` to use another folder.
 
 ## Usage
+Activate the venv first (`.venv\Scripts\activate`), or prefix each command with `.venv\Scripts\`.
 ```powershell
-# Convert from the command line: clean first, check the result, then convert
-.venv\Scripts\python -m desktop.normalize path\to\book.epub      # writes book.std.epub + book.std.report.txt
-.venv\Scripts\python -m desktop.build path\to\book.std.epub --voice af_heart
-.venv\Scripts\python -m desktop.build path\to\book.std.epub --chapters 1   # quick test: one chapter
-
-# Or run the server and use the web UI (also reachable from the phone)
-.venv\Scripts\python -m desktop.server
+# Run the server and use the web UI (also reachable from the phone)
+ebook-server
 # open http://localhost:8000: upload a book, it is cleaned, review it (or tick "skip review"), then Approve & convert
+
+# Or from the command line: clean first, check the result, then convert
+ebook-normalize path\to\book.epub                 # writes book.std.epub + book.std.report.txt
+ebook-convert path\to\book.std.epub --voice af_heart
+ebook-convert path\to\book.std.epub --chapters 1  # quick test: one chapter
 ```
 
 ### API

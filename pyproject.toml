@@ -1,0 +1,26 @@
+# Installs the three commands into the venv (D-033):
+#   .venv\Scripts\python -m pip install -e .
+# Dependencies stay in the requirements files, because PyTorch must come from its CUDA index first
+# (requirements.txt; OCR: requirements-ocr.txt). Installing this project never changes them.
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ebook-audio"
+version = "0.1.0"
+description = "Convert ebooks into sentence-timestamped audiobooks with local Kokoro TTS, served over the LAN"
+requires-python = ">=3.10,<3.13"
+dependencies = []
+
+[project.scripts]
+ebook-server = "desktop.server.app:main"
+ebook-normalize = "desktop.core.normalize:main"
+ebook-convert = "desktop.tts.build:main"
+
+[tool.setuptools.packages.find]
+include = ["desktop*"]
+
+[tool.setuptools.package-data]
+"desktop.web" = ["*.html", "*.js", "*.css"]

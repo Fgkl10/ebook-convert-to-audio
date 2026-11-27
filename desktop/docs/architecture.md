@@ -1,55 +1,80 @@
 # Desktop component: architecture
 
 The desktop component converts an ebook into a sentence-timestamped audiobook and serves the
-library over the LAN. It is a Python package (`desktop/`) with three entry points:
+library over the LAN. It is a Python package (`desktop/`) split into five parts (D-033), in one project with one
+venv:
 
-- `python -m desktop.normalize <file> [--ocr auto|always|never]`: cleans any EPUB/PDF/TXT into `<name>.std.epub` plus
-  `<name>.std.report.txt` for manual review (D-019). `--ignore-language` skips the English check
-- `python -m desktop.build <file.std.epub>`: command-line converter. It only converts cleaned files and
-  refuses anything else with the normalize command to run. `--list-chapters` prints numbered chapters, and
-  `--ignore-language` skips the English check (D-018).
-  `--chapters 3` / `2-4` / `1,3,5-6` converts only those (1-based, after front matter is skipped) into
-  `library/<book_id>-ch<spec>/`, a separate folder, so test conversions never touch the full book
-- `python -m desktop.server [--port 8000]`: one process with three layers (D-032): the backend (`service.py`), its
-  JSON API under `/api/v1` (`api.py`), and the web page (`static/`), which only calls that API. Interactive API docs
-  are at `/docs`, and the contract is at `/openapi.json`. `EBOOK_AUDIO_DATA=<folder>` moves `library/`, `cache/` and
-  `drafts/` out of the project, for example for a second test server.
+| Package | Contents | May import |
+|---|---|---|
+| `desktop/core/` | Book text: parsing, chapter splitting, sentence segmentation, cleaning, language check. No web, GPU or TTS code | nothing else (only `desktop.ocr`, lazily, when `normalize()` reads a PDF) |
+| `desktop/ocr/` | Scanned-PDF OCR: detection, page rendering, docTR, rebuilding chapters from OCR lines, word check | `core` |
+| `desktop/tts/` | Kokoro speech and the converter that times every sentence and writes the library | `core` |
+| `desktop/server/` | Backend service, JSON API v1, the FastAPI app | `core`, `ocr`, `tts` |
+| `desktop/web/` | The page: `index.html`, `app.js`, `app.css` (static files, no Python) | `/api/v1` over HTTP only |
+
+Nothing imports `server` or `web`. `desktop/__init__.py` only sets the model cache folders and `PROJECT`.
+`tests/test_layers.py` enforces these rules.
+
+Three commands, installed into the venv once with `pip install -e .` (`pyproject.toml`):
+
+- `ebook-normalize <file> [--ocr auto|always|never]` (`desktop.core.normalize:main`): cleans any EPUB/PDF/TXT into
+  `<name>.std.epub` plus `<name>.std.report.txt` for manual review (D-019). `--ignore-language` skips the English
+  check.
+- `ebook-convert <file.std.epub>` (`desktop.tts.build:main`): the command-line converter.
+  - It only converts cleaned files, and refuses anything else with the `ebook-normalize` command to run.
+  - `--list-chapters` prints numbered chapters, and `--ignore-language` skips the English check (D-018).
+  - `--chapters 3` / `2-4` / `1,3,5-6` converts only those chapters (1-based, after front matter is skipped) into
+    `library/<book_id>-ch<spec>/`. That is a separate folder, so test conversions never touch the full book.
+- `ebook-server [--port 8000]` (`desktop.server.app:main`, also `python -m desktop.server`): one process with three
+  layers (D-032):
+  - the backend (`server/service.py`);
+  - its JSON API under `/api/v1` (`server/api.py`);
+  - the web page (`desktop/web/`), which only calls that API.
+
+  Interactive API docs are at `/docs`, and the contract is at `/openapi.json`. `EBOOK_AUDIO_DATA=<folder>` moves
+  `library/`, `cache/` and `drafts/` out of the project, for example for a second test server.
 
 ## Module diagram
 
 ```mermaid
 flowchart LR
-    subgraph Entry points
-        CLI["build.main()<br/>CLI"]
-        SRV["server.py<br/>app, static files, mDNS"]
-    end
-
-    subgraph "Server layers (D-032)"
+    subgraph server ["desktop/server (D-032)"]
+        SRV["app.py<br/>app, /static, mDNS<br/>(ebook-server)"]
         API["api.py<br/>/api/v1 routes + schemas"]
         SVC["service.py<br/>Drafts, Jobs, library,<br/>voice samples (no HTTP)"]
     end
     SRV --> API --> SVC
 
-    subgraph Conversion pipeline
+    subgraph core ["desktop/core"]
         PARSE["parse.py<br/>load_book()"]
         SEG["segment.py<br/>split_text()"]
-        BUILD["build.py<br/>build_book()"]
-        TTS["tts.py<br/>KokoroTTS"]
-        CACHE[("cache/&lt;book_id&gt;/<br/>*.npy")]
-        FFMPEG[["ffmpeg<br/>(external)"]]
+        NORM["normalize.py<br/>clean → .std.epub<br/>(ebook-normalize)"]
+        LANG["language.py<br/>check_language()"]
+    end
+
+    subgraph tts ["desktop/tts"]
+        BUILD["build.py<br/>build_book()<br/>(ebook-convert)"]
+        TTS["kokoro.py<br/>KokoroTTS"]
+    end
+    CLI["ebook-convert CLI"] --> BUILD
+    CACHE[("cache/&lt;book_id&gt;/<br/>*.npy")]
+    FFMPEG[["ffmpeg<br/>(external)"]]
+
+    subgraph ocr ["desktop/ocr (optional docTR)"]
+        SCAN["scanned.py<br/>rebuild chapters from OCR"]
+        OCRM["engine.py<br/>scan detection, gutter split,<br/>docTR"]
+        WORDS["words.py<br/>English word list<br/>(Kokoro's misaki dictionary)"]
     end
 
     LIB[("library/&lt;book_id&gt;/<br/>book.json, chNNN.m4a, cover")]
     UP[("drafts/&lt;id&gt;/<br/>upload, book.std.epub,<br/>report.json, draft.json")]
-    UI["static/ index.html + app.js + app.css<br/>web UI + player (display only)"]
+    UI["desktop/web: index.html + app.js + app.css<br/>web UI + player (display only)"]
     PHONE["Phone / browser<br/>(Android app in M4+)"]
     MDNS["zeroconf<br/>_ebookaudio._tcp"]
 
-    NORM["normalize.py<br/>clean → .std.epub"]
-    SCAN["scanned.py<br/>rebuild chapters from OCR"]
-    OCRM["ocr.py<br/>scan detection, gutter split,<br/>docTR (optional)"]
-    WORDS["words.py<br/>English word list<br/>(Kokoro's misaki dictionary)"]
-    NORM -- "scanned PDF" --> SCAN --> OCRM
+    NORM -- "PDF read with OCR<br/>(lazy import)" --> SCAN --> OCRM
+    NORM --> LANG
+    BUILD --> LANG
     SCAN --> WORDS
     REVIEW(["you: review .std.epub<br/>(CLI: in a reader / Sigil;<br/>web: review page)"])
     NORM --> REVIEW --> CLI
@@ -66,7 +91,7 @@ flowchart LR
     BUILD --> FFMPEG --> LIB
     BUILD --> LIB
     SVC -- "reads" --> LIB
-    SRV -- "serves /, /static" --> UI
+    SRV -- "serves / and /static<br/>from desktop/web" --> UI
     UI -- "JSON /api/v1/*" --> API
     PHONE -- "JSON /api/v1/*" --> API
     SRV --> MDNS
@@ -77,21 +102,24 @@ flowchart LR
 
 | Module | Responsibility | Key API |
 |---|---|---|
-| `parse.py` | Read EPUB / PDF / TXT (`.md` too) into a uniform `Book` of `Chapter`s. Chapter text is one paragraph per line. Drops chapters under 40 chars. Skips EPUB front matter (cover, title, half title, copyright, contents) using the book's labels, its OPF guide, or exact titles. Removes footnote paragraphs (labelled, or opening with a backlink number, with their small-print continuation lines, D-027) and strips note-reference markers: `<sup>` markers and number-only note links in running text, keeping cross-references such as "Chapters 9 through 11" (D-026). Extracts the cover. | `load_book(path) -> Book`, `clean_body(html)` (shared with `normalize.py`) |
-| `segment.py` | Split chapter text into paragraphs of sentences (pysbd). Splits sentences over 350 chars at soft breaks. Attaches punctuation-only fragments to the previous sentence. | `split_text(text) -> list[list[str]]` |
-| `normalize.py` | Cleans a book into a standard EPUB: one XHTML file per chapter, with title, author, language, cover and the markers `ebook-audio:normalized` + `ebook-audio:source-sha1`. For EPUB it confirms TOC / contents-page entries against headings in the text and cuts there (with a nested TOC, only its top level and entries that open their own file, D-024; with a flat TOC, only at the chapter heading level, D-025), dropping front matter, contents pages, bibliography, index and endnotes. In every format it removes label-only figure lines. PDF/TXT are repackaged as parsed, and scanned PDFs are rebuilt from OCR (`scanned.py`); the `ocr` mode can force OCR on or off for a PDF (D-030). It writes a report of chapters, removed text, ignored TOC entries and notes (answer placement, words to check). | `normalize(source, out, ignore_language, progress, ocr) -> (path, Report)`, `OCR_MODES` |
-| `ocr.py` | Detects scanned PDFs (nearly every page one full-page image), renders pages at 200 dpi, splits two-page scans at the gutter, and runs docTR on each book page. docTR is optional (`requirements-ocr.txt`) and imported only here, so CI and text books never need it; a missing install raises `ValueError` with the install command. Frees the GPU after OCR. | `is_scanned(path)`, `split_spread(img)`, `ocr_pdf(path, progress) -> (pages, cover)`, `make_engine()` (tests replace it) |
-| `scanned.py` | Pure functions that turn OCR lines (`Line` of `Word`s with boxes) into chapters: strips running headers, page numbers and the back cover; builds paragraphs from indents, gaps and numbered items; joins drop caps and hyphenated breaks (keeping the hyphen of a compound such as 'good-luck'); fixes clear OCR word errors ('ofthe', 'SO', a quote mark read as '1', D-023); cuts chapters at headings confirmed by the contents page; places quiz answers after each question when the numbering allows (D-022). Returns notes for the report. | `rebuild(pages, lex) -> ScanResult`, `paragraphs(pages, lex, fixes)`, `load_scanned_pdf(path, progress) -> (Book, ScanResult)` |
-| `words.py` | A yes/no English word check for the OCR fixes: the pronunciation dictionary shipped with Kokoro's G2P (misaki, ~216,000 entries) plus simple inflections ('berries', 'makes'), possessives and hyphenated compounds. Never suggests a replacement. Empty when misaki is not installed (CI), which turns the dictionary fixes off. | `load_lexicon() -> Lexicon`, `Lexicon.knows(word)` |
-| `language.py` | Refuses books whose text isn't in a language the voices speak (English today), judged from the share of English function words in text sampled across the book. Metadata is only a hint. Called by `build_book` before TTS loads. | `check_language(book)`, `english_score(book)` |
-| `tts.py` | Wrapper around Kokoro-82M. One model on the GPU with one text pipeline per voice language (a/b) sharing it; `synth` is locked so a voice sample can run between two sentences of a conversion (D-031). One call per sentence, mono float32 at 24 kHz. Uses CUDA when available. | `KokoroTTS(voice, speed).synth(text, voice=None, speed=None)`, `VOICES`, `SAMPLE_RATE` |
-| `build.py` | Orchestrates the pipeline: plan, synthesize (cached), stitch with silence gaps, compute timestamps, encode m4a with ffmpeg, write `book.json` after each chapter. | `build_book(source, out_root, voice, speed, progress, tts) -> Path` |
-| `service.py` | The backend, with no HTTP in it (D-032): drafts on disk with a clean worker (upload → `normalize` → review), a separate single-worker conversion queue for approved books (D-029), the library (list, manifest, file, delete) and cached voice samples. Every input check lives here, and refusals raise `Invalid` (400), `NotFound` (404) or `Conflict` (409). | `Drafts`, `Jobs`, `drafts`, `jobs`, `list_books()`, `read_book()`, `book_file()`, `delete_book()`, `voice_sample()`, `ServiceError` |
-| `api.py` | The JSON API v1 (`APIRouter(prefix="/api/v1")`): thin routes that call `service.py` and return Pydantic models, which are the written contract for the web page and the Android app. Uploads are multipart and every other body is JSON. Every error is `{"detail": ...}`. | `router`, `API_VERSION`, models `Draft`, `DraftDetail`, `Job`, `BookSummary`, `Book`, `Info`, `ApproveRequest`, `Error` |
-| `server.py` | The FastAPI `app`: includes the router, maps `ServiceError` to its status, serves `/` and `/static`, advertises mDNS (`path=/api/v1`) and prints the URLs at startup. No domain logic. | `app`, `advertise()`, `main()` |
-| `static/` | `index.html` (markup), `app.css`, `app.js`: plain files with no build step. They display data and call only `/api/v1`; they don't clean or convert anything (checked by `test_api03`). Single-page UI with three tabs (D-030): **Clean** (upload with OCR mode, clean or clean & convert, "Cleaning & review" list), **Convert** (upload a cleaned `.std.epub`, approved books, conversion progress), **Library**. Also: review page (check-by-hand list, chapters and their text, removed parts, approve / Sigil download and upload / discard), conversion progress, library grid, reader with sentence highlighting and tap-to-seek. | served at `/` |
+| `core/parse.py` | Read EPUB / PDF / TXT (`.md` too) into a uniform `Book` of `Chapter`s. Chapter text is one paragraph per line. Drops chapters under 40 chars. Skips EPUB front matter (cover, title, half title, copyright, contents) using the book's labels, its OPF guide, or exact titles. Removes footnote paragraphs (labelled, or opening with a backlink number, with their small-print continuation lines, D-027) and strips note-reference markers: `<sup>` markers and number-only note links in running text, keeping cross-references such as "Chapters 9 through 11" (D-026). Extracts the cover. | `load_book(path) -> Book`, `clean_body(html)` (shared with `normalize.py`) |
+| `core/segment.py` | Split chapter text into paragraphs of sentences (pysbd). Splits sentences over 350 chars at soft breaks. Attaches punctuation-only fragments to the previous sentence. | `split_text(text) -> list[list[str]]` |
+| `core/normalize.py` | Cleans a book into a standard EPUB: one XHTML file per chapter, with title, author, language, cover and the markers `ebook-audio:normalized` + `ebook-audio:source-sha1`. For EPUB it confirms TOC / contents-page entries against headings in the text and cuts there (with a nested TOC, only its top level and entries that open their own file, D-024; with a flat TOC, only at the chapter heading level, D-025), dropping front matter, contents pages, bibliography, index and endnotes. In every format it removes label-only figure lines. PDF/TXT are repackaged as parsed, and scanned PDFs are rebuilt from OCR (`ocr/scanned.py`, imported only when a PDF is read, D-033); the `ocr` mode can force OCR on or off for a PDF (D-030). It writes a report of chapters, removed text, ignored TOC entries and notes (answer placement, words to check). | `normalize(source, out, ignore_language, progress, ocr) -> (path, Report)`, `OCR_MODES` |
+| `ocr/engine.py` | Detects scanned PDFs (nearly every page one full-page image), renders pages at 200 dpi, splits two-page scans at the gutter, and runs docTR on each book page. docTR is optional (`requirements-ocr.txt`) and imported only here, so CI and text books never need it; a missing install raises `ValueError` with the install command. Frees the GPU after OCR. | `is_scanned(path)`, `split_spread(img)`, `ocr_pdf(path, progress) -> (pages, cover)`, `make_engine()` (tests replace it) |
+| `ocr/scanned.py` | Pure functions that turn OCR lines (`Line` of `Word`s with boxes) into chapters: strips running headers, page numbers and the back cover; builds paragraphs from indents, gaps and numbered items; joins drop caps and hyphenated breaks (keeping the hyphen of a compound such as 'good-luck'); fixes clear OCR word errors ('ofthe', 'SO', a quote mark read as '1', D-023); cuts chapters at headings confirmed by the contents page; places quiz answers after each question when the numbering allows (D-022). Returns notes for the report. | `rebuild(pages, lex) -> ScanResult`, `paragraphs(pages, lex, fixes)`, `load_scanned_pdf(path, progress) -> (Book, ScanResult)` |
+| `ocr/words.py` | A yes/no English word check for the OCR fixes: the pronunciation dictionary shipped with Kokoro's G2P (misaki, ~216,000 entries) plus simple inflections ('berries', 'makes'), possessives and hyphenated compounds. Never suggests a replacement. Empty when misaki is not installed (CI), which turns the dictionary fixes off. | `load_lexicon() -> Lexicon`, `Lexicon.knows(word)` |
+| `core/language.py` | Refuses books whose text isn't in a language the voices speak (English today), judged from the share of English function words in text sampled across the book. Metadata is only a hint. Called by `normalize` and by `build_book` before TTS loads. Holds `SUPPORTED_LANGUAGES` (moved from the TTS module, so core imports nothing else, D-033). | `check_language(book)`, `english_score(book)`, `SUPPORTED_LANGUAGES` |
+| `tts/kokoro.py` | Wrapper around Kokoro-82M. One model on the GPU with one text pipeline per voice language (a/b) sharing it; `synth` is locked so a voice sample can run between two sentences of a conversion (D-031). One call per sentence, mono float32 at 24 kHz. Uses CUDA when available. | `KokoroTTS(voice, speed).synth(text, voice=None, speed=None)`, `VOICES`, `SAMPLE_RATE` |
+| `tts/build.py` | Orchestrates the pipeline: plan, synthesize (cached), stitch with silence gaps, compute timestamps, encode m4a with ffmpeg, write `book.json` after each chapter. `ROOT` is the data folder (`EBOOK_AUDIO_DATA` or the project). | `build_book(source, out_root, voice, speed, progress, tts) -> Path`, `encode_m4a`, `ROOT`, `main()` |
+| `server/service.py` | The backend, with no HTTP in it (D-032): drafts on disk with a clean worker (upload → `normalize` → review), a separate single-worker conversion queue for approved books (D-029), the library (list, manifest, file, delete) and cached voice samples. Every input check lives here, and refusals raise `Invalid` (400), `NotFound` (404) or `Conflict` (409). | `Drafts`, `Jobs`, `drafts`, `jobs`, `list_books()`, `read_book()`, `book_file()`, `delete_book()`, `voice_sample()`, `ServiceError` |
+| `server/api.py` | The JSON API v1 (`APIRouter(prefix="/api/v1")`): thin routes that call `service.py` and return Pydantic models, which are the written contract for the web page and the Android app. Uploads are multipart and every other body is JSON. Every error is `{"detail": ...}`. | `router`, `API_VERSION`, models `Draft`, `DraftDetail`, `Job`, `BookSummary`, `Book`, `Info`, `ApproveRequest`, `Error` |
+| `server/app.py` | The FastAPI `app`: includes the router, maps `ServiceError` to its status, serves `/` and `/static` (from `desktop/web/`), advertises mDNS (`path=/api/v1`) and prints the URLs at startup. No domain logic. | `app`, `advertise()`, `main()` |
+| `web/` | `index.html` (markup), `app.css`, `app.js`: plain files with no build step. They display data and call only `/api/v1`; they don't clean or convert anything (checked by `test_api03`). Single-page UI with three tabs (D-030): **Clean** (upload with OCR mode, clean or clean & convert, "Cleaning & review" list), **Convert** (upload a cleaned `.std.epub`, approved books, conversion progress), **Library**. Also: review page (check-by-hand list, chapters and their text, removed parts, approve / Sigil download and upload / discard), conversion progress, library grid, reader with sentence highlighting and tap-to-seek. | served at `/` |
 
 ## On-disk layout
+
+Data folders sit in the project, or under `EBOOK_AUDIO_DATA` (`library/`, `cache/`, `drafts/`). Model caches always
+sit in the project.
 
 ```
 <name>.std.epub            cleaned book next to its source (e.g. samples/), plus <name>.std.report.txt

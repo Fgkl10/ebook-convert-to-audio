@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from desktop.ocr import Line, Word
+from desktop.ocr.engine import Line, Word
 
 LH = 0.022  # body line height
 STEP = 0.026  # line spacing

@@ -1,6 +1,6 @@
 """The JSON API, version 1 (D-032): every book operation, for the web page and the Android app alike.
 
-Routes are thin: they read the request, call desktop/service.py and return the models below, which are the written
+Routes are thin: they read the request, call desktop/server/service.py and return the models below, which are the written
 contract (served as /openapi.json and /docs). Errors are always JSON {"detail": "..."} with the status code.
 Uploads are multipart; every other body is JSON. A breaking change goes into a new /api/v2, never into v1.
 """
@@ -15,8 +15,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from . import service
-from .normalize import OCR_MODES
-from .tts import DEFAULT_VOICE, VOICES
+from ..core.normalize import OCR_MODES
+from ..tts.kokoro import DEFAULT_VOICE, VOICES
 
 API_VERSION = 1
 PREFIX = f"/api/v{API_VERSION}"

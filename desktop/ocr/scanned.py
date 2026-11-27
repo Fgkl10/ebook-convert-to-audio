@@ -18,8 +18,8 @@ from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from pathlib import Path
 
-from .ocr import Line, Page
-from .parse import Book, Chapter
+from ..core.parse import Book, Chapter
+from .engine import Line, Page
 from .words import Lexicon, load_lexicon
 
 TOP, BOTTOM = 0.12, 0.90  # running headers / page numbers live above TOP or below BOTTOM
@@ -441,7 +441,7 @@ def load_scanned_pdf(path: Path, progress=None) -> tuple[Book, ScanResult]:
     """OCR a scanned PDF into a Book (title and author from metadata, or the file name)."""
     import pymupdf
 
-    from .ocr import ocr_pdf
+    from .engine import ocr_pdf
 
     with pymupdf.open(str(path)) as doc:
         md = doc.metadata or {}

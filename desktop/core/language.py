@@ -10,7 +10,10 @@ from __future__ import annotations
 import re
 
 from .parse import Book
-from .tts import SUPPORTED_LANGUAGES
+
+# Languages the TTS voices (desktop/tts/kokoro.py VOICES) can speak; books in any other language are refused.
+# Kept here, not in tts, so core imports nothing from the other packages (D-033).
+SUPPORTED_LANGUAGES = {"en"}
 
 # Common English function words. Words that are also common in other languages ("a" and "is" in
 # Hungarian, "i", "in", "die", "so"...) are left out so they cannot inflate a non-English score.

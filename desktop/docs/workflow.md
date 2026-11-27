@@ -1,6 +1,6 @@
 # Desktop component: workflows
 
-## 0. Clean a book, review it, then convert (`desktop.normalize`, D-019/D-020)
+## 0. Clean a book, review it, then convert (`ebook-normalize` = `desktop/core/normalize.py`, D-019/D-020)
 
 The CLI only converts cleaned files (`.std.epub`). The web UI cleans too and stops for review (section 2, D-029).
 EPUBs are cut at confirmed headings, scanned PDFs are rebuilt from OCR (0b), and text PDFs and TXT are repackaged.
@@ -35,13 +35,16 @@ flowchart TD
     FB --> W["write &lt;name&gt;.std.epub (one file per chapter)<br/>+ &lt;name&gt;.std.report.txt"]
     W -.- KEEP["input already .std.epub, no --out:<br/>report only, nothing written"]
     W --> REV(["you: open in a reader, check chapters,<br/>fix in Sigil if needed"])
-    REV --> BUILD(["python -m desktop.build &lt;name&gt;.std.epub"])
+    REV --> BUILD(["ebook-convert &lt;name&gt;.std.epub"])
 ```
 
 Before `load_book`, a PDF whose pages are nearly all one full-page image is treated as a scan
 and read with OCR (section 0b). The language check then runs on the OCR text.
 
-## 0b. Scanned PDF: OCR and rebuild (`ocr.py`, `scanned.py`, D-021/D-022)
+## 0b. Scanned PDF: OCR and rebuild (`desktop/ocr/engine.py`, `desktop/ocr/scanned.py`, D-021/D-022)
+
+`normalize()` (core) imports these only when a PDF is read with OCR (D-033), so cleaning EPUB and TXT never loads
+the OCR package.
 
 ```mermaid
 flowchart TD
@@ -149,8 +152,8 @@ stateDiagram-v2
 ```mermaid
 sequenceDiagram
     actor U as User (browser or Android app)
-    participant UI as static/app.js (or the app)
-    participant API as api.py (/api/v1)
+    participant UI as desktop/web/app.js (or the app)
+    participant API as server/api.py (/api/v1)
     participant C as service.Drafts: queue + clean worker
     participant Q as service.Jobs: queue + convert worker
     participant B as build_book
@@ -206,7 +209,7 @@ flowchart TD
 
 ```mermaid
 sequenceDiagram
-    participant M as server.main()
+    participant M as ebook-server (server/app.py main())
     participant Z as zeroconf
     participant V as uvicorn
     participant P as Phone
