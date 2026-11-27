@@ -27,6 +27,7 @@ from typing import Callable
 
 import numpy as np
 
+from .language import check_language
 from .parse import Book, load_book
 from .segment import split_text
 from .tts import DEFAULT_VOICE, SAMPLE_RATE
@@ -148,6 +149,7 @@ def build_book(
     source = Path(source)
     out_root = Path(out_root)
     book = load_book(source)
+    check_language(book)  # before the TTS model loads
     book_id = make_book_id(book, source)
     if chapters:
         selected = parse_chapter_spec(chapters, len(book.chapters))

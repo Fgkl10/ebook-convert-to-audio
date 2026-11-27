@@ -36,6 +36,7 @@ class Page:
 class Spec:
     title: str = "Synthetic Book"
     author: str = "Test Author"
+    language: str = "en"  # dc:language metadata
     pages: list[Page] = field(default_factory=list)
     nested_toc: bool = False  # wrap TOC entries in a Section, like (Section, [Link, ...])
     cover: str | None = None  # "item": proper cover item; "named-image": image called cover.png
@@ -56,7 +57,7 @@ def build_epub(path: Path, spec: Spec) -> Path:
     book = epub.EpubBook()
     book.set_identifier(f"synthetic-{spec.title}")
     book.set_title(spec.title)
-    book.set_language("en")
+    book.set_language(spec.language)
     if spec.author:
         book.add_author(spec.author)
 

@@ -25,6 +25,7 @@ class Book:
     chapters: list[Chapter] = field(default_factory=list)
     cover: bytes | None = None
     cover_ext: str = ".jpg"
+    language: str = ""  # from metadata if the format has it; only a hint (see desktop/language.py)
 
 
 MIN_CHAPTER_CHARS = 40  # skip cover pages, blank separators, etc.
@@ -148,7 +149,7 @@ def _load_epub(path: Path) -> Book:
         vals = eb.get_metadata("DC", name)
         return vals[0][0].strip() if vals else ""
 
-    book = Book(title=meta("title") or path.stem, author=meta("creator"))
+    book = Book(title=meta("title") or path.stem, author=meta("creator"), language=meta("language"))
 
     toc_titles: dict[str, list[str]] = {}
     toc_anchored: set[str] = set()

@@ -197,3 +197,18 @@ The numbering is the one `--list-chapters` prints, after front matter is skipped
 **Why:** A separate folder means a test never overwrites or mixes with the full book, and the stale-file
 problem (BLD-11) cannot hit the full book. Validation runs before the TTS model loads, so typos fail instantly.
 **Consequences:** Partial books show up in the library as their own entries. Only the CLI has this option, not the web UI.
+
+## D-018 Refuse books in languages the voices can't speak, judged from the text
+Status: Accepted · Milestone: M3
+**Context:** All voices are English (`a*`/`b*`), and the sentence splitter is English-only. A Hungarian book
+would be read with English pronunciation. Internet books often have wrong `dc:language` metadata (the
+Hungarian Kokology's chapter files say `lang="en"` while its OPF says `hu`), and PDF/TXT usually have none.
+**Decision:** `language.check_language` samples up to 400 words from each of about 6 chapters spread across the book,
+and computes the share that are common English function words. Below 0.15 it raises `ValueError` naming the metadata
+language (if any) and `tts.SUPPORTED_LANGUAGES`. Under 100 sampled words, the book is accepted, because there is too little to judge.
+`build_book` calls it right after loading, before any TTS or file writes.
+**Why:** It needs no new dependency, and the measured separation is wide. English is 0.32 (noisy OCR scan) to 0.44, while Hungarian
+is 0.00 and German/French/Spanish/Dutch prose 0.00 to 0.08. Words common in other languages ("a", "i", "is", "in")
+are excluded. The text decides because metadata is unreliable.
+**Consequences:** Only English versus not-English is detected, with no identification of the actual language. There is no
+override for a wrongly refused English book (LANG-07). Adding a language means adding voices and a detector for it.

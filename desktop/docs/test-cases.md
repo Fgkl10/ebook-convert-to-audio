@@ -53,6 +53,18 @@ starts passing, pytest reports XPASS as a failure, and you remove the marker and
 | PAR-18 | Unlabelled front matter with another title | A copyright page titled e.g. "Legal Notice" with no labels and no guide entry, an unlabelled title page sharing a file with chapter 1, or a page whose only title is its heading "Contents" (no TOC entry) | **Gap (accepted):** read aloud, because guessing from content would risk skipping real text | Gap |
 | PAR-16 | No XHTML parser warning | Load any XHTML-based EPUB | No `XMLParsedAsHTMLWarning`, and the extracted text is unchanged (checked on the `samples/` book: identical output for all chapters) (D-015) | Automated `test_par16_no_xml_parser_warning` |
 
+## Language check (`language.py`)
+
+| ID | Case | Steps / input | Expected | Status |
+|---|---|---|---|---|
+| LANG-01 | English accepted | English prose; the `samples/` books Counselling (0.44), Smart Notes (0.40), Kokology PDF with noisy OCR (0.32) | Accepted | Automated `test_lang01_english_accepted`; real books Manual |
+| LANG-02 | Non-English refused | Hungarian and German prose written for the test; the Hungarian Kokology EPUB in `samples/` (0.00) | `ValueError` "doesn't look like English", naming the metadata language and the supported voices | Automated `test_lang02_non_english_refused`, `test_lang02_message_mentions_metadata_and_voices` |
+| LANG-03 | Too short to judge | Fewer than 100 sampled words | Accepted | Automated `test_lang03_too_short_to_judge_is_accepted` |
+| LANG-04 | Wrong metadata | EPUB with `dc:language` = `hu` but English text | Accepted: the text decides, metadata is only a hint | Automated `test_lang04_text_wins_over_wrong_metadata` |
+| LANG-05 | Refused before work starts | `build_book` on a Hungarian TXT | Raises before TTS runs, and no library folder is created | Automated `test_lang05_build_refuses_before_tts` |
+| LANG-06 | Refusal in CLI and web UI | `python -m desktop.build <hungarian book>`; upload it in the web UI | CLI prints `error: …` and exits 1. The web UI job shows status error with the same message | CLI Manual (checked); web UI Manual |
+| LANG-07 | English book wrongly refused | An English book scoring under 0.15 (none seen yet) | **Gap:** there is no override flag, so such a book can't be converted | Gap |
+
 ## TTS (`tts.py`)
 
 | ID | Case | Steps / input | Expected | Status |
