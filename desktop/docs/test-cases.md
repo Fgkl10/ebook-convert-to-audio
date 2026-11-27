@@ -44,6 +44,8 @@ Status legend: Automated · Manual · Gap
 | PAR-12 | Unsupported type | `load_book("x.docx")` | `ValueError: Unsupported file type` | Manual |
 | PAR-13 | No readable text | A scanned image-only PDF | `ValueError: No readable text found` | Manual |
 | PAR-14 | Short chapters dropped | A chapter with fewer than 40 chars | The chapter is removed | Manual |
+| PAR-15 | EPUB front matter | A commercial EPUB with a half title, title page, copyright page, and contents in the spine | **Gap:** each becomes a spoken chapter, e.g. the copyright page and the table of contents are read aloud (found with the `samples/` book: 4 front-matter chapters, 52 sentences) | Gap |
+| PAR-16 | XHTML parser warning | Load any XHTML-based EPUB | **Gap:** BeautifulSoup emits `XMLParsedAsHTMLWarning` for every chapter. Text is still extracted correctly, but the console output is noisy | Gap |
 
 ## TTS (`tts.py`)
 

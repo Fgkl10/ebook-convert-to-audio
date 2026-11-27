@@ -133,7 +133,8 @@ and never import Kokoro or PyTorch, but `requirements.txt` pulls in `kokoro` and
 (about 1 GB, several minutes to install on every CI run).
 **Decision:** A GitHub Actions workflow runs `pytest` on Ubuntu with Python 3.10 and ffmpeg, installing
 `requirements-ci.txt` (everything except `kokoro`/`soundfile`). Branch protection on `master`
-requires the `test` check to pass.
+requires a PR (0 approvals, solo project) and the `test` check to pass. It applies to admins too, and
+it blocks force pushes and branch deletion.
 **Why:** It keeps CI fast (about 1 minute), and `tts.py` imports torch/kokoro lazily, so nothing tested needs them.
 Ubuntu runners start fastest, and the code is platform-neutral.
 **Consequences:** CI does not prove that the full `requirements.txt` installs, or that the real TTS works.
