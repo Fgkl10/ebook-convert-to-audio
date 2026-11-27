@@ -221,6 +221,24 @@ def test_api15_errors_are_json_detail(api):  # noqa: F811
     assert r.status_code == 422 and isinstance(r.json()["detail"], list)
 
 
+def test_api17_older_files_still_serve(api, monkeypatch, tmp_path):  # noqa: F811
+    """A draft.json from before D-030 (no ocr, few fields) and a manifest with a null author must not turn a list
+    into a 500."""
+    root = tmp_path / "old-drafts"
+    (root / "abc123").mkdir(parents=True)
+    (root / "abc123" / "draft.json").write_text(json.dumps(
+        {"id": "abc123", "status": "error", "created": 1, "error": "x", "message": "Failed"}), encoding="utf-8")
+    monkeypatch.setattr(service, "drafts", service.Drafts(root))
+    assert [d["ocr"] for d in api.get(f"{V1}/drafts").json()] == ["auto"]
+    assert api.get(f"{V1}/drafts/abc123").json()["report"] is None
+    d = service.LIBRARY / "old-book-0123abcd"
+    d.mkdir(parents=True)
+    (d / "book.json").write_text(json.dumps({"id": d.name, "title": "Old", "author": None, "chapters": []}),
+                                 encoding="utf-8")
+    assert api.get(f"{V1}/books").json()[0]["author"] is None
+    assert api.get(f"{V1}/books/{d.name}").json()["complete"] is False
+
+
 def test_api16_service_raises_without_http():
     drafts = service.Drafts(service.DRAFTS.parent / "drafts-unit")
     with pytest.raises(service.NotFound):

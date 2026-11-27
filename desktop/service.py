@@ -56,6 +56,13 @@ def _write_json(path: Path, data) -> None:
     os.replace(tmp, path)
 
 
+_DRAFT_DEFAULTS = {
+    "file": "", "source": "", "message": "", "done": 0, "total": 0, "auto": False, "voice": DEFAULT_VOICE,
+    "speed": 1.0, "ocr": "auto", "error": None, "created": 0, "chapters": 0, "checks": 0, "job_id": None,
+    "book_id": None, "source_sha1": "",
+}
+
+
 def check_options(voice: str, speed: float) -> None:
     if voice not in VOICES:
         raise Invalid(f"Unknown voice {voice}")
@@ -85,6 +92,8 @@ class Drafts:
                 draft = json.loads((d / "draft.json").read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
                 continue
+            for key, value in _DRAFT_DEFAULTS.items():  # fields added since an older version wrote the file
+                draft.setdefault(key, value)
             # Work that was running when the server stopped did not finish.
             if draft["status"] == "cleaning":
                 draft.update(status="error", error="Interrupted by a server restart: upload the book again.",

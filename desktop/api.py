@@ -50,24 +50,25 @@ class Report(BaseModel):
 
 
 class Draft(BaseModel):
+    # Defaults cover draft.json files written by older versions (e.g. no "ocr" before D-030).
     id: str
-    file: str = Field(description="The uploaded file's name")
-    source: str
+    file: str = Field("", description="The uploaded file's name")
+    source: str = ""
     status: DraftStatus
-    message: str
-    done: int = Field(description="Progress while cleaning (scanned pages read)")
-    total: int
-    auto: bool = Field(description="Converts right after cleaning, with no review stop")
-    voice: str
-    speed: float
-    ocr: str
-    error: Optional[str]
-    created: float
-    chapters: int
-    checks: int
-    job_id: Optional[str]
-    book_id: Optional[str] = Field(description="The library book, once converted")
-    source_sha1: str
+    message: str = ""
+    done: int = Field(0, description="Progress while cleaning (scanned pages read)")
+    total: int = 0
+    auto: bool = Field(False, description="Converts right after cleaning, with no review stop")
+    voice: str = DEFAULT_VOICE
+    speed: float = 1.0
+    ocr: str = "auto"
+    error: Optional[str] = None
+    created: float = 0
+    chapters: int = 0
+    checks: int = 0
+    job_id: Optional[str] = None
+    book_id: Optional[str] = Field(None, description="The library book, once converted")
+    source_sha1: str = ""
 
 
 class DraftDetail(Draft):
@@ -120,8 +121,8 @@ class Job(BaseModel):
 class BookSummary(BaseModel):
     id: str
     title: str
-    author: str
-    cover: Optional[str] = Field(description="File name of the cover under /files/, or null")
+    author: Optional[str] = ""
+    cover: Optional[str] = Field(None, description="File name of the cover under /files/, or null")
     voice: Optional[str]
     complete: bool = Field(description="False while the book is still converting (finished chapters play)")
     chapters: int
@@ -153,12 +154,12 @@ class Book(BaseModel):
     model_config = ConfigDict(extra="allow")
     id: str
     title: str
-    author: str
-    cover: Optional[str]
-    voice: Optional[str]
+    author: Optional[str] = ""
+    cover: Optional[str] = None
+    voice: Optional[str] = None
     speed: Optional[float] = None
-    complete: bool
-    created: float
+    complete: bool = False
+    created: float = 0
     duration_ms: int = 0
     chapters: list[BookChapter]
 
