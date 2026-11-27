@@ -148,3 +148,26 @@ def test_norm16_std_epub_never_rewritten_in_place(calibre):
     before = out.read_bytes()
     same, report = normalize(out)
     assert same == out and out.read_bytes() == before and "nothing written" in report.method
+
+
+def test_norm18_nested_toc_sections_stay_in_their_chapter(tmp_path):
+    from tests.epub_factory import textbook_spec
+
+    out, report = normalize(build_epub(tmp_path / "textbook.epub", textbook_spec()))
+    got = dict(chapters(out))
+    assert list(got) == ["Hello", "1 The River Begins", "2 The Mill Turns"]  # TOC titles, not 'CHAPTER ONE'
+    one = got["1 The River Begins"]
+    assert one.startswith("CHAPTER ONE\nThe River Begins\n")
+    assert "\nMorning\n" in one and "\nNoon\n" in one and "#3 The Lens of Tide" in one  # sections, boxes inside
+    everything = "\n".join(got.values())
+    assert "All rights reserved" not in everything and "Special Edition" not in everything
+    assert "front matter: Copyright Page" in [r for r, _ in report.removed]
+    # sections and contents-page links are not candidates at all; only front-matter entries stay unmatched
+    assert report.unconfirmed == ["Half Title", "Table of Contents", "Table of Lenses"]
+
+
+def test_norm18_chapter_label_matches_toc_number():
+    from desktop.normalize import _key, _unlabel
+
+    assert _unlabel(_key("CHAPTER ONE In the Beginning")) == _unlabel(_key("1 In the Beginning")) == "in the beginning"
+    assert _unlabel(_key("Part 2 The Mill")) == "the mill" and _unlabel(_key("1984")) == "1984"

@@ -61,7 +61,8 @@ _HEADINGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
 _FRONT_MATTER_TYPES = {"cover", "titlepage", "halftitlepage", "copyright-page", "toc"}
 _FRONT_MATTER_ROLES = {"doc-cover", "doc-toc"}
 _FRONT_MATTER_GUIDE = {"cover", "title-page", "copyright-page", "toc"}
-_FRONT_MATTER_TITLES = {"copyright", "contents", "table of contents", "title page", "half title", "half title page"}
+_FRONT_MATTER_TITLES = {"copyright", "copyright page", "contents", "table of contents", "title page", "half title",
+                        "half title page", "cover", "dedication", "dedication page"}
 _PAGE_LEVEL_TAGS = ["body", "section", "div", "nav", "article"]
 
 

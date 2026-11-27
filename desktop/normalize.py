@@ -172,23 +172,36 @@ def _lead(el) -> str:
     return ""
 
 
-def _toc_entries(eb, blocks: list[Block], contents: set[str]) -> list[tuple[str, str]]:
-    """(title, href) candidates from the navigation TOC and from links on contents pages."""
+def _toc_entries(eb, blocks: list[Block], contents: set[str], file_start: dict[str, int],
+                 anchors: dict[tuple[str, str], int]) -> list[tuple[str, str]]:
+    """(title, href) candidates from the navigation TOC and from links on contents pages.
+
+    A nested TOC already gives the book's structure: its top level lists the chapters, and a nested
+    entry is a section of its parent (kept inside the chapter) unless it opens a file of its own, as
+    chapters under part titles do. Contents-page links are then not needed (they list the same
+    sections, or boxes such as a 'Table of Lenses') and are left out."""
     import ebooklib
     from ebooklib import epub
 
     entries: list[tuple[str, str]] = []
+    nested = any(isinstance(e, tuple) and e[1] for e in eb.toc)
 
-    def walk(toc):
+    def opens_file(href: str) -> bool:
+        name, _, frag = href.partition("#")
+        name = posixpath.basename(name)
+        return name in file_start and (not frag or anchors.get((name, frag)) == file_start[name])
+
+    def walk(toc, depth: int):
         for e in toc:
-            if isinstance(e, tuple):
-                if getattr(e[0], "href", None):
-                    entries.append((e[0].title or "", e[0].href))
-                walk(e[1])
-            elif isinstance(e, epub.Link):
-                entries.append((e.title or "", e.href))
+            node, kids = (e[0], e[1]) if isinstance(e, tuple) else (e, [])
+            href = getattr(node, "href", None)
+            if href and (depth == 0 or opens_file(href)):
+                entries.append((node.title or "", href))
+            walk(kids, depth + 1)
 
-    walk(eb.toc)
+    walk(eb.toc, 0)
+    if nested:
+        return entries
     for item in eb.get_items_of_type(ebooklib.ITEM_DOCUMENT):
         if posixpath.basename(item.get_name()) not in contents:
             continue
@@ -210,22 +223,36 @@ def _toc_entries(eb, blocks: list[Block], contents: set[str]) -> list[tuple[str,
     return entries
 
 
+_LABEL = re.compile(r"^(?:(?:chapter|part|book) [^\W_]+|\d+) (?=\S)")  # 'chapter one ', 'part 2 ', '1 '
+
+
+def _unlabel(key: str) -> str:
+    return _LABEL.sub("", key, count=1)
+
+
 def _find_heading(blocks: list[Block], start: int, key: str, contents: set[str]) -> int | None:
     """First block at or after start that begins with key: its first line, or its first lines joined
-    with the next block's (a heading split over lines/blocks, or sharing a block with body text)."""
+    with the next block's (a heading split over lines/blocks, or sharing a block with body text).
+    A leading chapter label is ignored on both sides: TOC '1 In the Beginning' matches the printed
+    'CHAPTER ONE' + 'In the Beginning'."""
+    bare = _unlabel(key)
+
+    def same(k: str) -> bool:
+        return k == key or (_unlabel(k) == bare and (bare != key or _unlabel(k) != k))
+
     for i in range(start, len(blocks)):
         if blocks[i].file in contents:
             continue
-        if blocks[i].lead and _key(blocks[i].lead) == key:
+        if blocks[i].lead and same(_key(blocks[i].lead)):
             return i
         lines = [ln for b in blocks[i:i + MAX_JOIN] if b.file not in contents for ln in b.lines][:MAX_JOIN]
         joined = ""
         for line in lines:
             joined = f"{joined} {line}".strip()
             k = _key(joined)
-            if k == key:
+            if same(k):
                 return i
-            if len(k) >= len(key):
+            if len(_unlabel(k)) >= len(key):
                 break
     return None
 
@@ -248,8 +275,13 @@ def _normalize_epub(path: Path, report: Report) -> list[Chapter] | None:
     guide_front = {posixpath.basename(g.get("href", "")) for g in eb.guide
                    if g.get("type", "").lower() in _FRONT_MATTER_GUIDE and "#" not in g.get("href", "")}
 
+    entries = _drop_subsections(_toc_entries(eb, blocks, contents, file_start, anchors))
+    # Files the TOC itself labels as front matter ('Half Title', 'Copyright Page'): their headings
+    # ('Tenth Anniversary') never start a chapter.
+    toc_front = {posixpath.basename(h.partition("#")[0]) for t, h in entries if _is_front_matter_title(t)}
+
     starts: dict[int, str] = {}  # block index -> chapter title (entries landing on one block are deduped)
-    for title, href in _drop_subsections(_toc_entries(eb, blocks, contents)):
+    for title, href in entries:
         title = re.sub(r"\s+", " ", title).strip()
         key = _key(title)
         if not key:
@@ -280,7 +312,7 @@ def _normalize_epub(path: Path, report: Report) -> list[Chapter] | None:
     # (sparse TOCs, or TOCs listing only parts). Files that start mid-text (Calibre splits) don't.
     for name, idx in file_start.items():
         block = blocks[idx]
-        if idx not in starts and name not in contents and block.tag in {"h1", "h2", "h3"} \
+        if idx not in starts and name not in contents and name not in toc_front and block.tag in {"h1", "h2", "h3"} \
                 and _plausible_title(block.lines[0]):
             starts[idx] = block.lines[0]
 

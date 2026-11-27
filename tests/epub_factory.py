@@ -41,6 +41,7 @@ class Spec:
     nested_toc: bool = False  # wrap TOC entries in a Section, like (Section, [Link, ...])
     cover: str | None = None  # "item": proper cover item; "named-image": image called cover.png
     toc: list[tuple[str, str]] | None = None  # explicit (href, title) entries, e.g. "book.xhtml#c1"
+    toc_tree: list | None = None  # explicit nested TOC: (href, title, [children]) tuples
 
 
 def para(n: int = 2) -> str:
@@ -83,7 +84,15 @@ def build_epub(path: Path, spec: Spec) -> Path:
     else:
         links = [epub.Link(item.file_name, page.toc_title, f"toc{i}")
                  for i, (page, item) in enumerate(items) if page.toc_title]
-    if spec.nested_toc and links:
+    if spec.toc_tree is not None:
+        count = iter(range(10_000))
+
+        def node(href, title, kids):
+            if not kids:
+                return epub.Link(href, title, f"toc{next(count)}")
+            return (epub.Section(title, href=href), [node(*k) for k in kids])
+        book.toc = [node(*n) for n in spec.toc_tree]
+    elif spec.nested_toc and links:
         book.toc = [(epub.Section("Part One", href=links[0].href), links)]
     else:
         book.toc = links
@@ -240,4 +249,46 @@ def calibre_spec() -> Spec:
             ("Text/split_003.xhtml#pg_12", "3 The Storm"),
             ("Text/split_004.xhtml", "BIBLIOGRAPHY"),
         ],  # "2 The Mill" is missing here, as chapters 5 and 9 were in the real book
+    )
+
+
+def textbook_spec() -> Spec:
+    """A publisher textbook like the one that motivated NORM-18: one file per chapter, a nested TOC
+    whose children are sections inside the chapter file, chapter pages printed as 'CHAPTER ONE' over
+    the title (the TOC says '1 The River Begins'), a half-title page with its own <h1>, a 'Copyright
+    Page' TOC entry, and a second contents page that lists boxes ('lenses') inside the chapters."""
+    lens = [f'<p><a href="ch{1 + i % 2}.xhtml#lens{i}">#{i} The Lens of Tide {i}</a></p>' for i in range(1, 7)]
+    contents = ['<p><a href="hello.xhtml">Hello</a></p>', '<p><a href="ch1.xhtml#c1">1 The River Begins</a></p>',
+                '<p><a href="ch1.xhtml#s1_1">Morning</a></p>', '<p><a href="ch1.xhtml#s1_2">Noon</a></p>',
+                '<p><a href="ch2.xhtml#c2">2 The Mill Turns</a></p>', '<p><a href="ch2.xhtml#s2_1">Gears</a></p>']
+
+    def chapter(n: int, word: str, title: str, sections: list[str]) -> str:
+        body = f'<h2 id="c{n}">CHAPTER {word}</h2><h2>{title}</h2>' + para()
+        for k, s in enumerate(sections, 1):
+            body += f'<h3 id="s{n}_{k}">{s}</h3>' + para()
+            body += f'<div id="lens{2 * k - 2 + n}"><p>#{2 * k - 2 + n} The Lens of Tide</p>{para(1)}</div>'
+        return body
+
+    return Spec(
+        title="The Craft Book",
+        pages=[
+            Page("halftitle.xhtml", '<h1 id="ht">Special Edition</h1><h1>The Craft Book</h1>', allow_short=True),
+            Page("copyright.xhtml", "<p>Copyright 2020 Nowhere Press. All rights reserved.</p>" + para()),
+            Page("contents.xhtml", "<h2>CONTENTS</h2>" + "".join(contents), allow_short=True),
+            Page("lenses.xhtml", "<h2>TABLE OF LENSES</h2>" + "".join(lens), allow_short=True),
+            Page("hello.xhtml", "<h2>HELLO</h2>" + para(3)),
+            Page("ch1.xhtml", chapter(1, "ONE", "The River Begins", ["Morning", "Noon"])),
+            Page("ch2.xhtml", chapter(2, "TWO", "The Mill Turns", ["Gears"])),
+        ],
+        toc_tree=[
+            ("halftitle.xhtml#ht", "Half Title", []),
+            ("copyright.xhtml", "Copyright Page", []),
+            ("contents.xhtml", "Table of Contents", []),
+            ("lenses.xhtml", "Table of Lenses", []),
+            ("hello.xhtml", "Hello", []),
+            ("ch1.xhtml#c1", "1 The River Begins", [
+                ("ch1.xhtml#s1_1", "Morning", []),
+                ("ch1.xhtml#s1_2", "Noon", [("ch1.xhtml#lens3", "#3 The Lens of Tide", [])])]),
+            ("ch2.xhtml#c2", "2 The Mill Turns", [("ch2.xhtml#s2_1", "Gears", [])]),
+        ],
     )

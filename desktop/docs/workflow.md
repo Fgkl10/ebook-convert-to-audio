@@ -16,17 +16,17 @@ flowchart TD
     F -- "text PDF / TXT" --> P["repackage parsed chapters"]
     F -- "scanned PDF" --> W
     F -- EPUB --> B["flatten spine into text blocks<br/>map every id anchor to a block<br/>mark contents pages (≥5 short all-link paragraphs)"]
-    B --> C["candidates = navigation TOC + contents-page links<br/>drop N.M subsections when chapter N exists"]
+    B --> C["candidates = navigation TOC + contents-page links<br/>nested TOC: top level only, plus nested entries that open<br/>their own file; no contents-page links (D-024)<br/>drop N.M subsections when chapter N exists"]
     C --> D{"plausible title?<br/>≤120 chars, ≥3 letters, capital first,<br/>no glued footnote number"}
     D -- no --> IGN["ignored (in report)"]
     D -- yes --> E{"whole-file entry<br/>(no #anchor)?"}
     E -- yes --> CUT["cut at the file start"]
-    E -- no --> H["search for a heading equal to the title,<br/>starting at the anchor: a block's opening element,<br/>or its first lines joined (split headings)"]
+    E -- no --> H["search for a heading equal to the title,<br/>starting at the anchor: a block's opening element,<br/>or its first lines joined (split headings);<br/>a leading label is ignored: '1 X' = 'CHAPTER ONE' + 'X'"]
     H -- found --> CUT
     H -- "not found" --> IGN
     CUT --> G{"any cut?"}
     G -- no --> FB["fallback: one chapter per file"]
-    G -- yes --> HF["also cut at every file that opens<br/>with &lt;h1&gt;-&lt;h3&gt; (missing from the TOC)"]
+    G -- yes --> HF["also cut at every file that opens<br/>with &lt;h1&gt;-&lt;h3&gt; (missing from the TOC),<br/>except files the TOC labels front matter"]
     HF --> R["text before first cut, contents pages,<br/>front-matter titles, Bibliography / References / Index<br/>→ removed (in report)<br/>short part headings → read with next chapter"]
     R --> W
     P --> W
