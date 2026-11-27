@@ -392,4 +392,27 @@ read in a row are meaningless as audio, and figure labels point at pictures the 
 **Consequences:** The Art of Game Design gives 38 chapters, and still 38 when its TOC is flattened; the only text removed is
 the Endnotes chapter and the 145 labels. Smart Notes and Counselling for Toads give the same chapters and text as before.
 A single-file book whose parts carry intro text (3 or more) is cut by part only, a deliberate under-split. In-text note
-references ("…as Jung showed.12") are still read aloud and now point at notes that are not read (NORM-11).
+references ("…as Jung showed.12") are still read aloud and now point at notes that are not read (NORM-11; removed by D-026).
+
+## D-026 Note-reference links are stripped from running text; cross-references stay
+Status: Accepted · Milestone: M3 · Extends PAR-07
+**Context:** With endnotes removed (D-025), reference numbers in the text point at notes nobody hears, and Kokoro reads
+them as numbers ("…the scientific community. two. It was…"). The parser already dropped `<sup>` markers, but Calibre
+books style the marker with a class instead: Smart Notes has 58 plain `<a><span>2</span></a>` links, some with a space
+before them, some glued ("hear.9"). The same kind of link is also a real cross-reference: The Art of Game Design
+writes "(Chapters 9 through 11, 24, 25, and 33)" with each number linked. Neither spacing nor the link target separates
+them (Calibre points both at page markers).
+**Decision:** In `clean_body`, a link is removed when its text is only a 1–3 digit number (optionally in brackets) or a
+note symbol (`*`, `†`, `‡`, `§`), and all of these hold:
+- it is not an external link (`http`, `mailto`) and not an index locator;
+- it sits in running text, not alone on its line (a contents entry or page number);
+- the text just before it (up to 60 characters in the same block) does not end in a pointer word followed only by
+  numbers and connectors: "chapter(s)", "section", "part", "figure", "fig.", "table", "page", "p.", "pp.", "lens", "step",
+  "rule", "tip", "appendix", "volume", "no.", "number" or "#", with ",", "and", "or", "through", "to" or a dash between.
+Numbers that are plain text, not links ("SQ4R,8"), are left, since they can't be told apart from real numbers.
+**Why:** A pointer word is how prose introduces a number the listener should hear. A bare number after a sentence or
+word is a marker. The rule lives with the `<sup>` rule, so every EPUB path (cleaner, fallback, plain parsing) gets it.
+**Consequences:** Smart Notes loses exactly its 58 marker numbers (all checked by hand), and the footnote paragraphs
+inside its chapters lose their leading backlink number. The Art of Game Design and Counselling for Toads are unchanged.
+The footnote paragraphs themselves are still read in the middle of chapters (NORM-11). Unlinked plain-text markers
+remain, and a marker right after a pointer word ("…in figure.3") would be kept.
