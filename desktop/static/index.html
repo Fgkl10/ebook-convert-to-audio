@@ -79,7 +79,7 @@
         <input type="file" id="file" accept=".epub,.pdf,.txt" required>
         <label title="PDF only. Auto: OCR when the PDF is a scan. Always: OCR every page (garbled text layer, partly scanned book). Never: the PDF's own text only.">
           OCR <select id="ocr" disabled><option value="auto">Auto</option><option value="always">Always</option><option value="never">Never</option></select></label>
-        <label>Voice <select id="voice"></select></label>
+        <label>Voice <select id="voice"></select></label><button type="button" class="hear" data-for="#voice" title="Hear this voice">▶</button>
         <label>Speed <input id="speed" type="number" min="0.5" max="2" step="0.05" value="1" style="width:80px"></label>
         <label><input type="checkbox" id="auto"> Convert right after cleaning (skip review)</label>
         <button class="primary" type="submit" id="go">Clean</button>
@@ -92,7 +92,7 @@
       <h2>Convert a cleaned book</h2>
       <form id="stdform" class="card row">
         <input type="file" id="stdfile" accept=".epub" required>
-        <label>Voice <select id="stdvoice"></select></label>
+        <label>Voice <select id="stdvoice"></select></label><button type="button" class="hear" data-for="#stdvoice" title="Hear this voice">▶</button>
         <label>Speed <input id="stdspeed" type="number" min="0.5" max="2" step="0.05" value="1" style="width:80px"></label>
         <button class="primary" type="submit">Convert</button>
       </form>
@@ -114,7 +114,7 @@
     <h1 id="rvtitle" style="margin-top:14px"></h1>
     <div class="muted" id="rvmethod"></div>
     <div class="card row actions">
-      <label>Voice <select id="rvvoice"></select></label>
+      <label>Voice <select id="rvvoice"></select></label><button type="button" class="hear" data-for="#rvvoice" title="Hear this voice">▶</button>
       <label>Speed <input id="rvspeed" type="number" min="0.5" max="2" step="0.05" value="1" style="width:80px"></label>
       <button class="primary" id="rvapprove">Approve &amp; convert</button>
       <a id="rvdownload"><button type="button">Download .std.epub</button></a>
@@ -168,6 +168,21 @@ function showTab() {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.id === `tab-${tab}`));
 }
 addEventListener('hashchange', showTab);
+
+// ---------------- voice samples: ▶ next to every Voice list plays ~5 s of that voice (D-031)
+const sampleAudio = new Audio();
+let sampleBtn = null;
+const resetSample = () => { if (sampleBtn) sampleBtn.textContent = '▶'; sampleBtn = null; };
+sampleAudio.onended = resetSample;
+document.querySelectorAll('.hear').forEach(btn => btn.onclick = async () => {
+  const playing = sampleBtn === btn;
+  sampleAudio.pause(); resetSample();
+  if (playing) return;  // a second click stops it
+  sampleBtn = btn; btn.textContent = '…';  // the first sample of a session also loads the model (~10 s)
+  sampleAudio.src = `/api/voices/${$(btn.dataset.for).value}/sample`;
+  try { await sampleAudio.play(); if (sampleBtn === btn) btn.textContent = '■'; }
+  catch (e) { resetSample(); alert('Could not play the voice sample.'); }
+});
 const goTab = (tab) => { show('#home'); location.hash = tab; showTab(); };
 
 async function loadBooks() {

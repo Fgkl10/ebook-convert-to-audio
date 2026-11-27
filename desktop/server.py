@@ -25,7 +25,7 @@ from pathlib import Path
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
-from .build import ROOT, build_book
+from .build import ROOT, build_book, encode_m4a
 from .normalize import OCR_MODES, normalize, write_std_epub
 from .parse import load_book
 from .tts import DEFAULT_VOICE, VOICES
@@ -221,6 +221,7 @@ class Jobs:
         self.jobs: dict[str, dict] = {}
         self.queue: "queue.Queue[str]" = queue.Queue()
         self.lock = threading.Lock()
+        self.model_lock = threading.Lock()
         self.tts = None
         threading.Thread(target=self._worker, daemon=True).start()
 
@@ -240,15 +241,19 @@ class Jobs:
             return [{k: v for k, v in j.items() if not k.startswith("_")} for j in
                     sorted(self.jobs.values(), key=lambda j: j["created"], reverse=True)]
 
-    def _get_tts(self, voice: str, speed: float):
-        from .tts import KokoroTTS
+    def model(self):
+        """The one TTS model, loaded on first use and kept (it speaks both voice languages, D-031)."""
+        with self.model_lock:  # not self.lock: loading takes ~10 s and must not block the job list
+            if self.tts is None:
+                from .tts import KokoroTTS
 
-        # Reuse the loaded model when the language (a/b) matches; voices are swapped per call.
-        if self.tts is None or self.tts.voice[0] != voice[0]:
-            self.tts = None
-            self.tts = KokoroTTS(voice=voice, speed=speed)
-        self.tts.voice, self.tts.speed = voice, speed
-        return self.tts
+                self.tts = KokoroTTS()
+            return self.tts
+
+    def _get_tts(self, voice: str, speed: float):
+        tts = self.model()
+        tts.voice, tts.speed = voice, speed  # only the conversion worker sets these; samples pass their own
+        return tts
 
     def _worker(self) -> None:
         while True:
@@ -488,6 +493,26 @@ def approve(draft_id: str, voice: str = Form(DEFAULT_VOICE), speed: float = Form
 def delete_draft(draft_id: str) -> dict:
     drafts.delete(draft_id)
     return {"ok": True}
+
+
+SAMPLES = ROOT / "cache" / "voice-samples"
+SAMPLE_TEXT = "Hello! This is how I sound when I read your books aloud. I hope you enjoy listening."
+_sample_lock = threading.Lock()
+
+
+@app.get("/api/voices/{voice}/sample")
+def voice_sample(voice: str) -> FileResponse:
+    """About 5 s of the voice reading one fixed sentence; made once, then served from cache/voice-samples/."""
+    if voice not in VOICES:
+        raise HTTPException(404, "No such voice")
+    digest = hashlib.sha1(SAMPLE_TEXT.encode()).hexdigest()[:8]
+    path = SAMPLES / f"{voice}-{digest}.m4a"
+    with _sample_lock:  # two first clicks must not make the same file at once
+        if not path.exists():
+            SAMPLES.mkdir(parents=True, exist_ok=True)
+            audio = jobs.model().synth(SAMPLE_TEXT, voice=voice, speed=1.0)
+            encode_m4a(audio, path)
+    return FileResponse(path, media_type="audio/mp4")
 
 
 @app.get("/api/jobs")

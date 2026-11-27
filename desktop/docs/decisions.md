@@ -502,3 +502,20 @@ detection gets wrong. Keeping all text when no heading is found follows "rather 
 marker check keeps the D-019 rule that only cleaned books are converted.
 **Consequences:** `always` on a long text PDF costs OCR time (about 0.5 s a page on the GPU) and may read worse than
 its text layer. A PDF that is only partly scanned still has no mixed mode: it is all OCR or all text layer.
+
+## D-031 One TTS model for both voice languages; cached voice samples
+Status: Accepted · Milestone: M3
+**Context:** The user wants to hear each voice before choosing one. A sample needs the TTS model, which may be busy
+with a conversion in the other voice language; before, the server reloaded the whole model whenever the language
+(American a / British b) changed, which would also break a running conversion.
+**Decision:** `KokoroTTS` loads one `KModel` and makes a `KPipeline` per language on first use, passing the model in.
+`synth(text, voice=None, speed=None)` runs under a lock, so a sample is made between two sentences of a conversion and
+passes its own voice instead of changing the conversion's. `Jobs.model()` loads it once, under its own lock (not the
+job-list lock, so loading never freezes the progress display). `GET /api/voices/{voice}/sample` reads one fixed
+made-up sentence (~5 s), encodes it with `encode_m4a` into `cache/voice-samples/<voice>-<sha1(text)[:8]>.m4a` once,
+and serves the file afterwards. The page has a ▶ button next to every Voice list.
+**Why:** Sharing the model keeps one copy on the GPU and makes language switches free. Caching makes every later
+click instant. The text hash in the file name means changing the sentence makes new samples without manual cleanup.
+**Consequences:** The first ▶ of a session waits for the model to load (~10 s), and the first sample of each voice
+~4 s (it downloads the voice file into `models/`). During a conversion a sample waits for the current sentence.
+Samples are never deleted automatically (about 50 kB each).
