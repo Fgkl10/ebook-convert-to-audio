@@ -37,6 +37,9 @@ flowchart LR
     MDNS["zeroconf<br/>_ebookaudio._tcp"]
 
     NORM["normalize.py<br/>clean → .std.epub"]
+    SCAN["scanned.py<br/>rebuild chapters from OCR"]
+    OCRM["ocr.py<br/>scan detection, gutter split,<br/>docTR (optional)"]
+    NORM -- "scanned PDF" --> SCAN --> OCRM
     REVIEW(["you: review .std.epub<br/>(CLI only)"])
     NORM --> REVIEW --> CLI
     SRV -- "auto, no review" --> NORM
@@ -64,7 +67,9 @@ flowchart LR
 |---|---|---|
 | `parse.py` | Read EPUB / PDF / TXT (`.md` too) into a uniform `Book` of `Chapter`s. Chapter text is one paragraph per line. Drops chapters under 40 chars. Skips EPUB front matter (cover, title, half title, copyright, contents) using the book's labels, its OPF guide, or exact titles. Extracts the cover. | `load_book(path) -> Book` |
 | `segment.py` | Split chapter text into paragraphs of sentences (pysbd). Splits sentences over 350 chars at soft breaks. Attaches punctuation-only fragments to the previous sentence. | `split_text(text) -> list[list[str]]` |
-| `normalize.py` | Cleans a book into a standard EPUB: one XHTML file per chapter, with title, author, language, cover and the markers `ebook-audio:normalized` + `ebook-audio:source-sha1`. For EPUB it confirms TOC / contents-page entries against headings in the text and cuts there, dropping front matter, contents pages, bibliography and index. PDF/TXT are repackaged as parsed. It writes a report of chapters, removed text and ignored TOC entries. | `normalize(source, out, ignore_language) -> (path, Report)` |
+| `normalize.py` | Cleans a book into a standard EPUB: one XHTML file per chapter, with title, author, language, cover and the markers `ebook-audio:normalized` + `ebook-audio:source-sha1`. For EPUB it confirms TOC / contents-page entries against headings in the text and cuts there, dropping front matter, contents pages, bibliography and index. PDF/TXT are repackaged as parsed, and scanned PDFs are rebuilt from OCR (`scanned.py`). It writes a report of chapters, removed text, ignored TOC entries and notes (answer placement, words to check). | `normalize(source, out, ignore_language, progress) -> (path, Report)` |
+| `ocr.py` | Detects scanned PDFs (nearly every page one full-page image), renders pages at 200 dpi, splits two-page scans at the gutter, and runs docTR on each book page. docTR is optional (`requirements-ocr.txt`) and imported only here, so CI and text books never need it; a missing install raises `ValueError` with the install command. Frees the GPU after OCR. | `is_scanned(path)`, `split_spread(img)`, `ocr_pdf(path, progress) -> (pages, cover)`, `make_engine()` (tests replace it) |
+| `scanned.py` | Pure functions that turn OCR lines (`Line` of `Word`s with boxes) into chapters: strips running headers, page numbers and the back cover; builds paragraphs from indents, gaps and numbered items; joins drop caps and hyphenated breaks; cuts chapters at headings confirmed by the contents page; places quiz answers after each question when the numbering allows (D-022). Returns notes for the report. | `rebuild(pages) -> ScanResult`, `load_scanned_pdf(path, progress) -> (Book, ScanResult)` |
 | `language.py` | Refuses books whose text isn't in a language the voices speak (English today), judged from the share of English function words in text sampled across the book. Metadata is only a hint. Called by `build_book` before TTS loads. | `check_language(book)`, `english_score(book)` |
 | `tts.py` | Wrapper around Kokoro-82M. One call per sentence, mono float32 at 24 kHz. Uses CUDA when available. | `KokoroTTS(voice, speed).synth(text)`, `VOICES`, `SAMPLE_RATE` |
 | `build.py` | Orchestrates the pipeline: plan, synthesize (cached), stitch with silence gaps, compute timestamps, encode m4a with ffmpeg, write `book.json` after each chapter. | `build_book(source, out_root, voice, speed, progress, tts) -> Path` |
@@ -146,3 +151,6 @@ Book IDs are validated against `^[a-z0-9\-]{1,80}$` and file names reject `/`, `
 Python 3.10–3.12, PyTorch (CUDA build recommended), `kokoro`, `ebooklib`, `beautifulsoup4`, `lxml`,
 `pymupdf`, `pysbd`, `fastapi`, `uvicorn`, `python-multipart`, `zeroconf`, `qrcode`, and
 **ffmpeg on PATH**.
+
+Optional, for scanned PDFs only: `python-doctr` from `requirements-ocr.txt`, which pins torch/torchvision to
+the CUDA build so the TTS keeps the GPU (D-021). It is not in `requirements-ci.txt`; the tests use a fake engine.

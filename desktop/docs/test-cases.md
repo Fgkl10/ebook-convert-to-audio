@@ -46,7 +46,7 @@ starts passing, pytest reports XPASS as a failure, and you remove the marker and
 | PAR-10 | PDF without outline | A 40-page PDF with no outline | Chapters "Pages 1–15", "Pages 16–30", "Pages 31–40" | Manual |
 | PAR-11 | PDF cleanup | A PDF with hyphenated line breaks and bare page numbers | Words are de-hyphenated and page numbers removed | Manual |
 | PAR-12 | Unsupported type | `load_book("x.docx")` | `ValueError: Unsupported file type` | Manual |
-| PAR-13 | No readable text | A scanned image-only PDF / an EPUB with no text | `ValueError: No readable text found` | EPUB: Automated `test_par13_epub_without_text_raises`; PDF: Manual |
+| PAR-13 | No readable text | A scanned image-only PDF / an EPUB with no text | `load_book` raises `ValueError: No readable text found`. `normalize` reads scanned PDFs with OCR instead (SCAN-*) | EPUB: Automated `test_par13_epub_without_text_raises`; PDF: Manual |
 | PAR-14 | Short chapters dropped | A chapter with fewer than 40 chars | The chapter is removed | Automated `test_par14_short_pages_dropped` |
 | PAR-15 | EPUB front matter skipped | An EPUB whose cover, title page, half title, copyright page or contents is (a) labelled with `epub:type` / `role` on a page-level element, (b) listed in the OPF `<guide>`, or (c) whose TOC entries are all titled exactly "Copyright", "Contents", "Table of Contents", "Title Page" or "Half Title" | Those pages are not chapters. A half title holding a blurb is skipped too. The `samples/` book goes from 20 chapters (2,706 sentences) to 16 (2,654), starting at "1 Mole finds Toad…" (D-016) | Automated `test_par15_front_matter_not_spoken`, `test_par15_front_matter_from_opf_guide` |
 | PAR-17 | Front-matter detection doesn't over-skip | A preface labelled `preface`, a chapter with `epub:type="pagebreak"` spans, chapters titled "Copyright Law" / "Contents of the Heart", a book with no labels, and single-file books where front matter shares the file with chapter 1 (labelled section; first TOC anchor "Title Page"; guide entry on the file while the TOC points to `#c1`) | All real chapters are kept with their real titles. Only labelled sections are removed from a mixed file. Title matching is exact, and books without labels parse exactly as before | Automated `test_par15_preface_and_pagebreak_chapters_kept`, `test_par15_front_matter_from_opf_guide`, `test_par15_unlabelled_book_unchanged`, `test_par17_single_file_book_keeps_chapters[labelled/toc-title/guide]` |
@@ -62,7 +62,7 @@ starts passing, pytest reports XPASS as a failure, and you remove the marker and
 | NORM-03 | Round trip and idempotent | Clean, read back, clean the `.std.epub` again | Read-back equals the report. A second run changes nothing. Title and author kept | Automated `test_norm03_round_trip_and_idempotent` |
 | NORM-04 | Stable book id | Clean the same book twice | Original and both `.std.epub` give the same `book_id` | Automated `test_norm04_book_id_stable_across_runs` |
 | NORM-05 | Fallback | Book with no confirmable TOC | One chapter per file, same as the parser, and the report says fallback | Automated `test_norm05_no_confirmed_toc_falls_back_to_files` |
-| NORM-06 | TXT / PDF repackaged | A TXT; `samples/` Kokology PDF | `.std.epub` with the parsed chapters. PDF front-matter titles (Copyright, Contents) are removed and reported | TXT Automated `test_norm06_txt_repackaged`; PDF Manual (checked) |
+| NORM-06 | TXT / text PDF repackaged | A TXT; a PDF with a real text layer | `.std.epub` with the parsed chapters. PDF front-matter titles (Copyright, Contents) are removed and reported. Scanned PDFs go through OCR instead (SCAN-*) | TXT Automated `test_norm06_txt_repackaged`; text PDF Manual |
 | NORM-07 | Language refused before review | Hungarian TXT | `ValueError` and no `.std.epub` written. `ignore_language=True` writes it | Automated `test_norm07_language_refused_before_review` |
 | NORM-08 | CLI requires a cleaned file | `desktop.build raw.epub --chapters 1`; `--list-chapters` on the raw file and on the `.std.epub` | Refused with the normalize command. Listing works on both | Automated `test_norm08_cli_build_refuses_uncleaned_book` |
 | NORM-09 | Real Calibre book | `samples/` How to Take Smart Notes | Preface, Introduction, 1 to 14, Afterword, Appendix, with no bibliography or fake index. `--chapters 6` converts "4 A Few Things to Keep in Mind" (47 sentences, timestamps line up) | Manual (checked) |
@@ -74,6 +74,28 @@ starts passing, pytest reports XPASS as a failure, and you remove the marker and
 | NORM-16 | Cleaned file not overwritten | `normalize x.std.epub` with no `--out` | Report printed, file byte-identical, nothing written | Automated `test_norm16_std_epub_never_rewritten_in_place` |
 | NORM-17 | Edit in Sigil keeps the id | Open a `.std.epub` in Sigil, edit, save, list chapters | **Gap:** not verified that Sigil keeps the `ebook-audio:*` meta; if it drops them the CLI refuses the file | Manual (not yet run) |
 | NORM-12 | Prologue missing from the TOC | Real chapter before the first TOC entry | **Gap (accepted):** removed as front matter, but shown in the report for review | Gap |
+
+## Scanned PDF cleaner (`ocr.py`, `scanned.py`)
+
+All automated cases use made-up OCR lines and generated images (`tests/scan_factory.py`) and a fake OCR engine, so CI needs no docTR.
+
+| ID | Case | Steps / input | Expected | Status |
+|---|---|---|---|---|
+| SCAN-01 | Margins and back cover | Quiz book with running headers (one split by OCR: "W ORD GAME"), page numbers, contents page numbers, a back cover without a page number | Headers and page numbers removed, title page and contents numbers kept, the back cover removed and reported | Automated `test_scan01_margins_and_back_cover_removed` |
+| SCAN-02 | Paragraph rebuild | Drop cap "T he" with the next line indented around it, "mo-"/"mentary", "self-"/"confidence" with and without an unbroken form in the book, "SO" in lowercase text, "1.0n", a choice wrapped with a hanging indent | "The path…", "momentary", hyphen kept only when the book spells it unbroken, "so", item 1 found, choice joined | Automated `test_scan02_paragraph_rebuild`, `test_scan02_hyphen_kept_when_book_spells_it_unbroken`, `test_scan02_ocr_number_glitch` |
+| SCAN-03 | Chapters from the contents page | Contents entry glued by OCR ("A MORNINGWALK"), a "KEY TO" heading wrapped over two lines, a contents entry with no heading | Chapters match the contents. The key heading is not a chapter and is spoken as "Key to The Lost Key". The missing entry is reported | Automated `test_scan03_chapters_confirmed_by_contents_page`, `test_scan03_unmatched_contents_entry_reported` |
+| SCAN-04 | Answers after each question | Quiz with questions 1–3 and key answers 1–3 | Intro, Q1, Key to …, key intro, A1, Q2, A2, Q3, A3, with a note in the report | Automated `test_scan04_answers_after_each_question` |
+| SCAN-05 | Multiple choice keeps book order | Numbered choices, two of them quoted questions | All choices, then the key heading, then the answers | Automated `test_scan05_multiple_choice_keeps_book_order` |
+| SCAN-06 | Numbering mismatch keeps book order | Key with answer 2 missing | Book order, with the reason in the report | Automated `test_scan06_mismatched_numbers_keep_book_order` |
+| SCAN-07 | Title case | "YOU'RE ONLY HUMAN", "(NOT So) HAPPILY EVER AFTER", "A NIGHT AT THE SYMPHONY" | "You're Only Human", "(Not So) Happily Ever After", "A Night at the Symphony" | Automated `test_scan07_title_case` |
+| SCAN-08 | Gutter split | Spread with an off-centre gutter at 44%; single page | Cut inside the gutter with no text sliced; a single page is not split | Automated `test_scan08_gutter_split_off_centre` |
+| SCAN-09 | Scan detection | Image-only PDF; PDF with a real text layer | Scanned / not scanned | Automated `test_scan09_scan_detection` |
+| SCAN-10 | End to end | `normalize` on a generated scanned PDF with the fake engine | `.std.epub` with metadata title, cover, chapters and interleaved answers; report shows the OCR method and notes | Automated `test_scan10_normalize_scanned_pdf` |
+| SCAN-11 | Language check on OCR text | Scanned PDF whose OCR text is Hungarian | Refused before any file is written | Automated `test_scan11_language_checked_on_ocr_text` |
+| SCAN-12 | OCR not installed | Scanned PDF without docTR | `ValueError` naming `requirements-ocr.txt` | Automated `test_scan12_missing_ocr_package_explains_install` |
+| SCAN-13 | Real scanned book | `samples/` Kokology PDF with docTR on the GPU | 55 chapters, all contents titles confirmed, 13 quizzes with answers after each question, contents/front matter/back cover removed; `--chapters 4` (A Desert Journey) converts with timestamps lining up | Manual (checked, about 40 s of OCR) |
+| SCAN-14 | OCR install keeps the TTS working | `pip install --dry-run -r requirements-ocr.txt`; Kokoro synth with huggingface_hub 1.33 | torch stays 2.6.0+cu124; Kokoro synthesizes | Manual (checked) |
+| SCAN-15 | OCR text errors | Words glued by OCR ("ofpressure"), quote marks read as "1", big first letters not read at all ("ne day") | **Gap:** read as OCR wrote them; missed first letters are listed in the report as "check the first word" | Gap |
 
 ## Language check (`language.py`)
 

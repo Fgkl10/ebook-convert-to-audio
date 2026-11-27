@@ -24,8 +24,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .language import check_language
+from .ocr import is_scanned
 from .parse import (MIN_CHAPTER_CHARS, Book, Chapter, _FRONT_MATTER_GUIDE, _is_front_matter_title, body_blocks,
                     clean_body, load_book, parse_html)
+from .scanned import load_scanned_pdf
 
 MARKER = "ebook-audio:normalized"
 SOURCE_HASH = "ebook-audio:source-sha1"
@@ -55,6 +57,7 @@ class Report:
     chapters: list[tuple[str, int]] = field(default_factory=list)  # (title, characters)
     removed: list[tuple[str, str]] = field(default_factory=list)  # (reason, first 80 chars)
     unconfirmed: list[str] = field(default_factory=list)  # TOC entries with no matching heading
+    notes: list[str] = field(default_factory=list)  # decisions and things to check by hand
 
     def remove(self, reason: str, blocks: list[Block]) -> None:
         text = " ".join(b.text for b in blocks).strip()
@@ -68,6 +71,8 @@ class Report:
         if self.unconfirmed:
             out += ["", f"TOC entries ignored, no matching heading in the text ({len(self.unconfirmed)}):"]
             out += [f"  {t[:80]!r}" for t in self.unconfirmed]
+        if self.notes:
+            out += ["", f"Notes ({len(self.notes)}):"] + [f"  {n}" for n in self.notes]
         return "\n".join(out) + "\n"
 
 
@@ -336,21 +341,35 @@ def write_std_epub(book: Book, out: Path, source_hash: str) -> None:
     tmp.replace(out)
 
 
-def normalize(source: str | Path, out: str | Path | None = None, ignore_language: bool = False) -> tuple[Path, Report]:
-    """Write a standard EPUB for source. Returns (path written, report). Raises ValueError."""
+def normalize(source: str | Path, out: str | Path | None = None, ignore_language: bool = False,
+              progress=None) -> tuple[Path, Report]:
+    """Write a standard EPUB for source. Returns (path written, report). Raises ValueError.
+    progress(done_pages, total_pages) is called while a scanned PDF is read with OCR."""
     source = Path(source)
     out_arg = out
     out = Path(out) if out else source.with_name(source.name.rsplit(".", 1)[0].removesuffix(".std") + ".std.epub")
-    book = load_book(source)  # metadata, cover, front matter rules, and the fallback chapters
+    report = Report(str(source))
+    scanned = source.suffix.lower() == ".pdf" and is_scanned(source)
+    if scanned:  # before load_book: an image-only scan has no text layer to load (D-021)
+        book, scan = load_scanned_pdf(source, progress)
+        report.removed += scan.removed
+        report.unconfirmed += scan.unconfirmed
+        report.notes += scan.notes
+    else:
+        book = load_book(source)  # metadata, cover, front matter rules, and the fallback chapters
     if not ignore_language:
         check_language(book)  # refuse before the user spends time reviewing
-    report = Report(str(source))
-    if book.normalized and out_arg is None:
+    if scanned:
+        report.method = ("scanned PDF read with OCR (docTR), each two-page scan split at the gutter; chapters "
+                         "cut at headings confirmed by the book's contents page (D-021, D-022)")
+    elif book.normalized and out_arg is None:
         # Never rewrite a .std.epub in place: the user may have edited it in Sigil.
         report.method = "already a standard EPUB: nothing written"
         report.chapters = [(c.title, len(c.text)) for c in book.chapters]
         return source, report
-    if book.normalized:
+    if scanned:
+        pass  # chapters already rebuilt from the OCR
+    elif book.normalized:
         report.method = "already a standard EPUB: chapters kept as they are"
     elif source.suffix.lower() == ".epub":
         chapters = _normalize_epub(source, report)
@@ -383,8 +402,14 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--out", help="output path (default: <name>.std.epub next to the source)")
     ap.add_argument("--ignore-language", action="store_true", help="skip the English check")
     args = ap.parse_args(argv)
+
+    def progress(done: int, total: int) -> None:
+        sys.stderr.write(f"\rReading scanned pages with OCR: {done}/{total}")
+        if done == total:
+            sys.stderr.write("\n")
+
     try:
-        out, report = normalize(args.source, args.out, args.ignore_language)
+        out, report = normalize(args.source, args.out, args.ignore_language, progress)
     except ValueError as e:
         sys.exit(f"error: {e}")
     print(report.render())

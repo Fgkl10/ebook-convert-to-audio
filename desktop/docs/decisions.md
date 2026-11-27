@@ -67,6 +67,7 @@ separators that would become near-empty chapters.
 normalizer writes exactly one XHTML file per chapter. Format-specific chapter heuristics live only in `parse.py`:
 - EPUB: chapters follow the spine, with front matter skipped (D-016). Titles come from the TOC, then the first heading.
 - PDF: chapters come from the level-1 outline, falling back to 15-page parts. The cover is a render of page 1.
+  Scanned PDFs skip this: `normalize` rebuilds them from OCR (D-021, D-022).
 - TXT: chapters come from heading lines ("Chapter N", "Part", "Prologue", …), falling back to ~20k-char parts. The encoding is tried as UTF-8, UTF-16, cp1252, then latin-1.
 
 ## D-006 One m4a per chapter, AAC 64 kbps mono, faststart
@@ -258,3 +259,43 @@ and Counselling for Toads comes out identical (16 chapters, same text).
 **Consequences:** Text before the first confirmed chapter is removed as front matter, so a prologue missing from
 the TOC would be dropped, though it is shown in the report. Footnote texts inside chapters are still read aloud. An empty file
 (only labelled front matter) is skipped, so a TOC entry for it can't borrow the next file's start.
+
+## D-021 Scanned PDFs are read with docTR, an optional dependency, one book page at a time
+Status: Accepted · Milestone: M3
+**Context:** The Kokology PDF is a scan of two-page spreads with an Acrobat text layer. That layer misreads
+headings ("KEY TO S\\'EET ~1El\\IORIES"), drops every big first letter ("he eyes" for "The eyes"), reads "1." as
+"I." and garbles running headers. Images can't be read at all without OCR.
+**Decision:** A PDF whose pages are nearly all one full-page image (≥80% of pages, image ≥85% of the page) is OCRed,
+even when it has a text layer. Pages are rendered at 200 dpi. A scan wider than 1.15× its height is split at the
+gutter, the widest ink-free column band in the middle 30%, not at the exact centre. docTR 1.0.1 reads each book
+page on the GPU, and the model is freed before the TTS loads. docTR lives in `requirements-ocr.txt`, which pins
+`torch==2.6.0+cu124` and `torchvision==0.21.0+cu124`. Without the pins pip would install the newest CPU torch.
+It downgrades `huggingface_hub` 2.5 to 1.33, which transformers (≥1.31) and Kokoro accept; checked by
+synthesizing with Kokoro against hub 1.33. The language check runs on the OCR text.
+**Why:** The user compared three options on 3 real pages: the Acrobat layer, docTR, and EasyOCR. docTR got the headings,
+numbers, drop caps, punctuation and line breaks right, at under 2 s per scan on an RTX 4060. EasyOCR turned
+periods into ":" and ";" and merged paragraphs, which hurts sentence splitting and pauses. Surya 0.24 calls a
+server by default, so it isn't local. The centre split cut words on page 87 ("you see t" / "rector"). The gutter split
+reads them whole. Keeping OCR optional is a deliberate exception to D-013's "add new imports to both
+requirements files". About 15 packages for one kind of book don't belong in every install or in CI.
+**Consequences:** Reading the whole 90-page Kokology takes about 40 s. The first run downloads about 100 MB of models.
+OCR errors remain in the text: glued words ("ofpressure"), a stray "1" for a quote mark, and big first letters that
+docTR misses entirely ("ne day", "a ot"). The report flags each chapter whose first word looks like a missed big
+first letter, for review in Sigil. A scan without a contents page falls back to one chapter per heading in capitals.
+
+## D-022 Quiz answers are read right after each question when the book numbers both the same
+Status: Accepted · Milestone: M3
+**Context:** In Kokology each quiz is followed by a "KEY TO …" section with the answers. Read in book order, the
+listener hears all the questions and then all the answers. The user asked for each answer right after its
+question, and otherwise for a reading experience the same as the book ("follow the book exactly as written").
+Measured on all 55 chapters, about 13 quizzes ask numbered questions that the key answers with the same numbers.
+Most others number the choices of a single question ("1. The bird turns white."), and some have no numbers.
+**Decision:** The rule is applied only when the quiz items and the key items are both numbered 1..n (n ≥ 2), and at least half
+of the quiz items contain a "?" outside quoted speech. Then the order is: intro, Q1, the "Key to …" heading as printed,
+the key's theme paragraph, A1, Q2, A2, and so on. Everything else keeps book order. The report records which rule each chapter
+got and why ("multiple choice", "no numbered questions", "question and answer numbers differ").
+**Why:** Choices like '"Isn't that a beautiful picture?"' are quoted, so the quote rule keeps them as choices.
+Interleaving choices with their answers would give the answer away before all the choices are read. When OCR loses an item
+number, the numbers differ and the chapter falls back to book order, which is always safe.
+**Consequences:** A quiz whose numbering OCR damaged keeps book order instead of interleaving, and the report shows it.
+The key heading is spoken once, before the theme paragraph, as the user preferred ("before answer 1").

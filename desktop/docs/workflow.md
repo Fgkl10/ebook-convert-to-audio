@@ -6,11 +6,14 @@ The CLI only converts cleaned files (`.std.epub`). The web UI cleans automatical
 
 ```mermaid
 flowchart TD
-    A([book.epub / .pdf / .txt]) --> L["load_book() for metadata, cover,<br/>labelled front matter"]
+    A([book.epub / .pdf / .txt]) --> SC{scanned PDF?}
+    SC -- yes --> OCR["OCR rebuild (section 0b)"] --> LANG
+    SC -- no --> L["load_book() for metadata, cover,<br/>labelled front matter"]
     L --> LANG{English?}
     LANG -- no --> X([refused: error names metadata language<br/>--ignore-language to override])
     LANG -- yes --> F{format}
-    F -- "PDF / TXT" --> P["repackage parsed chapters"]
+    F -- "text PDF / TXT" --> P["repackage parsed chapters"]
+    F -- "scanned PDF" --> W
     F -- EPUB --> B["flatten spine into text blocks<br/>map every id anchor to a block<br/>mark contents pages (≥5 short all-link paragraphs)"]
     B --> C["candidates = navigation TOC + contents-page links<br/>drop N.M subsections when chapter N exists"]
     C --> D{"plausible title?<br/>≤120 chars, ≥3 letters, capital first,<br/>no glued footnote number"}
@@ -30,6 +33,32 @@ flowchart TD
     W -.- KEEP["input already .std.epub, no --out:<br/>report only, nothing written"]
     W --> REV(["you: open in a reader, check chapters,<br/>fix in Sigil if needed"])
     REV --> BUILD(["python -m desktop.build &lt;name&gt;.std.epub"])
+```
+
+Before `load_book`, a PDF whose pages are nearly all one full-page image is treated as a scan
+and read with OCR (section 0b). The language check then runs on the OCR text.
+
+## 0b. Scanned PDF: OCR and rebuild (`ocr.py`, `scanned.py`, D-021/D-022)
+
+```mermaid
+flowchart TD
+    S([scanned PDF]) --> D{"≥80% of pages are one image<br/>covering ≥85% of the page?"}
+    D -- no --> T(["text PDF: load_book() as before"])
+    D -- yes --> E{"docTR installed?<br/>(requirements-ocr.txt)"}
+    E -- no --> ERR(["ValueError with the install command"])
+    E -- yes --> R["render each page at 200 dpi"]
+    R --> G["two-page scan? split at the widest<br/>ink-free column band near the middle (gutter)"]
+    G --> O["docTR on each book page (GPU)<br/>→ lines of words with boxes"]
+    O --> FREE["free the OCR model and GPU memory"]
+    FREE --> M["remove page numbers, running headers<br/>(repeated, or a chapter title in the top margin)<br/>and pages after the last page number (back cover)"]
+    M --> C["contents titles = capitals on pages headed CONTENTS<br/>(contents pages are then removed)"]
+    C --> P["paragraphs: new at an indent, a gap or 'N.'<br/>join drop caps ('T he' → 'The') and hyphenated breaks<br/>headings = capitals at the top of a page"]
+    P --> H["cut chapters at headings that fuzzy-match a contents<br/>title, in order; 'KEY TO …' opens the answer part"]
+    H --> Q{"quiz items numbered 1..n in both parts<br/>and most items ask a question?"}
+    Q -- yes --> I["intro, Q1, Key to …, key intro, A1, Q2, A2, …"]
+    Q -- no --> BO["book order: quiz, Key to …, answers"]
+    I --> W
+    BO --> W["write .std.epub + report<br/>(answer placement and 'check the first word' notes)"]
 ```
 
 ## 1. Convert a book (`build_book`)
