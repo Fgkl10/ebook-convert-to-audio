@@ -75,7 +75,7 @@ flowchart LR
 | `scanned.py` | Pure functions that turn OCR lines (`Line` of `Word`s with boxes) into chapters: strips running headers, page numbers and the back cover; builds paragraphs from indents, gaps and numbered items; joins drop caps and hyphenated breaks (keeping the hyphen of a compound such as 'good-luck'); fixes clear OCR word errors ('ofthe', 'SO', a quote mark read as '1', D-023); cuts chapters at headings confirmed by the contents page; places quiz answers after each question when the numbering allows (D-022). Returns notes for the report. | `rebuild(pages, lex) -> ScanResult`, `paragraphs(pages, lex, fixes)`, `load_scanned_pdf(path, progress) -> (Book, ScanResult)` |
 | `words.py` | A yes/no English word check for the OCR fixes: the pronunciation dictionary shipped with Kokoro's G2P (misaki, ~216,000 entries) plus simple inflections ('berries', 'makes'), possessives and hyphenated compounds. Never suggests a replacement. Empty when misaki is not installed (CI), which turns the dictionary fixes off. | `load_lexicon() -> Lexicon`, `Lexicon.knows(word)` |
 | `language.py` | Refuses books whose text isn't in a language the voices speak (English today), judged from the share of English function words in text sampled across the book. Metadata is only a hint. Called by `build_book` before TTS loads. | `check_language(book)`, `english_score(book)` |
-| `tts.py` | Wrapper around Kokoro-82M. One call per sentence, mono float32 at 24 kHz. Uses CUDA when available. | `KokoroTTS(voice, speed).synth(text)`, `VOICES`, `SAMPLE_RATE` |
+| `tts.py` | Wrapper around Kokoro-82M. One model on the GPU with one text pipeline per voice language (a/b) sharing it; `synth` is locked so a voice sample can run between two sentences of a conversion (D-031). One call per sentence, mono float32 at 24 kHz. Uses CUDA when available. | `KokoroTTS(voice, speed).synth(text, voice=None, speed=None)`, `VOICES`, `SAMPLE_RATE` |
 | `build.py` | Orchestrates the pipeline: plan, synthesize (cached), stitch with silence gaps, compute timestamps, encode m4a with ffmpeg, write `book.json` after each chapter. | `build_book(source, out_root, voice, speed, progress, tts) -> Path` |
 | `server.py` | REST API; drafts on disk with a clean worker (upload → `normalize` → review), a separate single-worker conversion queue for approved books (D-029); static web UI, mDNS advertisement, QR code for the LAN URL. | FastAPI `app`, `Drafts`, `Jobs`, `advertise()` |
 | `static/index.html` | Single-page UI with three tabs (D-030): **Clean** (upload with OCR mode, clean or clean & convert, "Cleaning & review" list), **Convert** (upload a cleaned `.std.epub`, approved books, conversion progress), **Library**. Also: review page (check-by-hand list, chapters and their text, removed parts, approve / Sigil download and upload / discard), conversion progress, library grid, reader with sentence highlighting and tap-to-seek. | served at `/` |
@@ -91,6 +91,7 @@ library/<book_id>/          book_id = <title-slug, max 40 chars>-<sha1(original 
     cover.<ext>             optional
 models/huggingface/         Kokoro-82M (HF_HOME), downloaded on first use (D-028)
 models/doctr/               docTR OCR models (DOCTR_CACHE_DIR), downloaded on first use
+cache/voice-samples/<voice>-<sha1(text)[:8]>.m4a  ~5 s sample per voice, made on first ▶ click and kept
 cache/<book_id>/<sha1>.npy  per-sentence audio, key = sha1("voice|speed|text"); deleted when the book completes
 drafts/<id>/                one per book uploaded through the server (D-029); removed by Discard
     <name>.<ext>            the upload, under its own sanitized name (stem capped at 80 chars: Windows path limit)
@@ -157,6 +158,7 @@ Invariants:
 | `POST /api/drafts/{id}/std.epub` | Upload an edited `.std.epub` (multipart `file`); 400 if unreadable |
 | `POST /api/drafts/{id}/approve` | Form `voice`, `speed` → `{job_id}`; 409 unless the draft is in review or done |
 | `DELETE /api/drafts/{id}` | Discard a draft and its files; 409 while cleaning or converting |
+| `GET /api/voices/{voice}/sample` | ~5 s m4a of the voice reading a fixed sentence (made once, then cached); 404 for an unknown voice |
 | `GET /api/jobs` | All conversion jobs (queued/running/done/error, progress, `draft_id`) |
 
 Book and draft IDs are validated against `^[a-z0-9\-]{1,80}$` (a draft id must also be a known draft), and file
@@ -166,7 +168,8 @@ names reject `/`, `\`, and a leading `.` (path-traversal guard).
 - Two background daemon threads, each draining its own `queue.Queue`: the clean worker (`Drafts`) and the
   conversion worker (`Jobs`). Cleaning a new book never waits for a conversion; conversions run one at a time
   (one TTS model in memory). docTR is freed after OCR, so both fit on the GPU.
-- The loaded `KokoroTTS` is reused across jobs while the voice language prefix (`a`/`b`) is unchanged.
+- One `KokoroTTS` is loaded on first use (`Jobs.model()`, its own lock) and kept for every job and voice sample, in
+  both voice languages. Only the conversion worker sets its current voice; a sample passes its own.
 - Drafts are saved to `draft.json` on every change and reloaded at startup. Jobs live in memory only; a draft whose
   conversion was cut off by a restart goes back to review and resumes from the sentence cache when approved again.
 

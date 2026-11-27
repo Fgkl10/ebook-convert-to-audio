@@ -19,17 +19,24 @@ STORY = ("Chapter 1\n\nIt was a dark night. The wind howled loudly over the hill
          "Chapter 2\n\nMorning came at last. Everyone was relieved to see the sun.\n\n" + EN * 3)
 
 
+class RecordingTTS(FakeTTS):
+    """One shared model like KokoroTTS: synth(text, voice=None, speed=None), every call recorded."""
+
+    def __init__(self):
+        self.calls = []
+
+    def synth(self, text, voice=None, speed=None):
+        self.calls.append((voice or self.voice, text))
+        return super().synth(text)
+
+
 @pytest.fixture
 def api(tmp_path, monkeypatch):
     monkeypatch.setattr(build, "ROOT", tmp_path)
     monkeypatch.setattr(server, "LIBRARY", tmp_path / "library")
-    def fake_tts(voice, speed):
-        tts = FakeTTS()
-        tts.voice, tts.speed = voice, speed
-        return tts
-
+    monkeypatch.setattr(server, "SAMPLES", tmp_path / "samples")
     jobs = server.Jobs()
-    monkeypatch.setattr(jobs, "_get_tts", fake_tts)
+    jobs.tts = RecordingTTS()  # model() returns it; the real Kokoro is never loaded
     monkeypatch.setattr(server, "jobs", jobs)
     monkeypatch.setattr(server, "drafts", server.Drafts(tmp_path / "drafts"))
     return TestClient(server.app)
@@ -171,6 +178,28 @@ def test_srv29_upload_cleaned_book_converts_directly(api, tmp_path):
         bad = api.post("/api/convert-std", files={"file": (name, data)})
         assert bad.status_code == 400 and "Clean page" in bad.json()["detail"], name
     assert len(api.get("/api/drafts").json()) == 2  # refused uploads leave no draft behind
+
+
+def test_srv30_voice_sample_made_once_and_cached(api):
+    tts = server.jobs.tts
+    r = api.get("/api/voices/bm_george/sample")
+    assert r.status_code == 200 and r.headers["content-type"] == "audio/mp4" and len(r.content) > 1000
+    assert tts.calls == [("bm_george", server.SAMPLE_TEXT)]
+    assert api.get("/api/voices/bm_george/sample").content == r.content
+    assert len(tts.calls) == 1  # the second click is served from the file
+    assert api.get("/api/voices/zz_nobody/sample").status_code == 404
+
+
+def test_srv31_sample_does_not_change_a_conversions_voice(api):
+    tts = server.jobs.tts
+    draft_id = _upload(api, "story.txt", STORY.encode())
+    _wait(api, draft_id, "review")
+    api.post(f"/api/drafts/{draft_id}/approve", data={"voice": "af_heart"})
+    api.get("/api/voices/bm_george/sample")  # while (or just before) the book converts
+    d = _wait(api, draft_id, "done")
+    assert api.get(f"/api/books/{d['book_id']}").json()["voice"] == "af_heart"
+    assert {v for v, text in tts.calls if text != server.SAMPLE_TEXT} == {"af_heart"}
+    assert tts.voice == "af_heart"  # the sample passed its own voice instead of setting the model's
 
 
 def test_srv10_language_refusal_is_a_draft_error(api):
