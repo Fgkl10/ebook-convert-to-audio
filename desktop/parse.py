@@ -88,6 +88,38 @@ def parse_html(html: bytes):
         return BeautifulSoup(html, "lxml")
 
 
+_NOTE_MARK = re.compile(r"\[?\d{1,3}\]?|[*†‡§]{1,3}")
+# A number right after one of these words is a cross-reference ("Chapters 9 through 11, 24, and 33",
+# "Figure 5", "page 12"), not a note: it stays.
+_POINTER = re.compile(r"(?:\b(?:chapters?|ch\.|sections?|parts?|figures?|figs?\.|tables?|pages?|pp?\.|lens(?:es)?|"
+                      r"steps?|rules?|tips?|appendix|appendices|volumes?|vol\.|nos?\.|numbers?)|#)"
+                      r"(?:[\s,()–\-]|\d|\band\b|\bor\b|\bthrough\b|\bto\b)*$", re.IGNORECASE)
+
+
+def _is_note_ref(a) -> bool:
+    """A link to a note: its text is only a short number or a note symbol, and it sits in running text
+    (not alone on its line, as a contents entry or page number is) without a pointer word before it."""
+    from bs4 import NavigableString
+
+    text = a.get_text(strip=True)
+    if not _NOTE_MARK.fullmatch(text) or a["href"].startswith(("http:", "https:", "mailto:")):
+        return False
+    if "index" in (a.get("epub:type") or ""):  # index locators: the index is removed as back matter anyway
+        return False
+    block = a.find_parent(["p", "li", "div", "td", "th", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote"])
+    if block is None or block.get_text(strip=True) == text:
+        return False
+    before = ""
+    for prev in a.previous_elements:
+        if isinstance(prev, NavigableString):
+            before = str(prev) + before
+            if len(before) > 60:
+                break
+        if prev is block:
+            break
+    return not _POINTER.search(before[-60:])
+
+
 def clean_body(html: bytes):
     """Parse one XHTML file and strip what is never read aloud. Returns the <body> (or None when the
     whole file is labelled front matter). Shared with normalize.py so both see the same text."""
@@ -105,6 +137,10 @@ def clean_body(html: bytes):
     for sup in soup.find_all("sup"):
         if sup.find("a") or sup.get_text(strip=True).isdigit():
             sup.decompose()
+    # The same markers without <sup> (Calibre styles them with a class): "…the community. 2 It was"
+    for a in soup.find_all("a", href=True):
+        if not a.decomposed and _is_note_ref(a):
+            a.decompose()
     for br in soup.find_all("br"):
         br.replace_with("\n")
     return body

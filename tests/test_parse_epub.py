@@ -44,6 +44,27 @@ def test_par07_footnote_markers_removed(novel):
     assert "Thunder rolled over" in text  # bare-digit <sup>2</sup> removed too
 
 
+def test_par07_note_links_without_sup_removed_cross_references_kept():
+    from desktop.parse import body_blocks, clean_body
+
+    html = ("<html><body>"
+            '<p>The mill stopped at noon. <a href="#page_3"><span class="c9">2</span></a> It was quiet.</p>'
+            '<p>Nobody came back<a href="notes.xhtml#n4">4</a>, not even the miller<a href="#n5">[5]</a>.</p>'
+            '<p><a href="#n2">2</a> A note at the end of the chapter, opening with its backlink.</p>'
+            '<p>See Chapters <a href="c9.xhtml">9</a> through <a href="c11.xhtml">11</a>, '
+            '<a href="c24.xhtml">24</a>, and <a href="c33.xhtml">33</a>, Figure <a href="#f5">5</a>, '
+            'page <a href="#p12">12</a> and Lens #<a href="#l3">3</a>.</p>'
+            '<p><a href="c12.xhtml">12</a></p>'  # a link alone on its line: a contents entry or page number
+            '<p>Read it at <a href="https://example.com/7">7</a> today.</p>'
+            "</body></html>").encode()
+    text = "\n".join(" ".join(lines) for _, lines in body_blocks(clean_body(html)))
+    assert "The mill stopped at noon. It was quiet." in text
+    assert "Nobody came back, not even the miller." in text
+    assert "\nA note at the end of the chapter" in text
+    assert "See Chapters 9 through 11, 24, and 33, Figure 5, page 12 and Lens #3." in text
+    assert "\n12\n" in text and "example.com" not in text and "at 7 today" in text
+
+
 def test_par08_cover_from_cover_item(novel):
     book = load_book(novel)
     assert book.cover == JPG_BYTES and book.cover_ext == ".jpg"

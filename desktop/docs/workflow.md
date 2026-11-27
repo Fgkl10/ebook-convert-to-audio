@@ -9,7 +9,7 @@ EPUBs are cut at confirmed headings, scanned PDFs are rebuilt from OCR (0b), and
 flowchart TD
     A([book.epub / .pdf / .txt]) --> SC{scanned PDF?}
     SC -- yes --> OCR["OCR rebuild (section 0b)"] --> LANG
-    SC -- no --> L["load_book() for metadata, cover,<br/>labelled front matter"]
+    SC -- no --> L["load_book() for metadata, cover,<br/>labelled front matter;<br/>note markers stripped (sup, number-only note links, D-026)"]
     L --> LANG{English?}
     LANG -- no --> X([refused: error names metadata language<br/>--ignore-language to override])
     LANG -- yes --> F{format}
