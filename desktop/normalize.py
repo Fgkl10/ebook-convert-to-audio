@@ -34,7 +34,28 @@ SOURCE_HASH = "ebook-audio:source-sha1"
 MAX_TITLE_CHARS = 120  # longer "titles" are sentences that leaked into the TOC
 MAX_JOIN = 3  # a heading may be split over this many consecutive lines ("THE SIX STEPS…" + "WRITING")
 MIN_CONTENTS_LINKS = 5  # a contents page has at least this many paragraphs linking into other files
-BACK_MATTER_TITLES = {"bibliography", "references", "index"}
+BACK_MATTER_TITLES = {"bibliography", "references", "index", "notes", "endnotes", "end notes", "footnotes"}
+_FIGURE_WORD = re.compile(r"(?:figure|fig\.?)", re.IGNORECASE)
+_FIGURE_NUMBER = re.compile(r"\d+(?:[.\-]\d+)*[a-z]?")
+_FIGURE_LABEL = re.compile(r"(?:figure|fig\.?)\s*\d+(?:[.\-]\d+)*[a-z]?[.:]?", re.IGNORECASE)
+
+
+def drop_figure_labels(text: str) -> tuple[str, int]:
+    """Remove lines that are only a figure label: 'Figure 2.1', or 'FIGURE' over '17.3a'. A label
+    followed by a caption or prose ('Figure 1.1 shows…') is left alone. Returns (text, labels removed)."""
+    lines = text.split("\n")
+    out: list[str] = []
+    removed = i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        if _FIGURE_WORD.fullmatch(line) and i + 1 < len(lines) and _FIGURE_NUMBER.fullmatch(lines[i + 1].strip()):
+            removed, i = removed + 1, i + 2
+        elif _FIGURE_LABEL.fullmatch(line):
+            removed, i = removed + 1, i + 1
+        else:
+            out.append(lines[i])
+            i += 1
+    return "\n".join(out), removed
 
 
 @dataclass
@@ -267,6 +288,41 @@ def _drop_subsections(entries: list[tuple[str, str]]) -> list[tuple[str, str]]:
             if not ((m := _NUMBER.match(t.strip())) and m.group(2) and m.group(1) in chapters)]
 
 
+def _h_level(tag: str) -> int | None:
+    return int(tag[1]) if re.fullmatch(r"h[1-6]", tag or "") else None
+
+
+def _short_title(text: str) -> str:
+    return text if len(text) <= 40 else text[:39] + "…"
+
+
+def _chapter_level(blocks: list[Block], starts: dict[int, str], opening: set[int]) -> int | None:
+    """The heading level (1 for <h1>…) that chapters use, or None when the cuts aren't on h-tags
+    (Calibre books style headings as <p>). A level counts only with 2+ cuts that carry real text,
+    so short part titles ('PART TWO') don't set it.
+    - Books with a file per chapter: the most common level among cuts that open a file (ties: the higher).
+    - Single-file books: the highest level with 3+ real cuts, so a lone 'Introduction' and 'Epilogue'
+      in <h1> don't outrank twelve <h2> chapters."""
+    cuts = sorted(starts)
+    size = {c: sum(len(b.text) for b in blocks[c:nxt])
+            for c, nxt in zip(cuts, cuts[1:] + [len(blocks)])}
+    real = [c for c in cuts if size[c] >= MIN_CHAPTER_CHARS and not _is_front_matter_title(starts[c])
+            and _key(starts[c]) not in BACK_MATTER_TITLES and _h_level(blocks[c].tag)]
+
+    def counts(pool: list[int]) -> dict[int, int]:
+        out: dict[int, int] = {}
+        for c in pool:
+            out[_h_level(blocks[c].tag)] = out.get(_h_level(blocks[c].tag), 0) + 1
+        return out
+
+    by_file = counts([c for c in real if c in opening])
+    if sum(by_file.values()) >= 2:
+        top = max(by_file.values())
+        return min(lvl for lvl, n in by_file.items() if n == top)
+    levels = [lvl for lvl, n in counts(real).items() if n >= 3]
+    return min(levels) if levels else None
+
+
 def _normalize_epub(path: Path, report: Report) -> list[Chapter] | None:
     from ebooklib import epub
 
@@ -308,13 +364,31 @@ def _normalize_epub(path: Path, report: Report) -> list[Chapter] | None:
     if not starts:
         return None
     report.method = "chapters cut at headings confirmed from the table of contents / contents page"
+    nested = any(isinstance(e, tuple) and e[1] for e in eb.toc)
+    level = _chapter_level(blocks, starts, set(file_start.values()))
     # A spine file that opens with a real <h1>-<h3> starts a chapter even when the TOC leaves it out
-    # (sparse TOCs, or TOCs listing only parts). Files that start mid-text (Calibre splits) don't.
+    # (sparse TOCs, or TOCs listing only parts). Files that start mid-text (Calibre splits) don't,
+    # and neither do files opening with a heading below the chapter level (a section, D-025).
     for name, idx in file_start.items():
         block = blocks[idx]
         if idx not in starts and name not in contents and name not in toc_front and block.tag in {"h1", "h2", "h3"} \
-                and _plausible_title(block.lines[0]):
+                and _plausible_title(block.lines[0]) and (level is None or _h_level(block.tag) <= level):
             starts[idx] = block.lines[0]
+    if level is not None and not nested:  # a nested TOC already separates chapters from sections (D-024)
+        opening = set(file_start.values())
+        # Mid-file cuts on a lower heading are sections. So are cuts on no heading at all (a box, a <p>
+        # line), but only when most cuts are on headings: Calibre books put their chapters on <p> lines.
+        on_headings = 2 * sum(_h_level(blocks[i].tag) is not None for i in starts) > len(starts)
+        no_heading = 7 if on_headings else 0
+        sections = [i for i in starts if i not in opening and (_h_level(blocks[i].tag) or no_heading) > level]
+        for i in sections:
+            del starts[i]  # its text stays in the chapter before it
+        if sections:
+            report.notes.append(f"kept inside their chapter, headings below the chapter level <h{level}> or not "
+                                f"headings "
+                                f"({len(sections)}): " + ", ".join(repr(_short_title(t)) for t in
+                                                                     [blocks[i].lines[0] for i in sorted(sections)][:8])
+                                + (", …" if len(sections) > 8 else ""))
 
     for name in contents:
         report.remove("contents page", [b for b in blocks if b.file == name])
@@ -417,13 +491,21 @@ def normalize(source: str | Path, out: str | Path | None = None, ignore_language
     else:
         report.method = f"{source.suffix.lower()} repackaged with the current parser (no cleaning yet)"
     # Same rule parse.py applies when reading the result, so the report shows what will be converted.
-    kept = []
+    # Back matter and figure labels go for every format, not only EPUB (a user's edits to a .std.epub stay).
+    kept, figures = [], 0
     for ch in book.chapters:
         if _is_front_matter_title(ch.title):
             report.removed.append((f"front matter: {ch.title}", ch.text[:80]))
+        elif not book.normalized and _key(ch.title) in BACK_MATTER_TITLES:
+            report.removed.append((f"back matter: {ch.title}", ch.text[:80]))
         else:
+            if not book.normalized:
+                ch.text, n = drop_figure_labels(ch.text)
+                figures += n
             kept.append(ch)
     book.chapters = kept
+    if figures:
+        report.notes.append(f"figure labels removed ('Figure 1.1' lines with no caption): {figures}")
     if not book.chapters:
         raise ValueError("No readable text left after cleaning.")
     report.chapters = [(c.title, len(c.text)) for c in book.chapters]

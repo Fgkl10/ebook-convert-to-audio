@@ -26,8 +26,10 @@ flowchart TD
     H -- "not found" --> IGN
     CUT --> G{"any cut?"}
     G -- no --> FB["fallback: one chapter per file"]
-    G -- yes --> HF["also cut at every file that opens<br/>with &lt;h1&gt;-&lt;h3&gt; (missing from the TOC),<br/>except files the TOC labels front matter"]
-    HF --> R["text before first cut, contents pages,<br/>front-matter titles, Bibliography / References / Index<br/>→ removed (in report)<br/>short part headings → read with next chapter"]
+    G -- yes --> LV["chapter level = heading level of the cuts with real text<br/>(file-opening cuts; single file: highest level with 3+)"]
+    LV --> HF["also cut at every file that opens<br/>with &lt;h1&gt;-&lt;h3&gt; at or above the chapter level<br/>(missing from the TOC), except files the TOC labels front matter"]
+    HF --> SEC["flat TOC: mid-file cuts below the chapter level<br/>(or on no heading, when most cuts are headings)<br/>stay inside the chapter before them (D-025)"]
+    SEC --> R["text before first cut, contents pages,<br/>front-matter titles, Bibliography / References / Index / Notes / Endnotes,<br/>label-only figure lines ('FIGURE' + '1.1')<br/>→ removed (in report)<br/>short part headings → read with next chapter"]
     R --> W
     P --> W
     FB --> W["write &lt;name&gt;.std.epub (one file per chapter)<br/>+ &lt;name&gt;.std.report.txt"]

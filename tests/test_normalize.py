@@ -133,14 +133,15 @@ def test_norm14_repeated_titles_are_separate_chapters(tmp_path):
     assert [t for t, _ in chapters(out)] == ["Interlude", "Chapter Two", "Interlude"]
 
 
-def test_norm15_endnotes_with_backlinks_are_kept(tmp_path):
+def test_norm15_endnotes_are_back_matter_not_contents(tmp_path):
     notes = "".join(f'<p><a href="ch1.xhtml#r{i}">{i}</a> This is the text of note number {i}, which explains '
                     "a detail from the chapter.</p>" for i in range(1, 7))
     src = build_epub(tmp_path / "notes.epub", _spec([
         ("ch1.xhtml", "Chapter One", "Chapter One", ""), ("notes.xhtml", "Notes", "Notes", notes)]))
     out, report = normalize(src)
-    assert [t for t, _ in chapters(out)] == ["Chapter One", "Notes"]
-    assert "contents page" not in [r for r, _ in report.removed]
+    assert [t for t, _ in chapters(out)] == ["Chapter One"]  # endnotes are not read aloud (D-025)
+    reasons = [r for r, _ in report.removed]
+    assert "back matter: Notes" in reasons and "contents page" not in reasons
 
 
 def test_norm16_std_epub_never_rewritten_in_place(calibre):
@@ -164,6 +165,43 @@ def test_norm18_nested_toc_sections_stay_in_their_chapter(tmp_path):
     assert "front matter: Copyright Page" in [r for r, _ in report.removed]
     # sections and contents-page links are not candidates at all; only front-matter entries stay unmatched
     assert report.unconfirmed == ["Half Title", "Table of Contents", "Table of Lenses"]
+
+
+def test_norm20_flat_toc_with_sections_cut_at_chapter_level(tmp_path):
+    from tests.epub_factory import flat_textbook_spec
+
+    out, report = normalize(build_epub(tmp_path / "flat.epub", flat_textbook_spec()))
+    got = dict(chapters(out))
+    assert list(got) == ["Hello", "1 The River Begins", "2 The Mill Turns"]  # sections in <h3> are not chapters
+    assert "\nMorning\n" in got["1 The River Begins"] and "\nGears\n" in got["2 The Mill Turns"]
+    assert "#3 The Lens of Tide" in got["1 The River Begins"]  # a box opening with <p> is not a chapter either
+    assert any(n.startswith("kept inside their chapter, headings below the chapter level <h2>") for n in report.notes)
+
+
+def test_norm20_single_file_parts_chapters_sections(tmp_path):
+    from tests.epub_factory import single_file_parts_spec
+
+    got = dict(chapters(normalize(build_epub(tmp_path / "one.epub", single_file_parts_spec()))[0]))
+    assert list(got) == ["Chapter 1", "Chapter 2", "Chapter 3", "Chapter 4"]
+    assert got["Chapter 1"].startswith("PART ONE\nChapter 1")  # part title read with its first chapter
+    assert "Section 1.2 Detail" in got["Chapter 1"]
+
+
+def test_norm21_figure_labels_removed():
+    from desktop.normalize import drop_figure_labels
+
+    text = "Intro line.\nFIGURE\n17.3\nNext line.\nFigure 2.1\nFig. 4b\nFigure 1.1 shows the loop.\nFIGURE\nA caption."
+    assert drop_figure_labels(text) == ("Intro line.\nNext line.\nFigure 1.1 shows the loop.\nFIGURE\nA caption.", 3)
+
+
+def test_norm21_figure_labels_removed_in_cleaned_book(tmp_path):
+    from tests.epub_factory import Page, Spec, para
+
+    body = "<h1>Chapter One</h1>" + para() + "<p>FIGURE</p><p>1.1</p>" + para()
+    out, report = normalize(build_epub(tmp_path / "fig.epub", Spec(pages=[Page("c1.xhtml", body, "Chapter One")])))
+    text = chapters(out)[0][1]
+    assert "FIGURE" not in text and "\n1.1\n" not in text
+    assert "figure labels removed ('Figure 1.1' lines with no caption): 1" in report.notes
 
 
 def test_norm18_chapter_label_matches_toc_number():

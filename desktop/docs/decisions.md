@@ -360,4 +360,36 @@ Counselling for Toads) have flat TOCs and give the same chapters and text as bef
 the text the old cut had except the half-title and copyright pages. Section headings are read inside the chapter,
 each on its own line. A book whose nested TOC lists chapters as anchors inside one big file (a single-file book with
 parts at the top) would now get only the parts as chapters; no sample has that shape (NORM-19, a known gap). Figure
-labels ("FIGURE 1.1") and the Endnotes chapter are still read aloud.
+labels ("FIGURE 1.1") and the Endnotes chapter are still read aloud (both removed by D-025).
+
+## D-025 Cut fewer rather than too many: chapters are cut at the chapter heading level; endnotes and figure labels go
+Status: Accepted · Milestone: M3 · Refines D-020, D-024
+**Context:** D-024 fixed The Art of Game Design for its nested TOC, but the same book with a flat TOC (chapters and
+sections side by side, as many books list them) would still give hundreds of pieces. The user asked to make the
+cleaner general and stated the principle: "宁可少分一点也不要切得太碎" (rather cut a bit less than chop the book
+into fragments). They also asked to drop the Endnotes chapter and the figure labels ("FIGURE" over "1.1", 145 in
+that book).
+**Decision:**
+- **Chapter level.** The heading level chapters use is taken from the confirmed cuts that carry real text (at least
+  `MIN_CHAPTER_CHARS`, not front or back matter). For a book with a file per chapter, it is the most common level among
+  cuts that open a file; for a single-file book, it is the highest level with 3 or more such cuts, so a lone h1
+  "Introduction" and "Epilogue" don't outrank twelve h2 chapters. Short part titles never set it.
+- **Sections stay inside.** With a flat TOC, a mid-file cut on a heading below the chapter level is a section and
+  stays in the chapter before it. So is a mid-file cut on no heading at all (a box, a `<p>` line), but only when most
+  cuts are on headings: Calibre books put their chapters on `<p>` lines, and Smart Notes must keep its 14 chapters.
+  A cut that opens a file is never dropped, because text before the first cut would be lost as front matter. The
+  report lists what was kept inside.
+- **h-tag rule.** A spine file opening with a heading below the chapter level no longer starts a chapter.
+- **Back matter.** "Notes", "Endnotes", "End notes" and "Footnotes" join Bibliography, References and Index. They are
+  removed in every format, not only EPUB.
+- **Figure labels.** A line that is only a label ("Figure 2.1", "Fig. 4b", or "FIGURE" over "17.3a") is removed in
+  every format, and the count is shown in the report. A label followed by a caption or prose ("Figure 17.4 shows…")
+  stays.
+- An already-cleaned `.std.epub` is left as it is, so edits made in Sigil survive.
+**Why:** A heading level is a general signal, set by the publisher, that does not depend on any one book's titles. When
+unsure, merging keeps the listening order and loses nothing; an extra cut adds a tiny "chapter" with no name. Endnotes
+read in a row are meaningless as audio, and figure labels point at pictures the listener cannot see.
+**Consequences:** The Art of Game Design gives 38 chapters, and still 38 when its TOC is flattened; the only text removed is
+the Endnotes chapter and the 145 labels. Smart Notes and Counselling for Toads give the same chapters and text as before.
+A single-file book whose parts carry intro text (3 or more) is cut by part only, a deliberate under-split. In-text note
+references ("…as Jung showed.12") are still read aloud and now point at notes that are not read (NORM-11).
