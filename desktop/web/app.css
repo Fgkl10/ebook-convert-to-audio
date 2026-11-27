@@ -29,6 +29,9 @@ button.primary { background: var(--accent); color:#fff; border-color: var(--acce
 .chapters { max-height: 200px; overflow:auto; }
 .chapters div { padding:4px 8px; border-radius:6px; cursor:pointer; }
 .chapters div.on { background: var(--hl); }
+.chapters input.pick { margin: 0 6px 0 0; vertical-align: middle; }
+.chapters .ok { color: #2e8b57; font-size: .9em; }
+.rvpick { margin: 12px 0 6px; }
 .chapters a.dl { float:right; padding:0 6px; text-decoration:none; color:inherit; opacity:.6; }
 .chapters a.dl:hover, .chapters a.dl:focus { opacity:1; }
 #text p { margin: 0 0 14px; font-size: 18px; line-height: 1.7; font-family: Georgia, "Times New Roman", serif; }

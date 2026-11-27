@@ -51,7 +51,7 @@ async function loadBooks() {
     <div class="book" data-id="${b.id}">
       ${b.cover ? `<img class="cover" src="${API}/books/${b.id}/files/${b.cover}">` : `<div class="cover"></div>`}
       <div class="t">${esc(b.title)}</div>
-      <div class="muted">${esc(b.author||'')}<br>${fmt(b.duration_ms)} · ${b.chapters} ch${b.complete?'':' · converting…'}</div>
+      <div class="muted">${esc(b.author||'')}<br>${fmt(b.duration_ms)} · ${b.chapters_total && b.chapters < b.chapters_total ? `${b.chapters} of ${b.chapters_total}` : b.chapters} ch${b.converting ? ' · converting…' : ''}</div>
     </div>`).join('') : '<div class="muted">No books yet.</div>';
   document.querySelectorAll('.book').forEach(el => el.onclick = () => openBook(el.dataset.id));
 }
@@ -191,15 +191,25 @@ async function openReview(id) {
   show('#review'); window.scrollTo(0, 0);
   $('#rvtitle').textContent = draft.file;
   $('#rvmethod').textContent = rep.method;
-  $('#rvvoice').value = draft.voice; $('#rvspeed').value = draft.speed;
-  $('#rvapprove').disabled = !['review', 'done'].includes(draft.status);
-  $('#rvapprove').textContent = draft.status === 'done' ? 'Convert again' : 'Approve & convert';
+  // Chapters added to a book keep its voice unless the user picks another (D-035).
+  $('#rvvoice').value = draft.book_voice || draft.voice; $('#rvspeed').value = draft.book_speed || draft.speed;
   $('#rvdownload').href = `${API}/drafts/${id}/std.epub`;
   $('#rvchecks').innerHTML = rep.checks.length
     ? `<div class="card checks"><b>Check by hand (${rep.checks.length})</b>${list(rep.checks)}</div>` : '';
-  $('#rvchapters').innerHTML = rep.chapters.map(([t, n], i) =>
-    `<div data-i="${i}">${i+1}. ${esc(t)} <span class="muted">${n.toLocaleString()} chars</span></div>`).join('');
+  // Ticked by default: chapters not converted yet; after an interrupted or failed run, only the ones it was doing.
+  const conv = new Set(draft.converted || []), last = draft.last_chapters;
+  const resume = last && draft.status === 'review';
+  $('#rvchapters').innerHTML = rep.chapters.map(([t, n], i) => {
+    const on = !conv.has(i + 1) && (!resume || last.includes(i + 1));
+    return `<div data-i="${i}"><input type="checkbox" class="pick" data-n="${i+1}"${on ? ' checked' : ''} aria-label="Convert chapter ${i+1}"> `
+      + `${i+1}. ${esc(t)} <span class="muted">${n.toLocaleString()} chars</span>${conv.has(i + 1) ? ' <span class="ok">✓ converted</span>' : ''}</div>`;
+  }).join('');
   document.querySelectorAll('#rvchapters div').forEach(el => el.onclick = () => reviewChapter(+el.dataset.i));
+  document.querySelectorAll('#rvchapters input.pick').forEach(cb => {
+    cb.onclick = e => e.stopPropagation();  // ticking doesn't open the chapter
+    cb.onchange = updatePick;
+  });
+  updatePick();
   const more = [
     ['Removed', rep.removed.map(([why, text]) => `${why}: ${text}`)],
     ['TOC entries ignored', rep.unconfirmed],
@@ -218,9 +228,40 @@ async function reviewChapter(i) {
   $('#rvtext').innerHTML = `<h3>${esc(ch.title)}</h3>` + ch.paragraphs.map(p => `<p>${esc(p)}</p>`).join('');
 }
 
+const picked = () => [...document.querySelectorAll('#rvchapters input.pick')].filter(cb => cb.checked).map(cb => +cb.dataset.n);
+
+function updatePick() {
+  if (!draft) return;
+  const all = draft.report.chapters.length, n = picked().length;
+  const btn = $('#rvapprove');
+  btn.disabled = !n || !['review', 'done'].includes(draft.status);
+  btn.textContent = n === all ? (draft.status === 'done' ? 'Convert all again' : 'Approve & convert')
+    : `Convert ${n} chapter${n === 1 ? '' : 's'}`;
+  // Warn when new chapters would be read in another voice than the ones already in the book.
+  const kept = (draft.converted || []).filter(k => !picked().includes(k)).length;
+  const mix = kept && draft.book_voice
+    && ($('#rvvoice').value !== draft.book_voice || +$('#rvspeed').value !== draft.book_speed);
+  $('#rvmix').hidden = !mix;
+  if (mix) $('#rvmix').textContent = `Other chapters of this book use ${draft.book_voice} at ${draft.book_speed}×; `
+    + 'the book will mix voices.';
+}
+$('#rvvoice').addEventListener('change', updatePick);
+$('#rvspeed').addEventListener('input', updatePick);
+const setPicks = (want) => (e) => {
+  e.preventDefault();
+  const conv = new Set(draft.converted || []);
+  document.querySelectorAll('#rvchapters input.pick').forEach(cb => cb.checked = want(+cb.dataset.n, conv));
+  updatePick();
+};
+$('#rvall').onclick = setPicks(() => true);
+$('#rvnone').onclick = setPicks(() => false);
+$('#rvnew').onclick = setPicks((n, conv) => !conv.has(n));
+
 $('#rvback').onclick = () => { show('#home'); draft = null; };
 $('#rvapprove').onclick = async () => {
-  const body = JSON.stringify({ voice: $('#rvvoice').value, speed: +$('#rvspeed').value });
+  const chapters = picked();
+  const body = JSON.stringify({ voice: $('#rvvoice').value, speed: +$('#rvspeed').value,
+                                chapters: chapters.length === draft.report.chapters.length ? null : chapters });
   const r = await fetch(`${API}/drafts/${draft.id}/approve`,
                         { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
   if (!r.ok) { alert(await errText(r)); return; }
@@ -245,7 +286,7 @@ async function openBook(id) {
   book = await getJSON(`/books/${id}`);
   show('#reader'); $('#player').hidden = false;
   $('#rtitle').textContent = book.title; $('#rauthor').textContent = book.author || '';
-  $('#chapters').innerHTML = book.chapters.map((c, i) => `<div data-i="${i}">${esc(c.title)} <span class="muted">${fmt(c.duration_ms)}</span>`
+  $('#chapters').innerHTML = book.chapters.map((c, i) => `<div data-i="${i}">${c.number}. ${esc(c.title)} <span class="muted">${fmt(c.duration_ms)}</span>`
     + `<a class="dl" href="${API}/books/${esc(book.id)}/files/${esc(c.audio)}?download=1" download title="Download this chapter" aria-label="Download ${esc(c.title)}">⬇</a></div>`).join('');
   document.querySelectorAll('#chapters div').forEach(el => el.onclick = () => loadChapter(+el.dataset.i, 0, true));
   document.querySelectorAll('#chapters a.dl').forEach(a => a.onclick = e => e.stopPropagation());  // download only, no chapter switch

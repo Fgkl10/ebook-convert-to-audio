@@ -201,6 +201,8 @@ The numbering is the one `--list-chapters` prints, after front matter is skipped
 **Why:** A separate folder means a test never overwrites or mixes with the full book, and the stale-file
 problem (BLD-11) cannot hit the full book. Validation runs before the TTS model loads, so typos fail instantly.
 **Consequences:** Partial books show up in the library as their own entries. Only the CLI has this option, not the web UI.
+*Amended by D-035:* the web page now converts chosen chapters into the book's one entry; the CLI keeps the
+separate test folder, but its audio files and `number` now use the original chapter numbers.
 
 ## D-018 Refuse books in languages the voices can't speak, judged from the text
 Status: Accepted · Milestone: M3
@@ -656,6 +658,58 @@ it is in a Downloads folder or on a phone. The user wanted a download button per
 - The filename lives on the server, so the web page, the phone app and `curl -OJ` all get the same name.
 - Numbering by list position matches what the listener sees in the reader.
 **Consequences:**
-- For a book converted from a chapter selection (e.g. `…-ch4`), the first chapter is "Ch 01", not its number in the
+- *Superseded by D-035:* chapters are now numbered by their number in the cleaned book. Before that, a book
+  converted from a chapter selection (e.g. `…-ch4`) named its first chapter "Ch 01", not its number in the
   original book.
 - The saved file name has been checked with curl but not yet in a browser (UI-24).
+
+## D-035 Choose which chapters to convert; they are added into the book's one library entry
+Status: Accepted · Milestone: M3
+**Context:** Approve on the web page always converted the whole book. The CLI's `--chapters` (D-017) writes a
+separate `-ch<spec>` test folder, so converting a book a few chapters at a time made one library entry per batch.
+The user wanted to tick chapters on the Review page and add them to the same book, converting more later.
+**Decision:**
+- **Web page and API.** Each chapter on the Review page has a checkbox, and `POST /drafts/{id}/approve` takes
+  `chapters`, a list of 1-based numbers (null means all).
+  - The chosen chapters go into `library/<book_id>/` with `build_book(..., merge=True)`. A chapter converted before
+    is replaced; all the others are kept.
+  - `book_id` is computed at approval, so the library can say "converting" while the job is still queued.
+- **Numbering.** Chapters keep their number in the cleaned book.
+  - In `book.json` each chapter has `number`, and its audio is `ch{number-1:03d}.m4a`. It is shown in the reader and
+    used in download names (this changes D-034's position numbering).
+  - Books from before D-035 have no `number`: it comes from the audio name for a full book, which stays exact when an
+    empty chapter was skipped. Position + 1 would be off by one there, and a merge would overwrite the wrong file.
+- **Voice.** Each chapter records its own `voice` and `speed`.
+  - The Review page defaults to the library book's voice and speed.
+  - When the user picks another voice while converted chapters stay, a line warns that the book will mix voices. It
+    doesn't block.
+- **Edited chapters.** Each chapter stores `text_sha1`. On Review, a converted chapter whose cleaned text has
+  changed since (a Sigil edit) is not marked "converted", so it is ticked again by default. A chapter with no hash
+  (older books) counts as converted.
+- **Default ticks.** Every chapter not converted yet. After an interrupted or failed run, only that run's chapters
+  that are still missing (`last_chapters` on the draft, cleared by a Sigil upload).
+- **Cache.** Merged runs share `cache/<book_id>/`. A run that succeeds deletes only its own chapters' sentences. The
+  whole folder goes when the book is complete. Without this, finishing chapter 9 would wipe the cache of an
+  interrupted run of chapters 3–6, and that run could no longer resume.
+- **`complete`** now means "every chapter with text is converted". It used to mean "the run finished".
+  - `chapters_total` and a `converting` flag (from the job queue) were added to `BookSummary`.
+  - This is a deliberate change of meaning inside v1, against the rule in `api.py` that breaking changes go to
+    v2. It is made in v1 because no Android client exists yet. For a full conversion the value is the same as
+    before.
+- **The CLI stays separate** (the user's choice). `--chapters` still writes the `-ch<spec>` test folder, so test
+  conversions never touch the real book. Its files and numbers now use the original chapter numbers too.
+**Why:**
+- One entry per book matches how a listener thinks of it, and the library doesn't fill up with fragments.
+- Original numbers keep a chapter's name, download name and audio file the same no matter which chapters were
+  converted first.
+- Per-chapter voice keeps the choice with the user: re-converting the whole book in one voice is one click
+  ("all").
+**Consequences:**
+- The old `-ch` test folders keep position numbers. They can't be told apart otherwise, and merge never touches
+  them.
+- A Sigil edit that adds or removes chapters shifts the numbers. Chapters converted earlier keep their old number and
+  audio. Only the `text_sha1` check flags them (as not converted), and they are not removed. Delete the book and
+  convert again to start clean.
+- No way yet to delete one chapter from a book.
+- The default ticks after an interrupted run are covered by the API data (`last_chapters`) but were not clicked in a
+  browser.

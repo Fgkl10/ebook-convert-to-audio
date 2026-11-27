@@ -69,6 +69,43 @@ def parse_chapter_spec(spec: str, count: int) -> list[int]:
     return sorted(picked)
 
 
+def select_chapters(chapters: str | list[int] | None, count: int) -> list[int]:
+    """Which chapters to convert, as sorted 0-based indices. None = all; a spec string as on the command line;
+    or a list of 1-based numbers (the web page). Raises ValueError."""
+    if chapters is None:
+        return list(range(count))
+    if isinstance(chapters, str):
+        return parse_chapter_spec(chapters, count)
+    if not chapters:
+        raise ValueError("Pick at least one chapter")
+    if len(set(chapters)) != len(chapters):
+        raise ValueError("A chapter is listed twice")
+    for n in chapters:
+        if isinstance(n, bool) or not isinstance(n, int) or not 1 <= n <= count:
+            raise ValueError(f"Chapter {n} out of range: this book has chapters 1-{count}")
+    return sorted(n - 1 for n in chapters)
+
+
+def chapter_text_sha1(text: str) -> str:
+    """Identifies a chapter's text, so a chapter edited after it was converted can be told apart."""
+    return hashlib.sha1(text.encode("utf-8")).hexdigest()
+
+
+_AUDIO_NAME_RE = re.compile(r"ch(\d{3,})\.m4a")
+
+
+def chapter_number(chapter: dict, pos: int, manifest: dict) -> int:
+    """A manifest chapter's 1-based number in the cleaned book. Books written before D-035 have no "number": for a
+    full book the audio name holds the original index (empty chapters were skipped, so the position can be off);
+    for an old --chapters test folder only the position is known."""
+    if chapter.get("number"):
+        return int(chapter["number"])
+    m = _AUDIO_NAME_RE.fullmatch(chapter.get("audio") or "")
+    if m and not manifest.get("chapter_selection"):
+        return int(m.group(1)) + 1
+    return pos + 1
+
+
 def plan_chapters(book: Book) -> list[list[list[str]]]:
     """chapters -> paragraphs -> sentences"""
     return [split_text(ch.text) for ch in book.chapters]
@@ -135,9 +172,12 @@ class CachedSynth:
         self.cache_dir = cache_dir
         cache_dir.mkdir(parents=True, exist_ok=True)
 
-    def __call__(self, text: str) -> np.ndarray:
+    def path(self, text: str) -> Path:
         key = hashlib.sha1(f"{self.tts.voice}|{self.tts.speed}|{text}".encode()).hexdigest()
-        f = self.cache_dir / f"{key}.npy"
+        return self.cache_dir / f"{key}.npy"
+
+    def __call__(self, text: str) -> np.ndarray:
+        f = self.path(text)
         if f.exists():
             return np.load(f)
         audio = self.tts.synth(text)
@@ -152,24 +192,35 @@ def build_book(
     speed: float = 1.0,
     progress: ProgressFn | None = None,
     tts=None,
-    chapters: str | None = None,
+    chapters: str | list[int] | None = None,
     ignore_language: bool = False,
+    merge: bool = False,
 ) -> Path:
+    """Convert the book, or only the chosen chapters (see select_chapters).
+
+    merge=False: a spec string writes a separate <book_id>-ch<spec>/ test folder (D-017); no selection rewrites
+    the whole book. merge=True (the server, D-035): the chosen chapters are added to <book_id>/, replacing the same
+    chapters if they were converted before and keeping all the others.
+    Chapters keep their number in the cleaned book: audio ch{number-1:03d}.m4a, "number" in book.json.
+    """
     source = Path(source)
     out_root = Path(out_root)
     book = load_book(source)
     if not ignore_language:
         check_language(book)  # before the TTS model loads
     book_id = make_book_id(book, source)
-    if chapters:
-        selected = parse_chapter_spec(chapters, len(book.chapters))
-        book.chapters = [book.chapters[i] for i in selected]
+    selected = select_chapters(chapters, len(book.chapters))
+    test_folder = isinstance(chapters, str) and not merge
+    if test_folder:
         book_id = f"{book_id}-ch{chapters.replace(' ', '').replace(',', '_')}"
     out_dir = out_root / book_id
     out_dir.mkdir(parents=True, exist_ok=True)
 
     plans = plan_chapters(book)
-    total = sum(len(p) for chapter in plans for p in chapter)
+    todo = [i for i in selected if plans[i]]  # chapters with no sentences are skipped
+    # The numbers this folder should hold when it is complete: the selection for a test folder, else the whole book.
+    wanted = {i + 1 for i in (todo if test_folder else range(len(plans))) if plans[i]}
+    total = sum(len(p) for i in todo for p in plans[i])
     done = 0
 
     def report(msg: str) -> None:
@@ -188,29 +239,40 @@ def build_book(
         cover_name = f"cover{book.cover_ext}"
         (out_dir / cover_name).write_bytes(book.cover)
 
+    manifest_path = out_dir / "book.json"
+    kept: list[dict] = []
+    created = int(time.time())
+    if merge and manifest_path.exists():
+        old = json.loads(manifest_path.read_text(encoding="utf-8"))
+        created = old.get("created") or created
+        for pos, c in enumerate(old.get("chapters", [])):
+            kept.append({**c, "number": chapter_number(c, pos, old)})  # old books: fill in the number once
     manifest = {
         "id": book_id,
         "title": book.title,
         "author": book.author,
         "cover": cover_name,
-        "voice": tts.voice,
+        "voice": tts.voice,  # of the latest run; each chapter has its own
         "speed": tts.speed,
         "complete": False,
-        "chapter_selection": chapters,  # None for a full book
-        "created": int(time.time()),
-        "chapters": [],
+        "chapter_selection": chapters if test_folder else None,  # only a CLI test folder is a selection
+        "chapters_total": len(wanted),
+        "created": created,
+        "chapters": kept,
     }
-    manifest_path = out_dir / "book.json"
 
     def write_manifest() -> None:
+        manifest["chapters"].sort(key=lambda c: c["number"])
+        for pos, c in enumerate(manifest["chapters"]):
+            c["index"] = pos
         manifest["duration_ms"] = sum(c["duration_ms"] for c in manifest["chapters"])
+        manifest["complete"] = wanted <= {c["number"] for c in manifest["chapters"]}
         tmp = manifest_path.with_suffix(".tmp")
         tmp.write_text(json.dumps(manifest, ensure_ascii=False, indent=1), encoding="utf-8")
         tmp.replace(manifest_path)
 
-    for idx, (chapter, paragraphs) in enumerate(zip(book.chapters, plans)):
-        if not paragraphs:
-            continue
+    for idx in todo:
+        chapter, paragraphs = book.chapters[idx], plans[idx]
         report(f"Chapter {idx + 1}/{len(plans)}: {chapter.title}")
 
         def tick() -> None:
@@ -220,20 +282,31 @@ def build_book(
                 report(f"Chapter {idx + 1}/{len(plans)}: {chapter.title}")
 
         audio, sentences = assemble_chapter(paragraphs, synth, tick)
-        audio_name = f"ch{idx:03d}.m4a"
+        audio_name = f"ch{idx:03d}.m4a"  # the chapter's index in the cleaned book, stable as chapters are added
         encode_m4a(audio, out_dir / audio_name)
+        manifest["chapters"] = [c for c in manifest["chapters"] if c["number"] != idx + 1]
         manifest["chapters"].append({
-            "index": len(manifest["chapters"]),
+            "index": 0,  # set in write_manifest
+            "number": idx + 1,
             "title": chapter.title,
             "audio": audio_name,
             "duration_ms": round(len(audio) * 1000 / SAMPLE_RATE),
+            "voice": tts.voice,
+            "speed": tts.speed,
+            "text_sha1": chapter_text_sha1(chapter.text),
             "sentences": sentences,
         })
         write_manifest()  # partial books are already playable
 
-    manifest["complete"] = True
     write_manifest()
-    shutil.rmtree(ROOT / "cache" / book_id, ignore_errors=True)
+    cache = ROOT / "cache" / book_id
+    if manifest["complete"]:
+        shutil.rmtree(cache, ignore_errors=True)
+    else:  # other chapters' cached sentences stay, so an interrupted selection still resumes
+        for idx in todo:
+            for para in plans[idx]:
+                for text in para:
+                    synth.path(text).unlink(missing_ok=True)
     report("Done")
     return out_dir
 

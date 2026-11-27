@@ -67,12 +67,16 @@ class Draft(BaseModel):
     chapters: int = 0
     checks: int = 0
     job_id: Optional[str] = None
-    book_id: Optional[str] = Field(None, description="The library book, once converted")
+    book_id: Optional[str] = Field(None, description="The library book, set when a conversion is approved")
     source_sha1: str = ""
+    last_chapters: Optional[list[int]] = Field(None, description="The chapters of the last approval (null = all)")
 
 
 class DraftDetail(Draft):
     report: Optional[Report] = Field(description="The cleaning report; null until cleaned")
+    converted: list[int] = Field([], description="1-based chapters already in the library book with this text")
+    book_voice: Optional[str] = Field(None, description="The library book's voice (latest conversion), or null")
+    book_speed: Optional[float] = None
 
 
 class DraftCreated(BaseModel):
@@ -97,6 +101,9 @@ class Replaced(BaseModel):
 class ApproveRequest(BaseModel):
     voice: Optional[str] = Field(None, description="Defaults to the voice chosen at upload")
     speed: Optional[float] = Field(None, description="0.5 to 2.0; defaults to the speed chosen at upload")
+    chapters: Optional[list[int]] = Field(
+        None, description="1-based chapter numbers to convert into the book's library entry, replacing those chapters "
+                          "and keeping the others; null converts every chapter")
 
 
 class JobCreated(BaseModel):
@@ -124,8 +131,10 @@ class BookSummary(BaseModel):
     author: Optional[str] = ""
     cover: Optional[str] = Field(None, description="File name of the cover under /files/, or null")
     voice: Optional[str]
-    complete: bool = Field(description="False while the book is still converting (finished chapters play)")
-    chapters: int
+    complete: bool = Field(description="True when every chapter of the book is converted (D-035)")
+    chapters: int = Field(description="Chapters converted so far")
+    chapters_total: Optional[int] = Field(None, description="Chapters in the book (null for books before D-035)")
+    converting: bool = Field(False, description="A conversion for this book is queued or running")
     duration_ms: int
     size_bytes: int
     created: float
@@ -142,7 +151,8 @@ class Sentence(BaseModel):
 
 class BookChapter(BaseModel):
     model_config = ConfigDict(extra="allow")
-    index: int
+    index: int = Field(description="Position in this list")
+    number: int = Field(description="1-based chapter number in the cleaned book (D-035); filled in for older books")
     title: str
     audio: str = Field(description="File name of the chapter's .m4a under /files/")
     duration_ms: int
@@ -272,7 +282,7 @@ def replace_std(draft_id: str, file: UploadFile = File(...)) -> dict:
 def approve(draft_id: str, body: Optional[ApproveRequest] = None) -> dict:
     """Convert the cleaned book. Converting a done draft again resumes from the cached sentences."""
     body = body or ApproveRequest()
-    return {"job_id": service.drafts.approve(draft_id, body.voice, body.speed)["id"]}
+    return {"job_id": service.drafts.approve(draft_id, body.voice, body.speed, body.chapters)["id"]}
 
 
 @router.delete("/drafts/{draft_id}", response_model=Ok, responses=ERRORS, tags=["drafts"])
