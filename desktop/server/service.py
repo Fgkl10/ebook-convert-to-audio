@@ -21,7 +21,8 @@ from typing import BinaryIO
 
 from ..core.normalize import OCR_MODES, normalize, write_std_epub
 from ..core.parse import load_book
-from ..tts.build import ROOT, build_book, encode_m4a
+from ..tts.build import (ROOT, build_book, chapter_number, chapter_text_sha1, encode_m4a, make_book_id,
+                         select_chapters)
 from ..tts.kokoro import DEFAULT_VOICE, VOICES
 
 LIBRARY = ROOT / "library"
@@ -59,7 +60,7 @@ def _write_json(path: Path, data) -> None:
 _DRAFT_DEFAULTS = {
     "file": "", "source": "", "message": "", "done": 0, "total": 0, "auto": False, "voice": DEFAULT_VOICE,
     "speed": 1.0, "ocr": "auto", "error": None, "created": 0, "chapters": 0, "checks": 0, "job_id": None,
-    "book_id": None, "source_sha1": "",
+    "book_id": None, "source_sha1": "", "last_chapters": None,
 }
 
 
@@ -194,7 +195,20 @@ class Drafts:
         """The draft plus its cleaning report (None until cleaned)."""
         draft = self.get(draft_id)
         report = self.report(draft_id) if draft["status"] != "cleaning" and draft["chapters"] else None
-        return {**draft, "report": report}
+        converted, book_voice, book_speed = [], None, None
+        if report is not None:
+            book = _std_book(self, draft_id)
+            m = _library_manifest(make_book_id(book, self.root / draft_id / STD))
+            if m is not None:
+                book_voice, book_speed = m.get("voice"), m.get("speed")
+                for pos, c in enumerate(m.get("chapters", [])):
+                    n = chapter_number(c, pos, m)
+                    # a chapter edited since it was converted counts as not converted; books before D-035 have no hash
+                    if 1 <= n <= len(book.chapters) and c.get("text_sha1") in (
+                            None, chapter_text_sha1(book.chapters[n - 1].text)):
+                        converted.append(n)
+        return {**draft, "report": report, "converted": sorted(set(converted)),
+                "book_voice": book_voice, "book_speed": book_speed}
 
     def report(self, draft_id: str) -> dict:
         try:
@@ -243,19 +257,29 @@ class Drafts:
         report["notes"].append(f"edited .std.epub uploaded ({time.strftime('%Y-%m-%d %H:%M')}): the chapters above "
                                "are the edited ones; the removed list is from the first cleaning")
         self.set_report(draft_id, report)
-        self.update(draft_id, status="review", error=None, message="Edited version ready for review")
+        self.update(draft_id, status="review", error=None, message="Edited version ready for review",
+                    last_chapters=None)
         return len(book.chapters)
 
-    def approve(self, draft_id: str, voice: str | None = None, speed: float | None = None) -> dict:
-        """Queue the cleaned book for conversion; voice and speed default to the ones chosen at upload."""
+    def approve(self, draft_id: str, voice: str | None = None, speed: float | None = None,
+                chapters: list[int] | None = None) -> dict:
+        """Queue the cleaned book for conversion; voice and speed default to the ones chosen at upload.
+        chapters: 1-based numbers to convert into the book's library entry (D-035); None converts them all."""
         draft = self.get(draft_id)
         voice, speed = voice or draft["voice"], speed or draft["speed"]
         check_options(voice, speed)
         if draft["status"] not in ("review", "done"):
             raise Conflict(f"Cannot convert a draft that is {draft['status']}")
-        job = jobs.submit(self.root / draft_id / STD, draft["file"], voice, speed, draft_id=draft_id)
+        book = _std_book(self, draft_id)
+        try:
+            select_chapters(chapters, len(book.chapters))
+        except ValueError as e:
+            raise Invalid(str(e)) from None
+        book_id = make_book_id(book, self.root / draft_id / STD)  # known now, so the library can say "converting"
+        job = jobs.submit(self.root / draft_id / STD, draft["file"], voice, speed, draft_id=draft_id,
+                          chapters=chapters, book_id=book_id)
         self.update(draft_id, status="queued", voice=voice, speed=speed, job_id=job["id"], error=None,
-                    message="Waiting to convert")
+                    message="Waiting to convert", book_id=book_id, last_chapters=chapters)
         return job
 
     def delete(self, draft_id: str) -> None:
@@ -316,11 +340,13 @@ class Jobs:
         self.tts = None
         threading.Thread(target=self._worker, daemon=True).start()
 
-    def submit(self, path: Path, filename: str, voice: str, speed: float, draft_id: str | None = None) -> dict:
+    def submit(self, path: Path, filename: str, voice: str, speed: float, draft_id: str | None = None,
+               chapters: list[int] | None = None, book_id: str | None = None) -> dict:
         job = {
             "id": uuid.uuid4().hex[:12], "file": filename, "voice": voice, "speed": speed,
-            "status": "queued", "done": 0, "total": 0, "message": "Waiting", "book_id": None,
+            "status": "queued", "done": 0, "total": 0, "message": "Waiting", "book_id": book_id,
             "error": None, "created": time.time(), "draft_id": draft_id, "_path": str(path),
+            "_chapters": chapters,
         }
         with self.lock:
             self.jobs[job["id"]] = job
@@ -334,6 +360,11 @@ class Jobs:
     def public(self) -> list[dict]:
         with self.lock:
             return [self._public(j) for j in sorted(self.jobs.values(), key=lambda j: j["created"], reverse=True)]
+
+    def busy_books(self) -> set[str]:
+        """Library ids of books with a conversion queued or running."""
+        with self.lock:
+            return {j["book_id"] for j in self.jobs.values() if j["status"] in ("queued", "running") and j["book_id"]}
 
     def get(self, job_id: str) -> dict:
         with self.lock:
@@ -372,7 +403,8 @@ class Jobs:
                 # The job gets the cleaned .std.epub the user approved (D-029).
                 job["message"] = "Loading TTS model"
                 tts = self._get_tts(job["voice"], job["speed"])
-                out = build_book(job["_path"], LIBRARY, job["voice"], job["speed"], progress, tts=tts)
+                out = build_book(job["_path"], LIBRARY, job["voice"], job["speed"], progress, tts=tts,
+                                 chapters=job["_chapters"], merge=True)
                 job.update(status="done", book_id=out.name, message="Done")
                 if draft_id:
                     drafts.update(draft_id, status="done", book_id=out.name, message="Converted")
@@ -398,8 +430,17 @@ def _read_manifest(d: Path) -> dict:
     return json.loads((d / "book.json").read_text(encoding="utf-8"))
 
 
+def _library_manifest(book_id: str) -> dict | None:
+    """The library book's manifest, or None if the book has not been converted yet."""
+    try:
+        return _read_manifest(LIBRARY / book_id)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
 def list_books() -> list[dict]:
     books = []
+    busy = jobs.busy_books()
     if LIBRARY.exists():
         for d in LIBRARY.iterdir():
             if not (d / "book.json").exists():
@@ -412,7 +453,8 @@ def list_books() -> list[dict]:
             books.append({
                 "id": m["id"], "title": m["title"], "author": m.get("author", ""), "cover": m.get("cover"),
                 "voice": m.get("voice"), "complete": m.get("complete", False),
-                "chapters": len(m["chapters"]), "duration_ms": m.get("duration_ms", 0),
+                "chapters": len(m["chapters"]), "chapters_total": m.get("chapters_total"),
+                "converting": m["id"] in busy, "duration_ms": m.get("duration_ms", 0),
                 "size_bytes": size, "created": m.get("created", 0),
             })
     books.sort(key=lambda b: b["created"], reverse=True)
@@ -421,7 +463,10 @@ def list_books() -> list[dict]:
 
 def read_book(book_id: str) -> dict:
     """The book's manifest (book.json): chapters, their audio files and sentence timestamps."""
-    return _read_manifest(_book_dir(book_id))
+    m = _read_manifest(_book_dir(book_id))
+    for pos, c in enumerate(m.get("chapters", [])):
+        c["number"] = chapter_number(c, pos, m)  # books before D-035 have none
+    return m
 
 
 def book_file(book_id: str, name: str) -> Path:
@@ -448,18 +493,20 @@ def _safe_name_part(text: str) -> str:
 def download_name(book_id: str, name: str) -> str:
     """A readable file name for saving one of a book's files, e.g. "Book Title - Ch 01 - Chapter Title.m4a".
 
-    Chapters are numbered by their place in the book (as the reader lists them), padded to at least two digits.
+    Chapters keep their number in the cleaned book (D-035), padded to at least two digits, or to the width of the
+    book's chapter count so a name doesn't change as more chapters are converted.
     Files that are not chapter audio (the cover) become "Book Title - cover.jpg". Falls back to the stored name.
     """
     f = book_file(book_id, name)
     m = _read_manifest(f.parent)
     book = _safe_name_part(m.get("title") or "")
     chapters = m.get("chapters") or []
-    width = max(2, len(str(len(chapters))))
+    numbers = [chapter_number(ch, pos, m) for pos, ch in enumerate(chapters)]
+    width = max(2, len(str(max([m.get("chapters_total") or 0, len(chapters), *numbers]))))
     stem = None
-    for pos, ch in enumerate(chapters):
+    for ch, number in zip(chapters, numbers):
         if ch.get("audio") == name:
-            parts = [book, f"Ch {pos + 1:0{width}d}", _safe_name_part(ch.get("title") or "")]
+            parts = [book, f"Ch {number:0{width}d}", _safe_name_part(ch.get("title") or "")]
             stem = " - ".join(p for p in parts if p)
             break
     else:

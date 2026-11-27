@@ -83,21 +83,31 @@ flowchart TD
     B --> B1{any chapter<br/>≥ 40 chars?}
     B1 -- no --> X1([ValueError: no readable text])
     B1 -- yes --> C["make_book_id()<br/>slug + sha1(file)[:8]"]
-    C --> D["plan_chapters()<br/>segment.split_text per chapter"]
-    D --> E["count total sentences<br/>report progress 0/total"]
+    C --> S["select_chapters(chapters)<br/>None = all · spec '2-4' (CLI) · [2, 4] (server)"]
+    S --> S1{CLI spec,<br/>merge=False?}
+    S1 -- yes --> S2["folder &lt;book_id&gt;-ch&lt;spec&gt;/<br/>(test conversion, D-017)"]
+    S1 -- no --> S3["folder &lt;book_id&gt;/"]
+    S2 --> D
+    S3 --> D["plan_chapters()<br/>segment.split_text per chapter<br/>todo = selected chapters with text"]
+    D --> E["count todo sentences<br/>report progress 0/total"]
     E --> F{tts passed in?}
     F -- no --> F1["load KokoroTTS(voice, speed)"]
     F -- yes --> G
     F1 --> G["wrap in CachedSynth<br/>cache/&lt;book_id&gt;/"]
     G --> H["write cover file (if any)"]
-    H --> I{next chapter?}
+    H --> M0{"merge=True and<br/>book.json exists?"}
+    M0 -- yes --> M1["keep its chapters (number filled in<br/>for old books) and created"]
+    M0 -- no --> I
+    M1 --> I{next todo chapter?}
     I -- yes --> J["assemble_chapter()"]
-    J --> K["encode_m4a() via ffmpeg<br/>→ chNNN.m4a (tmp then rename)"]
-    K --> L["append chapter to manifest<br/>write book.json atomically<br/>complete=false"]
+    J --> K["encode_m4a() via ffmpeg<br/>→ ch{number-1:03d}.m4a (tmp then rename)"]
+    K --> L["replace or insert the chapter by number<br/>(voice, speed, text_sha1); sort by number<br/>write book.json atomically<br/>complete = every chapter with text present"]
     L --> I
-    I -- no --> M["complete=true<br/>write book.json"]
-    M --> N["delete cache/&lt;book_id&gt;/"]
+    I -- no --> M{complete?}
+    M -- yes --> N["delete cache/&lt;book_id&gt;/"]
+    M -- no --> N2["delete only the cache entries<br/>of the chapters just converted"]
     N --> O([library/&lt;book_id&gt;/])
+    N2 --> O
 ```
 
 ### 1a. Stitching a chapter (`assemble_chapter`)
@@ -123,7 +133,12 @@ flowchart TD
 ### 1b. Resume after interruption
 If the process dies mid-book, the next run of the same file (same `book_id`) re-plans everything.
 Sentences already in `cache/<book_id>/` load from disk instead of running TTS again, so only the
-missing sentences cost GPU time. The m4a files and `book.json` are rewritten from scratch.
+missing sentences cost GPU time. Without `merge`, the m4a files and `book.json` are rewritten from scratch.
+With `merge` (the server), the chapters that finished before the interruption are kept in `book.json`.
+
+Merged runs share one cache folder. A run that succeeds deletes only its own chapters' sentences, so an interrupted
+selection (say chapters 3–6) still resumes from its cache after another selection (chapter 9) finished in between
+(D-035).
 
 ## 2. Clean, review and convert through the server (D-029)
 
@@ -175,11 +190,12 @@ sequenceDiagram
     opt fix in Sigil
         U->>API: GET …/std.epub, edit, PUT …/std.epub
     end
-    U->>UI: Approve & convert (voice, speed)
-    UI->>API: POST /api/v1/drafts/{id}/approve, JSON {"voice", "speed"} (both optional)
-    API->>Q: submit(book.std.epub, draft_id) → draft status=queued; → {job_id}
+    UI->>UI: chapter checkboxes: ✓ converted ones (detail.converted) start unticked;<br/>voice/speed default to the library book's (warning if they differ)
+    U->>UI: Approve & convert / Convert N chapters (voice, speed, ticked chapters)
+    UI->>API: POST /api/v1/drafts/{id}/approve, JSON {"voice", "speed", "chapters"} (all optional; all ticked → chapters null)
+    API->>Q: check chapters (400 if bad); book_id = make_book_id(std);<br/>submit(book.std.epub, draft_id, chapters, book_id) → draft status=queued, book_id, last_chapters; → {job_id}
     Q->>Q: draft status=converting; one shared model (D-031)
-    Q->>B: build_book(std, LIBRARY, ..., progress, tts)
+    Q->>B: build_book(std, LIBRARY, ..., progress, tts, chapters, merge=True)
     B-->>Q: progress(done, total, msg) / out_dir
     Q->>Q: job done, draft status=done + book_id (on error: draft back to review)
 ```

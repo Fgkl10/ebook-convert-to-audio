@@ -114,7 +114,7 @@ flowchart LR
 | `server/service.py` | The backend, with no HTTP in it (D-032): drafts on disk with a clean worker (upload → `normalize` → review), a separate single-worker conversion queue for approved books (D-029), the library (list, manifest, file, delete) and cached voice samples. Every input check lives here, and refusals raise `Invalid` (400), `NotFound` (404) or `Conflict` (409). | `Drafts`, `Jobs`, `drafts`, `jobs`, `list_books()`, `read_book()`, `book_file()`, `delete_book()`, `voice_sample()`, `ServiceError` |
 | `server/api.py` | The JSON API v1 (`APIRouter(prefix="/api/v1")`): thin routes that call `service.py` and return Pydantic models, which are the written contract for the web page and the Android app. Uploads are multipart and every other body is JSON. Every error is `{"detail": ...}`. | `router`, `API_VERSION`, models `Draft`, `DraftDetail`, `Job`, `BookSummary`, `Book`, `Info`, `ApproveRequest`, `Error` |
 | `server/app.py` | The FastAPI `app`: includes the router, maps `ServiceError` to its status, serves `/` and `/static` (from `desktop/web/`), advertises mDNS (`path=/api/v1`) and prints the URLs at startup. No domain logic. | `app`, `advertise()`, `main()` |
-| `web/` | `index.html` (markup), `app.css`, `app.js`: plain files with no build step. They display data and call only `/api/v1`; they don't clean or convert anything (checked by `test_api03`). Single-page UI with three tabs (D-030): **Clean** (upload with OCR mode, clean or clean & convert, "Cleaning & review" list), **Convert** (upload a cleaned `.std.epub`, approved books, conversion progress), **Library**. Also: review page (check-by-hand list, chapters and their text, removed parts, approve / Sigil download and upload / discard), conversion progress, library grid, reader with sentence highlighting and tap-to-seek. | served at `/` |
+| `web/` | `index.html` (markup), `app.css`, `app.js`: plain files with no build step. They display data and call only `/api/v1`; they don't clean or convert anything (checked by `test_api03`). Single-page UI with three tabs (D-030): **Clean** (upload with OCR mode, clean or clean & convert, "Cleaning & review" list), **Convert** (upload a cleaned `.std.epub`, approved books, conversion progress), **Library**. Also: review page (check-by-hand list, chapters and their text with a checkbox each to choose what to convert, removed parts, approve / Sigil download and upload / discard), conversion progress, library grid, reader with sentence highlighting and tap-to-seek. | served at `/` |
 
 ## On-disk layout
 
@@ -131,14 +131,16 @@ library/<book_id>/          book_id = <title-slug, max 40 chars>-<sha1(original 
 models/huggingface/         Kokoro-82M (HF_HOME), downloaded on first use (D-028)
 models/doctr/               docTR OCR models (DOCTR_CACHE_DIR), downloaded on first use
 cache/voice-samples/<voice>-<sha1(text)[:8]>.m4a  ~5 s sample per voice, made on first ▶ click and kept
-cache/<book_id>/<sha1>.npy  per-sentence audio, key = sha1("voice|speed|text"); deleted when the book completes
+cache/<book_id>/<sha1>.npy  per-sentence audio, key = sha1("voice|speed|text"); after a run, the converted chapters'
+                            entries are deleted, and the whole folder once the book is complete (D-035)
 drafts/<id>/                one per book uploaded through the server (D-029); removed by Discard
     <name>.<ext>            the upload, under its own sanitized name (stem capped at 80 chars: Windows path limit)
     book.std.report.txt     the same report as text (written by normalize)
     book.std.epub           the cleaned book (replaced by an uploaded edit)
     report.json             the cleaning Report: method, chapters, removed, unconfirmed, notes, checks
     draft.json              id, file, status, message, done/total, auto, voice, speed, error,
-                            chapters, checks, job_id, book_id, source_sha1, created
+                            chapters, checks, job_id, book_id (set at approval), source_sha1, created,
+                            last_chapters (the last approval's selection; null = all)
 ```
 
 ## `book.json` manifest
@@ -153,14 +155,19 @@ drafts/<id>/                one per book uploaded through the server (D-029); re
   "speed": 1.0,
   "complete": true,
   "chapter_selection": null,
+  "chapters_total": 12,
   "created": 1764230400,
   "duration_ms": 123456,
   "chapters": [
     {
       "index": 0,
+      "number": 1,
       "title": "Chapter 1",
       "audio": "ch000.m4a",
       "duration_ms": 61728,
+      "voice": "af_heart",
+      "speed": 1.0,
+      "text_sha1": "5f1e…",
       "sentences": [
         { "i": 0, "p": 0, "text": "It was a dark night.", "start_ms": 300, "end_ms": 1850 }
       ]
@@ -174,8 +181,18 @@ Invariants:
   sentence, so every playback position maps to exactly one sentence.
 - Last sentence `end_ms == chapter.duration_ms`. First `start_ms == 300` (chapter lead-in).
 - `p` is the paragraph index within the chapter, and `i` is the sentence index within the chapter.
-- `chapter_selection` is `null` for a full book, or the `--chapters` spec (e.g. `"2-4"`) for a partial one.
-- `complete: false` means the book is still converting (or was interrupted), but the chapters listed so far are playable.
+- Chapters are sorted by `number`, their 1-based number in the cleaned book. `index` is the position in this list.
+  `audio` is `ch{number-1:03d}.m4a`, so the name doesn't change as more chapters are added (D-035).
+- Each chapter has its own `voice`, `speed` and `text_sha1` (`build.chapter_text_sha1` of the chapter text, to spot a
+  chapter edited after it was converted). The book-level `voice`/`speed` are those of the latest run.
+- `chapters_total` is how many chapters with text the folder should hold: the whole cleaned book, or the selection
+  for a CLI `-ch<spec>` test folder. `complete` is true when all of them are converted. The chapters listed so far are
+  playable either way. "Converting" is not in the file; `GET /books` reports it from the job queue.
+- `chapter_selection` is `null` except in a CLI `--chapters` test folder, where it holds the spec (e.g. `"2-4"`).
+- Books written before D-035 have no `number`, `voice`/`speed` per chapter, `text_sha1` or `chapters_total`.
+  `build.chapter_number()` takes the number from the audio name for a full book (exact even when an empty chapter
+  was skipped). For an old test folder it takes the number from `chapter_selection` when the spec selects as many
+  chapters as the folder holds, otherwise from the position. A chapter with no hash counts as converted.
 
 ## HTTP API v1 (D-032)
 
@@ -194,16 +211,16 @@ Not under `/api/v1`: `GET /` (the web page), `/static/*` (its files), `/docs` an
 | `POST /drafts` | Upload and clean. Multipart `file`, `voice`, `speed` (0.5–2.0), `auto`, `ocr` (`auto`/`always`/`never`, PDF only) → `{draft_id}`. Waits for review, or converts at once with `auto=true` (replaces the old `/api/clean` and `/api/convert`) |
 | `POST /drafts/cleaned` | Multipart `file` (a cleaned `.std.epub`), `voice`, `speed` → `{draft_id, job_id}`. No cleaning; converted at once. 400 for anything without the `ebook-audio:normalized` marker |
 | `GET /drafts` | All drafts (`Draft`: status, message, OCR progress, chapters, checks, job and book ids) |
-| `GET /drafts/{id}` | One draft plus its `report` (null until cleaned) |
+| `GET /drafts/{id}` | One draft plus its `report` (null until cleaned), `converted` (1-based chapters already in the library book with this text) and the library book's `book_voice`/`book_speed` (null before the first conversion) |
 | `GET /drafts/{id}/chapters/{n}` | `{index, title, paragraphs}` of one cleaned chapter; 409 before cleaning |
 | `GET /drafts/{id}/std.epub` | Download the cleaned book (for Sigil); 409 before cleaning |
 | `PUT /drafts/{id}/std.epub` | Replace it with an edited `.std.epub` (multipart `file`) → `{chapters}`; 400 if unreadable |
-| `POST /drafts/{id}/approve` | JSON `{voice?, speed?}` (or no body: the voice and speed chosen at upload) → `{job_id}`; 409 unless the draft is in review or done |
+| `POST /drafts/{id}/approve` | JSON `{voice?, speed?, chapters?}` (or no body: the voice and speed of the last approval or the upload, every chapter) → `{job_id}`. `chapters` is a list of 1-based numbers, added to the book's one library entry (replacing those chapters, keeping the others; D-035). 400 for an empty, repeated or out-of-range list; 409 unless the draft is in review or done |
 | `DELETE /drafts/{id}` | Discard a draft and its files; 409 while cleaning or converting |
 | `GET /jobs` | All conversion jobs (`Job`: queued/running/done/error, `done`/`total` sentences, message, `draft_id`, `book_id`) |
 | `GET /jobs/{id}` | One job's progress |
-| `GET /books` | Library summary (`BookSummary`: title, author, cover, chapters, duration, size, complete) |
-| `GET /books/{id}` | The full `book.json` (`Book`) |
+| `GET /books` | Library summary (`BookSummary`: title, author, cover, chapters converted, `chapters_total`, duration, size, `complete` = all chapters converted, `converting` = a job for it is queued or running) |
+| `GET /books/{id}` | The full `book.json` (`Book`); every chapter has a `number`, filled in for older books |
 | `GET /books/{id}/files/{name}` | A chapter's audio or the cover, with HTTP Range (206). To download a book, fetch each chapter's `audio` file from the manifest; an interrupted download resumes with `Range: bytes=<have>-`. Without a query the file is served inline (no `Content-Disposition`), for `<audio>` and `<img>`. With `?download=1` it is sent as an attachment named `Book Title - Ch 01 - Chapter Title.m4a` (cover: `Book Title - cover.jpg`), with RFC 5987 `filename*` so non-ASCII titles survive (D-034) |
 | `DELETE /books/{id}` | Delete a book folder |
 

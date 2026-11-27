@@ -4,6 +4,7 @@ IDs refer to desktop/docs/test-cases.md (API-xx). The flow tests are in tests/te
 import json
 import os
 import re
+import threading
 import time
 from pathlib import Path
 from urllib.parse import unquote
@@ -264,6 +265,83 @@ def test_api19_download_names_are_safe_and_keep_unicode(api):  # noqa: F811
     assert service.download_name(short.name, "ch007.m4a") == "Short - Ch 008 - c7.m4a"  # 3 digits for 100+ chapters
     untitled = _write_book("untitled-0123abcd", "", ["One"])
     assert service.download_name(untitled.name, "ch000.m4a") == "Ch 01 - One.m4a"
+
+
+def test_api18_download_name_uses_chapter_number(api):  # noqa: F811
+    d = _write_book("only-four-0123abcd", "Partial", ["One", "Two", "Three", "Four"])
+    m = json.loads((d / "book.json").read_text(encoding="utf-8"))
+    m["chapters"] = [{**m["chapters"][3], "number": 4}]
+    m["chapters_total"] = 120
+    (d / "book.json").write_text(json.dumps(m), encoding="utf-8")
+    assert service.download_name(d.name, "ch003.m4a") == "Partial - Ch 004 - Four.m4a"  # padded for 120 chapters
+    assert api.get(f"{V1}/books/{d.name}").json()["chapters"][0]["number"] == 4
+
+
+# ---------------------------------------------------------------- choosing chapters (D-035)
+
+def _approve(api, draft_id, **body):
+    r = api.post(f"{V1}/drafts/{draft_id}/approve", json=body)
+    assert r.status_code == 200, r.text
+    return _wait(api, draft_id, "done", "review")
+
+
+def test_api20_convert_chosen_chapters_into_one_book(api):  # noqa: F811
+    draft_id = _upload(api, "story.txt", STORY.encode())
+    d = _wait(api, draft_id, "review")
+    assert d["converted"] == [] and d["book_voice"] is None
+    for bad in ([], [0], [99], [1, 1]):
+        r = api.post(f"{V1}/drafts/{draft_id}/approve", json={"chapters": bad})
+        assert r.status_code == 400 and isinstance(r.json()["detail"], str), bad
+    assert api.post(f"{V1}/drafts/{draft_id}/approve", json={"chapters": ["x"]}).status_code == 422
+
+    d = _approve(api, draft_id, chapters=[2], voice="bf_emma")
+    assert d["status"] == "done" and d["converted"] == [2] and d["last_chapters"] == [2]
+    assert d["book_voice"] == "bf_emma" and d["book_speed"] == 1.0
+    [b] = api.get(f"{V1}/books").json()
+    assert b["id"] == d["book_id"] and (b["chapters"], b["chapters_total"], b["complete"]) == (1, 2, False)
+    assert b["converting"] is False
+
+    d = _approve(api, draft_id, chapters=[1], voice="af_heart")  # without it, the draft's last voice (bf_emma)
+    assert d["converted"] == [1, 2]
+    [b] = api.get(f"{V1}/books").json()  # still one book
+    assert (b["chapters"], b["complete"]) == (2, True)
+    m = api.get(f"{V1}/books/{b['id']}").json()
+    assert [(c["number"], c["voice"]) for c in m["chapters"]] == [(1, "af_heart"), (2, "bf_emma")]
+
+
+def test_api21_edited_chapter_counts_as_not_converted(api):  # noqa: F811
+    from tests.test_server import _rename_first_chapter
+    draft_id = _upload(api, "story.txt", STORY.encode())
+    _wait(api, draft_id, "review")
+    assert _approve(api, draft_id)["converted"] == [1, 2]
+    edited = _rename_first_chapter(api.get(f"{V1}/drafts/{draft_id}/std.epub").content, "The Dark Night")
+    assert api.put(f"{V1}/drafts/{draft_id}/std.epub", files={"file": ("x.std.epub", edited)}).status_code == 200
+    d = api.get(f"{V1}/drafts/{draft_id}").json()
+    assert d["converted"] == [2] and d["last_chapters"] is None
+
+
+def test_api22_library_says_converting_while_queued_or_running(api):  # noqa: F811
+    gate = threading.Event()
+
+    class SlowTTS(type(service.jobs.tts)):
+        def synth(self, text, voice=None, speed=None):
+            gate.wait(10)
+            return super().synth(text, voice, speed)
+
+    draft_id = _upload(api, "story.txt", STORY.encode())
+    _wait(api, draft_id, "review")
+    _approve(api, draft_id, chapters=[1])  # the book exists, with chapter 1
+    assert api.get(f"{V1}/books").json()[0]["converting"] is False
+    service.jobs.tts = SlowTTS()
+    try:
+        assert api.post(f"{V1}/drafts/{draft_id}/approve", json={"chapters": [2]}).status_code == 200
+        [b] = api.get(f"{V1}/books").json()  # held at the first sentence: queued or running
+        assert b["converting"] is True and b["chapters"] == 1
+    finally:
+        gate.set()
+    _wait(api, draft_id, "done")
+    [b] = api.get(f"{V1}/books").json()
+    assert b["converting"] is False and b["complete"] is True
 
 
 def test_api14_delete_book(api, book):  # noqa: F811
