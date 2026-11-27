@@ -165,7 +165,7 @@ def _fix_words(text: str, lex: Lexicon, fixes: Counter) -> str:
             elif i == 0:
                 words[i] = w[0] + w[1:].lower()  # 'AS you fall asleep' (big first letter A beside S)
             if words[i] != w:
-                fixes[f"{w} -> {words[i]}"] += 1
+                fixes[f"{core} -> {words[i].rstrip('.,;:!?')}"] += 1
             continue
         if lex:
             split = _unglue(w, lex)

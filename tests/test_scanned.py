@@ -37,7 +37,10 @@ def test_scan02_paragraph_rebuild():
     assert walk[1] == ("The path through the hills is quiet at dawn, and the momentary chill makes every "
                        "step feel new. Take a breath and begin the walk.")
     key_text = "\n".join(walk)
-    assert "with self-confidence or with doubt" not in key_text  # 'self-' + 'confidence': no unbroken form seen
+    # no word list here (the CI case): 'self-' + 'confidence' joins unless the book spells it with a hyphen;
+    # with a word list the hyphen stays (SCAN-18)
+    assert "with selfconfidence or with doubt" in key_text
+    assert "with self-confidence or with doubt" in "\n".join(chapter(rebuild(quiz_book(), LEX), "A Morning Walk"))
     assert "about so little" in key_text  # docTR's 'SO' inside lowercase text
     lost = chapter(result, "The Lost Key")
     assert "3. I will sleep on the porch tonight." in lost  # hanging indent continues the choice
