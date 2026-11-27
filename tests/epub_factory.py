@@ -252,6 +252,35 @@ def calibre_spec() -> Spec:
     )
 
 
+def flat_textbook_spec() -> Spec:
+    """textbook_spec with a flat TOC: chapters and their sections side by side, as many books list them."""
+    spec = textbook_spec()
+
+    def flatten(nodes):
+        for href, title, kids in nodes:
+            yield href, title
+            yield from flatten(kids)
+    spec.toc, spec.toc_tree = list(flatten(spec.toc_tree)), None
+    return spec
+
+
+def single_file_parts_spec() -> Spec:
+    """One file: <h1> part titles with no text of their own, <h2> chapters, <h3> sections, and a flat
+    TOC that lists all three."""
+    body, toc = "", []
+    for p, part in enumerate(["PART ONE", "PART TWO"], 1):
+        body += f'<h1 id="p{p}">{part}</h1>'
+        toc.append((f"book.xhtml#p{p}", part))
+        for c in (1, 2):
+            n = 2 * (p - 1) + c
+            body += f'<h2 id="c{n}">Chapter {n}</h2>' + para()
+            toc.append((f"book.xhtml#c{n}", f"Chapter {n}"))
+            for s in (1, 2):
+                body += f'<h3 id="s{n}_{s}">Section {n}.{s} Detail</h3>' + para()
+                toc.append((f"book.xhtml#s{n}_{s}", f"Section {n}.{s} Detail"))
+    return Spec(title="One File", pages=[Page("book.xhtml", body)], toc=toc)
+
+
 def textbook_spec() -> Spec:
     """A publisher textbook like the one that motivated NORM-18: one file per chapter, a nested TOC
     whose children are sections inside the chapter file, chapter pages printed as 'CHAPTER ONE' over
