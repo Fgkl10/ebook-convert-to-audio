@@ -332,3 +332,32 @@ has a test that is either right or leaves the word alone. The dictionary costs n
 the 3 missed big letters (listed under "Check by hand"), and compounds the book or OCR printed as one word
 ("guestroom", "halfhour"), which Kokoro still reads understandably. CI does not install Kokoro, so there the list is empty and
 the dictionary fixes are off; tests pass their own small word list.
+
+## D-024 A nested TOC's top level is the chapter list; its children are sections
+Status: Accepted · Milestone: M3 · Refines D-020
+**Context:** The Art of Game Design (publisher EPUB, one file per chapter) has 35 chapters, but the cleaner gave 647
+pieces. Its TOC nests sections (and sub-sections) under each chapter, all pointing into the chapter's file, and D-020
+treated every entry as a chapter. A second contents page, the "Table of Lenses", linked to boxes inside the chapters
+and added more cuts. The chapter titles were also lost: the TOC says "1 In the Beginning, There Is the Designer" while
+the page prints "CHAPTER ONE" over "In the Beginning, There Is the Designer", so the entry never matched, and the h-tag
+rule named the chapter "CHAPTER ONE". The half-title page's own `<h1>` ("Tenth Anniversary") became a chapter, and
+"Copyright Page" was not a known front-matter title. One "missing" section, "Problem #3", is printed as body text with
+no heading or TOC entry in the source; its text was there, inside the "Problem #2" piece.
+**Decision:**
+- With a nested TOC, candidates are its top-level entries plus nested entries that open a file of their own (no
+  anchor, or an anchor on the file's first block), which is how chapters sit under part titles. Other nested entries
+  are sections and stay inside their chapter. Contents-page links are not used, since the nested TOC already gives the
+  structure. A flat TOC works as before (D-020), including contents-page links.
+- Matching a title to a heading ignores one leading label on either side: "chapter/part/book" plus a word, or a bare
+  number. "1 In the Beginning" matches "CHAPTER ONE" + "In the Beginning". The chapter keeps the TOC's title.
+- Files that a TOC entry labels as front matter ("Half Title", "Copyright Page", "Dedication Page", "Cover") never
+  start a chapter through the h-tag rule, and the front-matter titles gain those names.
+**Why:** In a nested TOC the publisher already says what is a chapter and what is a section; splitting every section
+off produces hundreds of 300-character "chapters" with no chapter names. Entries that open their own file are still
+chapters, so books with parts at the top level keep their chapters (NORM-13). The other samples (Smart Notes,
+Counselling for Toads) have flat TOCs and give the same chapters and text as before.
+**Consequences:** The Art of Game Design gives 39 chapters: Hello, 1–35, Goodbye, Acknowledgments and Endnotes, with all
+the text the old cut had except the half-title and copyright pages. Section headings are read inside the chapter,
+each on its own line. A book whose nested TOC lists chapters as anchors inside one big file (a single-file book with
+parts at the top) would now get only the parts as chapters; no sample has that shape (NORM-19, a known gap). Figure
+labels ("FIGURE 1.1") and the Endnotes chapter are still read aloud.
