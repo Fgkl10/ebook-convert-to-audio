@@ -63,3 +63,13 @@ def test_lang05_build_refuses_before_tts(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="doesn't look like English"):
         build.build_book(src, tmp_path / "lib", tts=ExplodingTTS())
     assert not (tmp_path / "lib").exists()  # nothing written
+
+
+def test_lang07_ignore_language_overrides(tmp_path, monkeypatch):
+    from tests.test_desktop import FakeTTS
+
+    monkeypatch.setattr(build, "ROOT", tmp_path)
+    src = tmp_path / "hu.txt"
+    src.write_text("\n\n".join([HU] * 8), encoding="utf-8")
+    out = build.build_book(src, tmp_path / "lib", tts=FakeTTS(), ignore_language=True)
+    assert (out / "book.json").exists()

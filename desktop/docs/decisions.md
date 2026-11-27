@@ -210,5 +210,5 @@ language (if any) and `tts.SUPPORTED_LANGUAGES`. Under 100 sampled words, the bo
 **Why:** It needs no new dependency, and the measured separation is wide. English is 0.32 (noisy OCR scan) to 0.44, while Hungarian
 is 0.00 and German/French/Spanish/Dutch prose 0.00 to 0.08. Words common in other languages ("a", "i", "is", "in")
 are excluded. The text decides because metadata is unreliable.
-**Consequences:** Only English versus not-English is detected, with no identification of the actual language. There is no
-override for a wrongly refused English book (LANG-07). Adding a language means adding voices and a detector for it.
+**Consequences:** Only English versus not-English is detected, with no identification of the actual language. A wrongly refused English book can be
+forced through with the CLI flag `--ignore-language` (LANG-07). The web UI has no override. Adding a language means adding voices and a detector for it.

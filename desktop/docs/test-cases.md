@@ -63,7 +63,7 @@ starts passing, pytest reports XPASS as a failure, and you remove the marker and
 | LANG-04 | Wrong metadata | EPUB with `dc:language` = `hu` but English text | Accepted: the text decides, metadata is only a hint | Automated `test_lang04_text_wins_over_wrong_metadata` |
 | LANG-05 | Refused before work starts | `build_book` on a Hungarian TXT | Raises before TTS runs, and no library folder is created | Automated `test_lang05_build_refuses_before_tts` |
 | LANG-06 | Refusal in CLI and web UI | `python -m desktop.build <hungarian book>`; upload it in the web UI | CLI prints `error: …` and exits 1. The web UI job shows status error with the same message | CLI Manual (checked); web UI Manual |
-| LANG-07 | English book wrongly refused | An English book scoring under 0.15 (none seen yet) | **Gap:** there is no override flag, so such a book can't be converted | Gap |
+| LANG-07 | Override a wrong refusal | `build_book(..., ignore_language=True)` / CLI `--ignore-language` on a refused book | No language check, and the book converts. The refusal message suggests the flag | Automated `test_lang07_ignore_language_overrides` (CLI flag Manual) |
 
 ## TTS (`tts.py`)
 

@@ -49,5 +49,5 @@ def check_language(book: Book) -> None:
     supported = ", ".join(sorted(SUPPORTED_LANGUAGES))
     raise ValueError(
         f"This book doesn't look like English (English word score {score:.2f}, needs {THRESHOLD}).{hint} "
-        f"The voices can only speak: {supported}."
+        f"The voices can only speak: {supported}. If this book really is English, rerun with --ignore-language."
     )

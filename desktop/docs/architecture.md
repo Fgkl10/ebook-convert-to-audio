@@ -4,6 +4,7 @@ The desktop component converts an ebook into a sentence-timestamped audiobook an
 library over the LAN. It is a Python package (`desktop/`) with two entry points:
 
 - `python -m desktop.build <file>`: command-line converter. `--list-chapters` prints numbered chapters, and
+  `--ignore-language` skips the English check (D-018).
   `--chapters 3` / `2-4` / `1,3,5-6` converts only those (1-based, after front matter is skipped) into
   `library/<book_id>-ch<spec>/`, a separate folder, so test conversions never touch the full book
 - `python -m desktop.server [--port 8000]`: FastAPI server + web UI
