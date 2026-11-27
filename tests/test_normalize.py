@@ -101,3 +101,50 @@ def test_norm08_cli_build_refuses_uncleaned_book(calibre, capsys):
     capsys.readouterr()
     build.main([str(out), "--list-chapters"])
     assert "3 The Storm" in capsys.readouterr().out
+
+
+def _spec(pages):
+    from tests.epub_factory import Page, Spec, para
+
+    return Spec(pages=[Page(f, f"<h1>{h}</h1>" + para() + extra, toc_title=t) for f, h, t, extra in pages])
+
+
+def test_norm13_sparse_toc_keeps_untitled_chapter_files(tmp_path):
+    src = build_epub(tmp_path / "sparse.epub",
+                     _spec([(f"c{i}.xhtml", f"Chapter {i}", "Chapter 1" if i == 1 else None, "") for i in range(1, 5)]))
+    out, _ = normalize(src)
+    assert [t for t, _ in chapters(out)] == ["Chapter 1", "Chapter 2", "Chapter 3", "Chapter 4"]
+
+
+def test_norm13_toc_with_only_parts_keeps_chapters(tmp_path):
+    src = build_epub(tmp_path / "parts.epub", _spec([
+        ("p1.xhtml", "Part One", "Part One", ""), ("c1.xhtml", "The Arrival", None, ""),
+        ("c2.xhtml", "The Departure", None, ""), ("p2.xhtml", "Part Two", "Part Two", ""),
+        ("c3.xhtml", "The Return", None, "")]))
+    out, _ = normalize(src)
+    assert [t for t, _ in chapters(out)] == ["Part One", "The Arrival", "The Departure", "Part Two", "The Return"]
+
+
+def test_norm14_repeated_titles_are_separate_chapters(tmp_path):
+    src = build_epub(tmp_path / "repeat.epub", _spec([
+        ("a.xhtml", "Interlude", "Interlude", ""), ("b.xhtml", "Chapter Two", "Chapter Two", ""),
+        ("c.xhtml", "Interlude", "Interlude", "")]))
+    out, _ = normalize(src)
+    assert [t for t, _ in chapters(out)] == ["Interlude", "Chapter Two", "Interlude"]
+
+
+def test_norm15_endnotes_with_backlinks_are_kept(tmp_path):
+    notes = "".join(f'<p><a href="ch1.xhtml#r{i}">{i}</a> This is the text of note number {i}, which explains '
+                    "a detail from the chapter.</p>" for i in range(1, 7))
+    src = build_epub(tmp_path / "notes.epub", _spec([
+        ("ch1.xhtml", "Chapter One", "Chapter One", ""), ("notes.xhtml", "Notes", "Notes", notes)]))
+    out, report = normalize(src)
+    assert [t for t, _ in chapters(out)] == ["Chapter One", "Notes"]
+    assert "contents page" not in [r for r, _ in report.removed]
+
+
+def test_norm16_std_epub_never_rewritten_in_place(calibre):
+    out, _ = normalize(calibre)
+    before = out.read_bytes()
+    same, report = normalize(out)
+    assert same == out and out.read_bytes() == before and "nothing written" in report.method

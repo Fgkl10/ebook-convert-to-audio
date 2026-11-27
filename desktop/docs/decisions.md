@@ -225,7 +225,9 @@ marker, recognised by metadata rather than file name, and refuses others with th
 file. The web UI runs normalize, then build, automatically with no review. PDF/TXT are repackaged as parsed for now,
 so they can still be converted until the PDF cleaner exists. `normalize` runs the language check first.
 The `.std.epub` stores the original file's sha1, and `make_book_id` prefers it, so re-cleaning or editing the
-cleaned file in Sigil keeps the same `book_id` and cache.
+cleaned file keeps the same `book_id` and cache. That Sigil keeps the custom `<meta>` entries when saving
+is not verified yet. Running normalize on a `.std.epub` with no `--out` writes nothing, so a hand-edited
+file is never overwritten.
 **Why:** It was the user's design. The parser stays simple, the user gets a checkpoint before GPU time, any reader can
 show the result, and Sigil can fix it. One intermediate format serves EPUB, PDF and TXT.
 **Consequences:** The CLI needs two commands. The report is the only place to see what was removed, so it lists every
@@ -237,13 +239,17 @@ Status: Accepted · Milestone: M3
 **Context:** In Smart Notes, TOC and contents-page anchors are page markers (`#page_76`) from the print edition,
 not chapter starts. "12 Develop Ideas" points mid-list on the page where chapter 12 begins. The navigation TOC
 missed chapters 5 and 9, and the book's own contents page listed all of them.
-**Decision:** Candidates come from the navigation TOC plus links on contents pages (≥5 link paragraphs, ≥60% of the
-page). Links in one paragraph sharing an href are joined, as when one title is split over two links. Candidates are
+**Decision:** Candidates come from the navigation TOC plus links on contents pages (≥5 contents entries making up ≥60% of the
+page; an entry is a paragraph of at most 150 chars whose text is ≥80% link text into another file, so endnotes
+that open with a backlink are not mistaken for a contents page). Links in one paragraph sharing an href are joined, as when one title is split over two links. Candidates are
 dropped if implausible (over 120 chars, fewer than 3 letters, lowercase first letter, ending in a glued footnote number
 like `)11`) or if they are an `N.M` subsection of an existing chapter `N`. A whole-file entry cuts at the
 file start, unless the file is a contents page or listed in the guide as front matter. Otherwise the cleaner
 searches from the anchor for a block whose opening element, or first lines joined (up to 3), equals the
-title. Unconfirmed candidates are ignored and reported. With no confirmed cut, it falls back to one chapter per file.
+title. Unconfirmed candidates are ignored and reported. Entries with the same title are kept as separate chapters
+when they land on different blocks. A spine file that opens with a real `<h1>`–`<h3>` also starts a chapter
+even when the TOC leaves it out (sparse TOCs, TOCs listing only parts); Calibre's mid-text splits don't open
+with h-tags, so they are unaffected. With no confirmed cut, it falls back to one chapter per file.
 A heading that opens a paragraph gets its own line, so it is spoken with a pause. Part headings under 40 chars
 are read with the next chapter.
 **Why:** Text confirmation is also the junk filter, and nothing relies on Calibre class names (the test fixture

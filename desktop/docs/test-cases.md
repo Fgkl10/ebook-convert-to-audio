@@ -68,6 +68,11 @@ starts passing, pytest reports XPASS as a failure, and you remove the marker and
 | NORM-09 | Real Calibre book | `samples/` How to Take Smart Notes | Preface, Introduction, 1 to 14, Afterword, Appendix, with no bibliography or fake index. `--chapters 6` converts "4 A Few Things to Keep in Mind" (47 sentences, timestamps line up) | Manual (checked) |
 | NORM-10 | Web UI cleans automatically | Upload a Calibre-shaped EPUB in the web UI | The job shows "Cleaning the book", then converts the cleaned chapters | Manual |
 | NORM-11 | Footnotes read aloud | Book with footnote paragraphs inside chapters | **Gap:** footnote texts ("15 Ryfe and Kemmelmeier…") are read in the middle of chapters | Gap |
+| NORM-13 | Sparse TOC | 4 chapter files with `<h1>`, TOC lists only chapter 1; TOC lists only part titles | Every file that opens with an h-tag stays its own chapter (same as the parser) | Automated `test_norm13_sparse_toc_keeps_untitled_chapter_files`, `test_norm13_toc_with_only_parts_keeps_chapters` |
+| NORM-14 | Repeated titles | Two "Interlude" chapters in different files | Both kept as separate chapters | Automated `test_norm14_repeated_titles_are_separate_chapters` |
+| NORM-15 | Endnotes with backlinks | Notes file with 6 notes each opening with `<a href="ch1.xhtml#rN">N</a>` | Kept as a chapter, not removed as a contents page | Automated `test_norm15_endnotes_with_backlinks_are_kept` |
+| NORM-16 | Cleaned file not overwritten | `normalize x.std.epub` with no `--out` | Report printed, file byte-identical, nothing written | Automated `test_norm16_std_epub_never_rewritten_in_place` |
+| NORM-17 | Edit in Sigil keeps the id | Open a `.std.epub` in Sigil, edit, save, list chapters | **Gap:** not verified that Sigil keeps the `ebook-audio:*` meta; if it drops them the CLI refuses the file | Manual (not yet run) |
 | NORM-12 | Prologue missing from the TOC | Real chapter before the first TOC entry | **Gap (accepted):** removed as front matter, but shown in the report for review | Gap |
 
 ## Language check (`language.py`)

@@ -11,7 +11,7 @@ flowchart TD
     LANG -- no --> X([refused: error names metadata language<br/>--ignore-language to override])
     LANG -- yes --> F{format}
     F -- "PDF / TXT" --> P["repackage parsed chapters"]
-    F -- EPUB --> B["flatten spine into text blocks<br/>map every id anchor to a block<br/>mark contents pages (≥5 link paragraphs)"]
+    F -- EPUB --> B["flatten spine into text blocks<br/>map every id anchor to a block<br/>mark contents pages (≥5 short all-link paragraphs)"]
     B --> C["candidates = navigation TOC + contents-page links<br/>drop N.M subsections when chapter N exists"]
     C --> D{"plausible title?<br/>≤120 chars, ≥3 letters, capital first,<br/>no glued footnote number"}
     D -- no --> IGN["ignored (in report)"]
@@ -22,10 +22,12 @@ flowchart TD
     H -- "not found" --> IGN
     CUT --> G{"any cut?"}
     G -- no --> FB["fallback: one chapter per file"]
-    G -- yes --> R["text before first cut, contents pages,<br/>front-matter titles, Bibliography / References / Index<br/>→ removed (in report)<br/>short part headings → read with next chapter"]
+    G -- yes --> HF["also cut at every file that opens<br/>with &lt;h1&gt;-&lt;h3&gt; (missing from the TOC)"]
+    HF --> R["text before first cut, contents pages,<br/>front-matter titles, Bibliography / References / Index<br/>→ removed (in report)<br/>short part headings → read with next chapter"]
     R --> W
     P --> W
     FB --> W["write &lt;name&gt;.std.epub (one file per chapter)<br/>+ &lt;name&gt;.std.report.txt"]
+    W -.- KEEP["input already .std.epub, no --out:<br/>report only, nothing written"]
     W --> REV(["you: open in a reader, check chapters,<br/>fix in Sigil if needed"])
     REV --> BUILD(["python -m desktop.build &lt;name&gt;.std.epub"])
 ```

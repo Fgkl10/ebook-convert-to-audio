@@ -39,8 +39,9 @@ BACK_MATTER_TITLES = {"bibliography", "references", "index"}
 class Block:
     file: str  # basename of the XHTML file
     lines: list[str]
-    links_out: bool  # contains a link into another file (contents-page entry)
+    contents_entry: bool  # short paragraph that is (nearly) all link into another file
     lead: str = ""  # text of the element the block opens with, e.g. <span><b>1 Title</b></span> body…
+    tag: str = ""  # element name, e.g. "h1" or "p"
 
     @property
     def text(self) -> str:
@@ -114,9 +115,7 @@ def _epub_blocks(eb) -> tuple[list[Block], dict[str, int], dict[tuple[str, str],
         order = {id(el): n for n, el in enumerate(body.descendants)}
         positions = []
         for el, lines in file_blocks:
-            links = [a.get("href", "") for a in el.find_all("a", href=True)] if isinstance(el, Tag) else []
-            out_links = any(h and not h.startswith(("#", "http:", "https:", "mailto:")) for h in links)
-            blocks.append(Block(name, lines, out_links, _lead(el)))
+            blocks.append(Block(name, lines, _is_contents_entry(el, lines), _lead(el), getattr(el, "name", "")))
             positions.append(order.get(id(el), -1))
         block_of = {id(el): first + k for k, (el, _) in enumerate(file_blocks)}
         for el in body.find_all(id=True):
@@ -127,10 +126,25 @@ def _epub_blocks(eb) -> tuple[list[Block], dict[str, int], dict[tuple[str, str],
                 idx = next((first + k for k, p in enumerate(positions) if p > pos), None)
             if idx is not None:
                 anchors.setdefault((name, el["id"]), idx)
-        linked = sum(b.links_out for b in blocks[first:])
+        linked = sum(b.contents_entry for b in blocks[first:])
         if linked >= MIN_CONTENTS_LINKS and linked >= 0.6 * (len(blocks) - first):
             contents.add(name)
     return blocks, file_start, anchors, contents
+
+
+def _is_contents_entry(el, lines: list[str]) -> bool:
+    """A contents-page line: short, and its text is (nearly) all link text pointing into another file.
+    Endnotes that merely open with a backlink ("<a>1</a> long note text") are not."""
+    from bs4 import Tag
+
+    if not isinstance(el, Tag):
+        return False
+    text = " ".join(lines)
+    if len(text) > 150:
+        return False
+    link_text = sum(len(a.get_text(" ", strip=True)) for a in el.find_all("a", href=True)
+                    if not a["href"].startswith(("#", "http:", "https:", "mailto:")))
+    return link_text >= 0.8 * len(text.replace(" ", "")) if text else False
 
 
 def _lead(el) -> str:
@@ -225,12 +239,11 @@ def _normalize_epub(path: Path, report: Report) -> list[Chapter] | None:
     guide_front = {posixpath.basename(g.get("href", "")) for g in eb.guide
                    if g.get("type", "").lower() in _FRONT_MATTER_GUIDE and "#" not in g.get("href", "")}
 
-    starts: dict[int, str] = {}  # block index -> chapter title
-    seen: set[str] = set()
+    starts: dict[int, str] = {}  # block index -> chapter title (entries landing on one block are deduped)
     for title, href in _drop_subsections(_toc_entries(eb, blocks, contents)):
         title = re.sub(r"\s+", " ", title).strip()
         key = _key(title)
-        if not key or key in seen:
+        if not key:
             continue
         if not _plausible_title(title):
             report.unconfirmed.append(title)
@@ -249,12 +262,18 @@ def _normalize_epub(path: Path, report: Report) -> list[Chapter] | None:
         if idx is None:
             report.unconfirmed.append(title)
             continue
-        seen.add(key)
         starts.setdefault(idx, title)
 
     if not starts:
         return None
     report.method = "chapters cut at headings confirmed from the table of contents / contents page"
+    # A spine file that opens with a real <h1>-<h3> starts a chapter even when the TOC leaves it out
+    # (sparse TOCs, or TOCs listing only parts). Files that start mid-text (Calibre splits) don't.
+    for name, idx in file_start.items():
+        block = blocks[idx]
+        if idx not in starts and name not in contents and block.tag in {"h1", "h2", "h3"} \
+                and _plausible_title(block.lines[0]):
+            starts[idx] = block.lines[0]
 
     for name in contents:
         report.remove("contents page", [b for b in blocks if b.file == name])
@@ -320,11 +339,17 @@ def write_std_epub(book: Book, out: Path, source_hash: str) -> None:
 def normalize(source: str | Path, out: str | Path | None = None, ignore_language: bool = False) -> tuple[Path, Report]:
     """Write a standard EPUB for source. Returns (path written, report). Raises ValueError."""
     source = Path(source)
+    out_arg = out
     out = Path(out) if out else source.with_name(source.name.rsplit(".", 1)[0].removesuffix(".std") + ".std.epub")
     book = load_book(source)  # metadata, cover, front matter rules, and the fallback chapters
     if not ignore_language:
         check_language(book)  # refuse before the user spends time reviewing
     report = Report(str(source))
+    if book.normalized and out_arg is None:
+        # Never rewrite a .std.epub in place: the user may have edited it in Sigil.
+        report.method = "already a standard EPUB: nothing written"
+        report.chapters = [(c.title, len(c.text)) for c in book.chapters]
+        return source, report
     if book.normalized:
         report.method = "already a standard EPUB: chapters kept as they are"
     elif source.suffix.lower() == ".epub":
@@ -363,6 +388,9 @@ def main(argv: list[str] | None = None) -> None:
     except ValueError as e:
         sys.exit(f"error: {e}")
     print(report.render())
+    if out == Path(args.source):
+        print(f"{out} is already cleaned; nothing written. Convert it with: python -m desktop.build \"{out}\"")
+        return
     print(f"Wrote {out}\nCheck it in an ebook reader, then: python -m desktop.build \"{out}\"")
 
 
