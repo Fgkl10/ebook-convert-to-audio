@@ -203,6 +203,8 @@ flowchart TD
     I --> F
     D --> J["click span → currentTime = start_ms; play"]
     E --> K["on ended → loadChapter(i+1) and play"]
+    C --> L["click ⬇ in a chapter row<br/>(stopPropagation: no chapter switch)"]
+    L --> M["GET /files/chNNN.m4a?download=1<br/>→ attachment 'Book - Ch 01 - Title.m4a'"]
 ```
 
 ## 4. Server startup and discovery
