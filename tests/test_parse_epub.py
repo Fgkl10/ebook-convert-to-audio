@@ -3,6 +3,7 @@ import json
 import warnings
 
 import pytest
+from bs4 import XMLParsedAsHTMLWarning
 
 from desktop import build
 from desktop.parse import load_book
@@ -67,16 +68,14 @@ def test_par14_short_pages_dropped(novel, untitled):
     assert len(load_book(untitled).chapters) == 2  # "Tiny." page removed
 
 
-@pytest.mark.xfail(strict=True, reason="PAR-15 gap: front matter is read aloud as chapters")
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="PAR-15 gap: front matter is read aloud as chapters")
 def test_par15_front_matter_not_spoken(novel):
     titles = [c.title for c in load_book(novel).chapters]
     assert not FRONT_MATTER & set(titles)
 
 
-@pytest.mark.xfail(strict=True, reason="PAR-16 gap: XHTML parsed with the HTML parser warns per chapter")
+@pytest.mark.xfail(strict=True, raises=XMLParsedAsHTMLWarning, reason="PAR-16 gap: XHTML parsed with the HTML parser warns per chapter")
 def test_par16_no_xml_parser_warning(novel):
-    from bs4 import XMLParsedAsHTMLWarning
-
     with warnings.catch_warnings():
         warnings.simplefilter("error", XMLParsedAsHTMLWarning)
         load_book(novel)
