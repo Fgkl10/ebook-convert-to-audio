@@ -98,7 +98,12 @@ All automated cases use made-up OCR lines and generated images (`tests/scan_fact
 | SCAN-13 | Real scanned book | `samples/` Kokology PDF with docTR on the GPU | 55 chapters, all contents titles confirmed, 13 quizzes with answers after each question, contents/front matter/back cover removed; `--chapters 4` (A Desert Journey) converts with timestamps lining up | Manual (checked, about 40 s of OCR) |
 | SCAN-14 | OCR install keeps the TTS working | `pip install --dry-run -r requirements-ocr.txt`; Kokoro synth with huggingface_hub 1.33 | torch stays 2.6.0+cu124; Kokoro synthesizes | Manual (checked) |
 | SCAN-16 | Text PDF with full-page background images | Born-digital PDF whose every page has a full-page image behind a real text layer | **Gap:** detected as a scan and OCRed (or, without docTR, refused with the install hint) instead of using its text layer | Gap |
-| SCAN-15 | OCR text errors | Words glued by OCR ("ofpressure"), quote marks read as "1", big first letters not read at all ("ne day") | **Gap:** read as OCR wrote them; missed first letters are listed in the report as "check the first word" | Gap |
+| SCAN-15 | OCR text errors left | One-off misreads ("ould", "coffe"), big first letters not read at all ("ne day"), compounds printed as one word ("guestroom") | **Gap:** read as OCR wrote them; missed first letters are listed under "Check by hand" | Gap |
+| SCAN-17 | Word list | Inflections ("berries", "makes"), compounds ("good-luck"), punctuation; misaki not installed | Known; empty list without misaki | Automated `test_scan17_lexicon_knows_inflections`, `test_scan17_lexicon_empty_without_kokoro` |
+| SCAN-18 | Compound hyphen at a line break | "good-"/"luck", "half-"/"hour", "self-"/"confidence", "mo-"/"mentary"; no word list | "good-luck", "half-hour", "self-confidence", "momentary"; without a list the hyphen is dropped as before | Automated `test_scan18_hyphen_kept_when_both_halves_are_words` |
+| SCAN-19 | Glued small words | "ofthe", "ifyou", "Ilost", "Ofcourse", "anuisance", "ifI", '"Ilost'; "Ioe"; no word list | Split, quote mark kept; "Ioe" left; nothing changed without a list | Automated `test_scan19_glued_small_words_split` |
+| SCAN-20 | Capitals and stray "1" | "the ZOO, then SO I'd", "CD case", "AS you" at a paragraph start, '"stop." 1 Then', "over. 1", "page 1 Then" | "zoo", "so", "CD" kept, "As you", the 1s after punctuation dropped, "page 1" kept; fixes listed in the report notes | Automated `test_scan20_capitals_and_stray_one`, `test_scan20_fixes_listed_in_report` |
+| SCAN-21 | Fixes on the real book | Kokology with the misaki list | 94 fixes listed in the notes; recount of unknown words leaves names, invented words and ~8 misreads | Manual (checked) |
 
 ## Language check (`language.py`)
 
