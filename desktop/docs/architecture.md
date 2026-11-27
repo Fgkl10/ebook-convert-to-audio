@@ -88,6 +88,8 @@ library/<book_id>/          book_id = <title-slug, max 40 chars>-<sha1(original 
     book.json               manifest (below)
     ch000.m4a, ch001.m4a…   AAC 64 kbps mono 24 kHz, +faststart
     cover.<ext>             optional
+models/huggingface/         Kokoro-82M (HF_HOME), downloaded on first use (D-028)
+models/doctr/               docTR OCR models (DOCTR_CACHE_DIR), downloaded on first use
 cache/<book_id>/<sha1>.npy  per-sentence audio, key = sha1("voice|speed|text"); deleted when the book completes
 uploads/<rand>_<name>       files uploaded through the server (never cleaned up), plus their .std.epub
 ```
