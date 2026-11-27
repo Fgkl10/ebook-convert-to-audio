@@ -9,3 +9,4 @@ cache_install.log
 
 .pytest_cache/
 pytest-cache-files-*/
+samples/
