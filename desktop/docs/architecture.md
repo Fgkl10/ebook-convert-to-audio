@@ -93,7 +93,8 @@ models/huggingface/         Kokoro-82M (HF_HOME), downloaded on first use (D-028
 models/doctr/               docTR OCR models (DOCTR_CACHE_DIR), downloaded on first use
 cache/<book_id>/<sha1>.npy  per-sentence audio, key = sha1("voice|speed|text"); deleted when the book completes
 drafts/<id>/                one per book uploaded through the server (D-029); removed by Discard
-    <name>.<ext>            the upload, under its own (sanitized) name
+    <name>.<ext>            the upload, under its own sanitized name (stem capped at 80 chars: Windows path limit)
+    book.std.report.txt     the same report as text (written by normalize)
     book.std.epub           the cleaned book (replaced by an uploaded edit)
     report.json             the cleaning Report: method, chapters, removed, unconfirmed, notes, checks
     draft.json              id, file, status, message, done/total, auto, voice, speed, error,

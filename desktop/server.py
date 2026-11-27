@@ -108,8 +108,10 @@ class Drafts:
         draft_id = uuid.uuid4().hex[:12]
         d = self.root / draft_id
         d.mkdir(parents=True)
-        # Keep the file's own name: a TXT or PDF without metadata takes its title from it.
-        source = d / re.sub(r"[^A-Za-z0-9._ -]+", "_", filename).lstrip(". ")
+        # Keep the file's own name: a TXT or PDF without metadata takes its title from it. The stem is capped
+        # so long download names (200+ chars) stay under Windows' 260-character path limit.
+        safe = Path(re.sub(r"[^A-Za-z0-9._ -]+", "_", filename).lstrip(". "))
+        source = d / (safe.stem[:80].rstrip(" .") + safe.suffix.lower())
         if source.name in (STD, "draft.json", "report.json", "edited.epub") or not source.stem:
             source = d / ("book" + Path(filename).suffix.lower())
         with source.open("wb") as out:

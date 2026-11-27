@@ -138,6 +138,11 @@ def test_srv24_bad_ids_and_inputs(api):
                  "/api/drafts/abc/chapters/0"):
         assert api.get(path).status_code == 404, path
     assert api.post("/api/clean", files={"file": ("x.docx", b"x")}).status_code == 400
+    long_name = "A Very Long Download Name, With (Commas) -- " * 6 + ".TXT"
+    draft_id = _upload(api, long_name, STORY.encode())
+    saved = server.drafts.get(draft_id)["source"]
+    assert saved.endswith(".txt") and len(saved) <= 84 and "," not in saved and "(" not in saved
+    assert _wait(api, draft_id, "review", "error")["status"] == "review"
     assert api.post("/api/clean", files={"file": ("x.txt", b"x")}, data={"speed": "2.5"}).status_code == 400
     assert api.post("/api/clean", files={"file": ("x.txt", b"x")}, data={"voice": "zz"}).status_code == 400
 
