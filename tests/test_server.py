@@ -147,6 +147,32 @@ def test_srv24_bad_ids_and_inputs(api):
     assert api.post("/api/clean", files={"file": ("x.txt", b"x")}, data={"voice": "zz"}).status_code == 400
 
 
+def test_srv28_ocr_mode_reaches_normalize(api, monkeypatch):
+    seen = []
+    real = server.normalize
+    monkeypatch.setattr(server, "normalize", lambda *a, **k: seen.append(k["ocr"]) or real(*a, **k))
+    draft_id = _upload(api, "story.txt", STORY.encode(), ocr="always")
+    assert _wait(api, draft_id, "review")["ocr"] == "always" and seen == ["always"]
+    r = api.post("/api/clean", files={"file": ("x.pdf", b"x")}, data={"ocr": "sometimes"})
+    assert r.status_code == 400 and "OCR must be one of" in r.json()["detail"]
+
+
+def test_srv29_upload_cleaned_book_converts_directly(api, tmp_path):
+    plain = build_epub(tmp_path / "novel.epub", novel_spec()).read_bytes()
+    draft_id = _upload(api, "story.txt", STORY.encode())
+    first = _wait(api, draft_id, "review")
+    std = api.get(f"/api/drafts/{draft_id}/std.epub").content
+    r = api.post("/api/convert-std", files={"file": ("story.std.epub", std)}, data={"voice": "bf_emma"})
+    assert r.status_code == 200, r.text
+    d = _wait(api, r.json()["draft_id"], "done")
+    assert d["report"]["method"].startswith("uploaded cleaned book")
+    assert d["book_id"].endswith(first["source_sha1"][:8])  # same library id as cleaning the original here
+    for name, data in (("plain.epub", plain),("story.txt", STORY.encode()), ("x.epub", b"not a zip")):
+        bad = api.post("/api/convert-std", files={"file": (name, data)})
+        assert bad.status_code == 400 and "Clean page" in bad.json()["detail"], name
+    assert len(api.get("/api/drafts").json()) == 2  # refused uploads leave no draft behind
+
+
 def test_srv10_language_refusal_is_a_draft_error(api):
     draft_id = _upload(api, "hu.txt", "\n\n".join([HU] * 8).encode())
     d = _wait(api, draft_id, "error")

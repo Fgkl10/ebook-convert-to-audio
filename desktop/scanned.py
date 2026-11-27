@@ -345,6 +345,9 @@ def _sections(paras: list[Para], titles: list[str], result: ScanResult) -> list[
         result.unconfirmed.clear()
         confirmed = {i: p.text for i, p in enumerate(paras) if p.heading and not _is_key_heading(p.text)}
         result.notes.append("no contents page matched: chapters start at every heading in capitals")
+    if not confirmed and paras:  # no heading at all: keep the whole text as one chapter rather than lose it
+        result.checks.append("no chapter headings found: the whole text is one chapter")
+        return [_Section("Full Text", quiz=list(paras))]
     sections: list[_Section] = []
     front = []
     for i, p in enumerate(paras):

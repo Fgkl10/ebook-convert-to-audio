@@ -480,3 +480,25 @@ quick feedback on a new book. The Sigil round-trip covers edits without building
 automatically. Chapters cannot be edited in the browser, and a refused language cannot be overridden on the website
 (the CLI has `--ignore-language`). The drafts list is not paged. Approving a `done` draft again converts it again (for
 another voice).
+
+## D-030 OCR mode, separate Clean and Convert pages, converting an uploaded cleaned book
+Status: Accepted · Milestone: M3 · Extends D-021, D-029
+**Context:** OCR ran only when a PDF was detected as a scan (≥80% full-page images), so a text PDF with a garbled
+text layer, or a partly scanned PDF, could not be read with OCR, and a scan could not be forced onto its text layer.
+The website showed cleaning, converting and the library on one page, and a book cleaned on the CLI or fixed in Sigil
+could only be converted from the CLI.
+**Decision:**
+- `normalize(..., ocr="auto" | "always" | "never")`, also `--ocr` on the CLI and an OCR dropdown on the Clean page
+  (only enabled for a PDF). `always` reads every PDF page with OCR (`ocr_pdf` renders any page); `never` uses only
+  the text layer. Ignored for EPUB and TXT. The report's method names a forced choice.
+- When OCR text has no contents page and no heading in capitals, the whole text is kept as one chapter ("Full Text")
+  with a "Check by hand" item, instead of being removed as "before the first chapter".
+- The website has three tabs: **Clean** (upload, cleaning and review list), **Convert** (upload a cleaned
+  `.std.epub`, approved books, conversion progress) and **Library**. The tab is kept in the URL hash.
+- `POST /api/convert-std` accepts only an EPUB with the `ebook-audio:normalized` marker. It becomes a draft that skips
+  cleaning and is approved at once, keeping the book's original hash, so its library id matches.
+**Why:** Detection is right for nearly every book, so `auto` stays the default; the override is for the rare book
+detection gets wrong. Keeping all text when no heading is found follows "rather too few cuts than fragments". The
+marker check keeps the D-019 rule that only cleaned books are converted.
+**Consequences:** `always` on a long text PDF costs OCR time (about 0.5 s a page on the GPU) and may read worse than
+its text layer. A PDF that is only partly scanned still has no mixed mode: it is all OCR or all text layer.
