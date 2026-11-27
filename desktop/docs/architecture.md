@@ -3,7 +3,9 @@
 The desktop component converts an ebook into a sentence-timestamped audiobook and serves the
 library over the LAN. It is a Python package (`desktop/`) with two entry points:
 
-- `python -m desktop.build <file>`: command-line converter
+- `python -m desktop.build <file>`: command-line converter. `--list-chapters` prints numbered chapters, and
+  `--chapters 3` / `2-4` / `1,3,5-6` converts only those (1-based, after front matter is skipped) into
+  `library/<book_id>-ch<spec>/`, a separate folder, so test conversions never touch the full book
 - `python -m desktop.server [--port 8000]`: FastAPI server + web UI
 
 ## Module diagram
@@ -80,6 +82,7 @@ uploads/<rand>_<name>       files uploaded through the server (never cleaned up)
   "voice": "af_heart",
   "speed": 1.0,
   "complete": true,
+  "chapter_selection": null,
   "created": 1764230400,
   "duration_ms": 123456,
   "chapters": [
@@ -101,6 +104,7 @@ Invariants:
   sentence, so every playback position maps to exactly one sentence.
 - Last sentence `end_ms == chapter.duration_ms`. First `start_ms == 300` (chapter lead-in).
 - `p` is the paragraph index within the chapter, and `i` is the sentence index within the chapter.
+- `chapter_selection` is `null` for a full book, or the `--chapters` spec (e.g. `"2-4"`) for a partial one.
 - `complete: false` means the book is still converting (or was interrupted), but the chapters listed so far are playable.
 
 ## HTTP API

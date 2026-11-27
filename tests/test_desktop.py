@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from desktop import build
 from desktop.segment import MAX_CHARS, split_paragraph, split_text
@@ -63,3 +64,30 @@ def test_build_txt_end_to_end(tmp_path, monkeypatch):
     for ch in m["chapters"]:
         assert (out / ch["audio"]).stat().st_size > 0
         assert ch["sentences"][-1]["end_ms"] == ch["duration_ms"]
+
+
+def test_bld12_parse_chapter_spec():
+    assert build.parse_chapter_spec("3", 5) == [2]
+    assert build.parse_chapter_spec("2-4", 5) == [1, 2, 3]
+    assert build.parse_chapter_spec("1, 3,5-5,3", 5) == [0, 2, 4]
+    for bad in ("0", "6", "4-2", "x", "1-", ""):
+        with pytest.raises(ValueError):
+            build.parse_chapter_spec(bad, 5)
+
+
+def test_bld12_build_selected_chapters_into_separate_folder(tmp_path, monkeypatch):
+    monkeypatch.setattr(build, "ROOT", tmp_path)
+    src = tmp_path / "story.txt"
+    src.write_text("Chapter 1\n\nIt was a dark night. The wind howled.\n\n"
+                   "Chapter 2\n\nMorning came at last. Everyone was relieved.\n\n"
+                   "Chapter 3\n\nThe end came quietly. Nobody noticed at all.\n", encoding="utf-8")
+    full = build.build_book(src, tmp_path / "lib", tts=FakeTTS())
+    part = build.build_book(src, tmp_path / "lib", tts=FakeTTS(), chapters="2")
+    assert part.name == f"{full.name}-ch2"
+    m = json.loads((part / "book.json").read_text(encoding="utf-8"))
+    assert m["complete"] and m["chapter_selection"] == "2"
+    assert [c["title"] for c in m["chapters"]] == ["Chapter 2"]
+    full_m = json.loads((full / "book.json").read_text(encoding="utf-8"))
+    assert len(full_m["chapters"]) == 3 and full_m["chapter_selection"] is None  # full book untouched
+    with pytest.raises(ValueError, match="out of range"):
+        build.build_book(src, tmp_path / "lib", tts=FakeTTS(), chapters="4")

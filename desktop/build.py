@@ -2,6 +2,11 @@
 
 Usage:
     python -m desktop.build path/to/book.epub [--voice af_heart] [--speed 1.0] [--out library]
+    python -m desktop.build path/to/book.epub --list-chapters
+    python -m desktop.build path/to/book.epub --chapters 3        # or 2-4, or 1,3,5-6
+
+--chapters converts only those chapters (1-based, as --list-chapters numbers them) into a
+separate library/<book_id>-ch<spec>/ folder, so a test conversion never touches the full book.
 
 Sentence timestamps are exact: every sentence is synthesized separately and
 we know its sample offset when stitching the chapter together.
@@ -39,6 +44,20 @@ def make_book_id(book: Book, source: Path) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", book.title.lower()).strip("-")[:40] or "book"
     digest = hashlib.sha1(source.read_bytes()).hexdigest()[:8]
     return f"{slug}-{digest}"
+
+
+def parse_chapter_spec(spec: str, count: int) -> list[int]:
+    """"3", "2-4", "1,3,5-6" (1-based, inclusive) -> sorted 0-based indices. Raises ValueError."""
+    picked: set[int] = set()
+    for part in spec.replace(" ", "").split(","):
+        m = re.fullmatch(r"(\d+)(?:-(\d+))?", part)
+        if not m:
+            raise ValueError(f"Bad chapter spec {spec!r}: use e.g. 3, 2-4 or 1,3,5-6")
+        lo, hi = int(m.group(1)), int(m.group(2) or m.group(1))
+        if lo < 1 or hi < lo or hi > count:
+            raise ValueError(f"Chapters {part} out of range: this book has chapters 1-{count}")
+        picked.update(range(lo - 1, hi))
+    return sorted(picked)
 
 
 def plan_chapters(book: Book) -> list[list[list[str]]]:
@@ -124,11 +143,16 @@ def build_book(
     speed: float = 1.0,
     progress: ProgressFn | None = None,
     tts=None,
+    chapters: str | None = None,
 ) -> Path:
     source = Path(source)
     out_root = Path(out_root)
     book = load_book(source)
     book_id = make_book_id(book, source)
+    if chapters:
+        selected = parse_chapter_spec(chapters, len(book.chapters))
+        book.chapters = [book.chapters[i] for i in selected]
+        book_id = f"{book_id}-ch{chapters.replace(' ', '').replace(',', '_')}"
     out_dir = out_root / book_id
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -160,6 +184,7 @@ def build_book(
         "voice": tts.voice,
         "speed": tts.speed,
         "complete": False,
+        "chapter_selection": chapters,  # None for a full book
         "created": int(time.time()),
         "chapters": [],
     }
@@ -207,7 +232,15 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--voice", default=DEFAULT_VOICE)
     ap.add_argument("--speed", type=float, default=1.0)
     ap.add_argument("--out", default=str(ROOT / "library"))
+    ap.add_argument("--chapters", help="convert only these chapters, e.g. 3, 2-4 or 1,3,5-6 (see --list-chapters)")
+    ap.add_argument("--list-chapters", action="store_true", help="print the numbered chapter list and exit")
     args = ap.parse_args(argv)
+
+    if args.list_chapters:
+        book = load_book(args.source)
+        for n, (ch, paras) in enumerate(zip(book.chapters, plan_chapters(book)), 1):
+            print(f"{n:3}  {sum(map(len, paras)):5} sentences  {ch.title}")
+        return
 
     start = time.time()
 
@@ -216,7 +249,10 @@ def main(argv: list[str] | None = None) -> None:
         sys.stdout.write(f"\r[{pct:5.1f}%] {done}/{total} sentences  {msg[:60]:<60}")
         sys.stdout.flush()
 
-    out = build_book(args.source, args.out, args.voice, args.speed, progress)
+    try:
+        out = build_book(args.source, args.out, args.voice, args.speed, progress, chapters=args.chapters)
+    except ValueError as e:
+        sys.exit(f"error: {e}")
     print(f"\nWrote {out} in {time.time() - start:.0f}s")
 
 
