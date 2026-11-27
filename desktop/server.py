@@ -26,7 +26,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
 from .build import ROOT, build_book
-from .normalize import normalize, write_std_epub
+from .normalize import OCR_MODES, normalize, write_std_epub
 from .parse import load_book
 from .tts import DEFAULT_VOICE, VOICES
 
@@ -104,7 +104,7 @@ class Drafts:
             if (self.root / draft_id).exists():
                 _write_json(self.root / draft_id / "draft.json", draft)
 
-    def create(self, upload, filename: str, auto: bool, voice: str, speed: float) -> dict:
+    def create(self, upload, filename: str, auto: bool, voice: str, speed: float, ocr: str = "auto") -> dict:
         draft_id = uuid.uuid4().hex[:12]
         d = self.root / draft_id
         d.mkdir(parents=True)
@@ -118,7 +118,7 @@ class Drafts:
             shutil.copyfileobj(upload, out)
         draft = {
             "id": draft_id, "file": filename, "source": source.name, "status": "cleaning", "message": "Waiting",
-            "done": 0, "total": 0, "auto": auto, "voice": voice, "speed": speed, "error": None,
+            "done": 0, "total": 0, "auto": auto, "voice": voice, "speed": speed, "ocr": ocr, "error": None,
             "created": time.time(), "chapters": 0, "checks": 0, "job_id": None, "book_id": None,
             "source_sha1": hashlib.sha1(source.read_bytes()).hexdigest(),
         }
@@ -126,6 +126,37 @@ class Drafts:
             self.drafts[draft_id] = draft
             _write_json(d / "draft.json", draft)
         self.queue.put(draft_id)
+        return draft
+
+    def create_cleaned(self, upload, filename: str, voice: str, speed: float) -> dict:
+        """A book already cleaned (CLI, or edited in Sigil): no cleaning step, straight to conversion (D-030)."""
+        draft_id = uuid.uuid4().hex[:12]
+        d = self.root / draft_id
+        d.mkdir(parents=True)
+        with (d / STD).open("wb") as out:
+            shutil.copyfileobj(upload, out)
+        try:
+            book = load_book(d / STD) if Path(filename).suffix.lower() == ".epub" else None
+        except Exception:  # noqa: BLE001 - unreadable: refused below
+            book = None
+        if book is None or not book.normalized:
+            shutil.rmtree(d, ignore_errors=True)
+            raise HTTPException(400, "Not a cleaned book (.std.epub): clean it on the Clean page first.")
+        draft = {
+            "id": draft_id, "file": filename, "source": STD, "status": "review", "message": "Uploaded cleaned book",
+            "done": 0, "total": 0, "auto": True, "voice": voice, "speed": speed, "ocr": "auto", "error": None,
+            "created": time.time(), "chapters": 0, "checks": 0, "job_id": None, "book_id": None,
+            # the original book's hash, so the library id and sentence cache match a cleaning on this server
+            "source_sha1": book.source_hash or hashlib.sha1((d / STD).read_bytes()).hexdigest(),
+        }
+        with self.lock:
+            self.drafts[draft_id] = draft
+            _write_json(d / "draft.json", draft)
+        self.set_report(draft_id, {
+            "source": filename, "method": "uploaded cleaned book: converted as it is",
+            "chapters": [[c.title, len(c.text)] for c in book.chapters],
+            "removed": [], "unconfirmed": [], "notes": [], "checks": []})
+        self.approve(draft_id, voice, speed)
         return draft
 
     def public(self) -> list[dict]:
@@ -172,7 +203,8 @@ class Drafts:
 
             try:
                 self.update(draft_id, message="Cleaning the book")
-                _std, report = normalize(d / draft["source"], d / STD, progress=progress)
+                _std, report = normalize(d / draft["source"], d / STD, progress=progress,
+                                         ocr=draft.get("ocr", "auto"))
                 self.set_report(draft_id, asdict(report))
                 self.update(draft_id, status="review", message="Ready for review")
                 if draft["auto"]:
@@ -358,20 +390,35 @@ def delete_book(book_id: str) -> dict:
 
 @app.post("/api/clean")
 def clean(file: UploadFile = File(...), voice: str = Form(DEFAULT_VOICE), speed: float = Form(1.0),
-          auto: bool = Form(False)) -> dict:
-    """Upload a book to clean. auto=true converts right after cleaning, with no review stop."""
+          auto: bool = Form(False), ocr: str = Form("auto")) -> dict:
+    """Upload a book to clean. auto=true converts right after cleaning, with no review stop.
+    ocr (PDF only): auto, always or never (D-030)."""
     _check_options(voice, speed)
-    name = Path((file.filename or "book").replace("\\", "/")).name
+    if ocr not in OCR_MODES:
+        raise HTTPException(400, f"OCR must be one of {', '.join(OCR_MODES)}")
+    name = _upload_name(file)
     if Path(name).suffix.lower() not in (".epub", ".pdf", ".txt"):
         raise HTTPException(400, "Upload an .epub, .pdf or .txt file")
-    draft = drafts.create(file.file, name, auto, voice, speed)
+    draft = drafts.create(file.file, name, auto, voice, speed, ocr)
     return {"draft_id": draft["id"]}
+
+
+def _upload_name(file: UploadFile) -> str:
+    return Path((file.filename or "book").replace("\\", "/")).name
 
 
 @app.post("/api/convert")
 def convert(file: UploadFile = File(...), voice: str = Form(DEFAULT_VOICE), speed: float = Form(1.0)) -> dict:
     """One step: clean, then convert with no review (the same as /api/clean with auto=true)."""
-    return clean(file, voice, speed, True)
+    return clean(file, voice, speed, True, "auto")
+
+
+@app.post("/api/convert-std")
+def convert_std(file: UploadFile = File(...), voice: str = Form(DEFAULT_VOICE), speed: float = Form(1.0)) -> dict:
+    """Convert a book that is already cleaned (a .std.epub from the CLI or Sigil), with no cleaning step."""
+    _check_options(voice, speed)
+    draft = drafts.create_cleaned(file.file, _upload_name(file), voice, speed)
+    return {"draft_id": draft["id"], "job_id": draft["job_id"]}
 
 
 @app.get("/api/drafts")

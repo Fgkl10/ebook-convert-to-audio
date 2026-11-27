@@ -49,6 +49,11 @@
   #rvtext h3 { margin: 0 0 10px; }
   .actions { position: sticky; top: 0; z-index: 1; margin: 14px 0; }
   .err { color: #c0392b; }
+  .tabs { display:flex; gap:6px; margin: 18px 0 4px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .tabs a { padding: 8px 14px; border-radius: 8px 8px 0 0; color: var(--muted); text-decoration: none; font-weight: 600; }
+  .tabs a.on { color: var(--fg); background: var(--card); border: 1px solid var(--line); border-bottom-color: var(--card); margin-bottom: -1px; }
+  .tab { display: none; }
+  .tab.on { display: block; }
 </style>
 </head>
 <body>
@@ -62,22 +67,46 @@
       <div id="qr"></div>
     </div>
 
-    <h2>Add a book</h2>
-    <form id="form" class="card row">
-      <input type="file" id="file" accept=".epub,.pdf,.txt" required>
-      <label>Voice <select id="voice"></select></label>
-      <label>Speed <input id="speed" type="number" min="0.5" max="2" step="0.05" value="1" style="width:80px"></label>
-      <label><input type="checkbox" id="auto"> Convert right after cleaning (skip review)</label>
-      <button class="primary" type="submit" id="go">Clean</button>
-    </form>
+    <nav class="tabs">
+      <a href="#clean" data-tab="clean">1 · Clean</a>
+      <a href="#convert" data-tab="convert">2 · Convert</a>
+      <a href="#library" data-tab="library">3 · Library</a>
+    </nav>
 
-    <h2>Cleaning &amp; review</h2>
-    <div id="drafts"></div>
-    <h2>Converting</h2>
-    <div id="jobs"></div>
+    <div class="tab" id="tab-clean">
+      <h2>Clean a book</h2>
+      <form id="form" class="card row">
+        <input type="file" id="file" accept=".epub,.pdf,.txt" required>
+        <label title="PDF only. Auto: OCR when the PDF is a scan. Always: OCR every page (garbled text layer, partly scanned book). Never: the PDF's own text only.">
+          OCR <select id="ocr" disabled><option value="auto">Auto</option><option value="always">Always</option><option value="never">Never</option></select></label>
+        <label>Voice <select id="voice"></select></label>
+        <label>Speed <input id="speed" type="number" min="0.5" max="2" step="0.05" value="1" style="width:80px"></label>
+        <label><input type="checkbox" id="auto"> Convert right after cleaning (skip review)</label>
+        <button class="primary" type="submit" id="go">Clean</button>
+      </form>
+      <h2>Cleaning &amp; review</h2>
+      <div id="drafts"></div>
+    </div>
 
-    <h2>Library</h2>
-    <div id="books" class="books"></div>
+    <div class="tab" id="tab-convert">
+      <h2>Convert a cleaned book</h2>
+      <form id="stdform" class="card row">
+        <input type="file" id="stdfile" accept=".epub" required>
+        <label>Voice <select id="stdvoice"></select></label>
+        <label>Speed <input id="stdspeed" type="number" min="0.5" max="2" step="0.05" value="1" style="width:80px"></label>
+        <button class="primary" type="submit">Convert</button>
+      </form>
+      <div class="muted" style="margin-top:6px">A .std.epub cleaned with the command line or edited in Sigil. Books approved on the Clean page appear below too.</div>
+      <h2>Approved books</h2>
+      <div id="approved"></div>
+      <h2>Conversion progress</h2>
+      <div id="jobs"></div>
+    </div>
+
+    <div class="tab" id="tab-library">
+      <h2>Library</h2>
+      <div id="books" class="books"></div>
+    </div>
   </section>
 
   <section id="review">
@@ -128,9 +157,18 @@ async function loadInfo() {
   $('#url').textContent = info.url;
   if (info.qr_svg) $('#qr').innerHTML = info.qr_svg;
   const opts = info.voices.map(v => `<option ${v===info.default_voice?'selected':''}>${v}</option>`).join('');
-  $('#voice').innerHTML = opts; $('#rvvoice').innerHTML = opts;
+  ['#voice', '#rvvoice', '#stdvoice'].forEach(s => $(s).innerHTML = opts);
 }
 const show = (id) => ['#home', '#review', '#reader'].forEach(s => $(s).style.display = s === id ? 'block' : 'none');
+
+// ---------------- tabs: Clean | Convert | Library (kept in the URL hash, so a reload stays on the tab)
+function showTab() {
+  const tab = ['clean', 'convert', 'library'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'clean';
+  document.querySelectorAll('.tabs a').forEach(a => a.classList.toggle('on', a.dataset.tab === tab));
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.id === `tab-${tab}`));
+}
+addEventListener('hashchange', showTab);
+const goTab = (tab) => { show('#home'); location.hash = tab; showTab(); };
 
 async function loadBooks() {
   const books = await (await fetch('/api/books')).json();
@@ -146,8 +184,19 @@ async function loadBooks() {
 const DRAFT_STATUS = { cleaning: 'cleaning', review: 'ready for review', queued: 'waiting to convert',
   converting: 'converting', done: 'converted', error: 'failed' };
 
+const CLEAN_STATES = ['cleaning', 'review', 'error'];
+
 function renderDrafts(drafts) {
-  $('#drafts').innerHTML = drafts.length ? `<div class="card">${drafts.map(d => {
+  draftList('#drafts', drafts.filter(d => CLEAN_STATES.includes(d.status)), 'Nothing here. Add a book above.');
+  draftList('#approved', drafts.filter(d => !CLEAN_STATES.includes(d.status)),
+            'No approved books yet. Approve one on the Clean page, or upload a cleaned book above.');
+  document.querySelectorAll('[data-review]').forEach(el => el.onclick = () => openReview(el.dataset.review));
+  document.querySelectorAll('[data-open]').forEach(el => el.onclick = () => openBook(el.dataset.open));
+  document.querySelectorAll('[data-discard]').forEach(el => el.onclick = () => discard(el.dataset.discard));
+}
+
+function draftList(target, drafts, empty) {
+  $(target).innerHTML = drafts.length ? `<div class="card">${drafts.map(d => {
     const pct = d.total ? (100*d.done/d.total).toFixed(0) : 0;
     const info = d.chapters ? ` · ${d.chapters} ch${d.checks ? ` · <b>${d.checks} to check</b>` : ''}` : '';
     const btns = [
@@ -159,10 +208,7 @@ function renderDrafts(drafts) {
         <span class="muted">${DRAFT_STATUS[d.status] || d.status}${info}</span></div>
       <div class="row" style="justify-content:space-between"><span class="muted ${d.error?'err':''}">${esc(d.error || d.message)}</span><span>${btns}</span></div>
       ${d.status==='cleaning' && d.total ? `<div class="bar"><div style="width:${pct}%"></div></div>` : ''}</div>`;
-  }).join('')}</div>` : '<div class="muted">Nothing here. Add a book above.</div>';
-  document.querySelectorAll('[data-review]').forEach(el => el.onclick = () => openReview(el.dataset.review));
-  document.querySelectorAll('[data-open]').forEach(el => el.onclick = () => openBook(el.dataset.open));
-  document.querySelectorAll('[data-discard]').forEach(el => el.onclick = () => discard(el.dataset.discard));
+  }).join('')}</div>` : `<div class="muted">${empty}</div>`;
 }
 
 let lastJobsSig = '';
@@ -190,9 +236,23 @@ $('#form').onsubmit = async (e) => {
   fd.append('voice', $('#voice').value);
   fd.append('speed', $('#speed').value);
   fd.append('auto', $('#auto').checked);
+  fd.append('ocr', $('#ocr').value);
   const r = await fetch('/api/clean', { method: 'POST', body: fd });
   if (!r.ok) alert((await r.json()).detail);
-  $('#file').value = '';
+  $('#file').value = ''; $('#ocr').disabled = true;
+};
+// OCR only means something for a PDF
+$('#file').onchange = () => $('#ocr').disabled = !/\.pdf$/i.test($('#file').files[0]?.name || '');
+
+$('#stdform').onsubmit = async (e) => {
+  e.preventDefault();
+  const fd = new FormData();
+  fd.append('file', $('#stdfile').files[0]);
+  fd.append('voice', $('#stdvoice').value);
+  fd.append('speed', $('#stdspeed').value);
+  const r = await fetch('/api/convert-std', { method: 'POST', body: fd });
+  if (!r.ok) alert((await r.json()).detail);
+  $('#stdfile').value = '';
 };
 
 async function discard(id) {
@@ -246,7 +306,7 @@ $('#rvapprove').onclick = async () => {
   fd.append('speed', $('#rvspeed').value);
   const r = await fetch(`/api/drafts/${draft.id}/approve`, { method: 'POST', body: fd });
   if (!r.ok) { alert((await r.json()).detail); return; }
-  show('#home'); draft = null;
+  goTab('convert'); draft = null;  // the approved book now waits on the Convert page
 };
 $('#rvupload').onclick = () => $('#rvfile').click();
 $('#rvfile').onchange = async () => {
@@ -312,9 +372,9 @@ requestAnimationFrame(tick);
 
 audio.onended = () => { if (chIdx + 1 < book.chapters.length) loadChapter(chIdx + 1, 0, true); };
 $('#rate').onchange = () => audio.playbackRate = +$('#rate').value;
-$('#back').onclick = () => { audio.pause(); show('#home'); $('#player').hidden = true; book = null; };
+$('#back').onclick = () => { audio.pause(); goTab('library'); $('#player').hidden = true; book = null; };
 
-loadInfo(); pollJobs();
+showTab(); loadInfo(); pollJobs();
 </script>
 </body>
 </html>

@@ -7,7 +7,7 @@ EPUBs are cut at confirmed headings, scanned PDFs are rebuilt from OCR (0b), and
 
 ```mermaid
 flowchart TD
-    A([book.epub / .pdf / .txt]) --> SC{scanned PDF?}
+    A([book.epub / .pdf / .txt]) --> SC{"PDF read with OCR?<br/>ocr=always: yes · never: no<br/>auto: when it is a scan (D-030)"}
     SC -- yes --> OCR["OCR rebuild (section 0b)"] --> LANG
     SC -- no --> L["load_book() for metadata, cover,<br/>labelled front matter;<br/>footnote paragraphs removed (D-027), then note markers<br/>stripped (sup, number-only note links, D-026)"]
     L --> LANG{English?}
@@ -45,8 +45,11 @@ and read with OCR (section 0b). The language check then runs on the OCR text.
 
 ```mermaid
 flowchart TD
-    S([scanned PDF]) --> D{"≥80% of pages are one image<br/>covering ≥85% of the page?"}
-    D -- no --> T(["text PDF: load_book() as before"])
+    S([PDF]) --> MODE{"ocr mode"}
+    MODE -- never --> T(["text PDF: load_book() as before"])
+    MODE -- always --> E
+    MODE -- auto --> D{"≥80% of pages are one image<br/>covering ≥85% of the page?"}
+    D -- no --> T
     D -- yes --> E{"docTR installed?<br/>(requirements-ocr.txt)"}
     E -- no --> ERR(["ValueError with the install command"])
     E -- yes --> R["render each page at 200 dpi"]
@@ -59,6 +62,7 @@ flowchart TD
     P --> H["cut chapters at headings that fuzzy-match a contents<br/>title, in order; 'KEY TO …' opens the answer part"]
     P -. "OCR words" .- FX["hyphen kept when both halves are words (good-luck);<br/>split 'ofthe', 'Ifyou'; 'SO' → 'so';<br/>drop a quote mark read as '1'; count each fix"]
     P -. "big first letter" .- DC["merge a one-letter line into its line;<br/>join by the book's word counts:<br/>S ome → Some, I he → The, A hospital stays"]
+    P -. "no contents page and no heading" .- ONE["whole text = one chapter 'Full Text'<br/>+ a 'Check by hand' item"]
     H --> Q{"quiz items numbered 1..n in both parts<br/>and most items ask a question?"}
     Q -- yes --> I["intro, Q1, Key to …, key intro, A1, Q2, A2, …"]
     Q -- no --> BO["book order: quiz, Key to …, answers"]
@@ -124,7 +128,8 @@ missing sentences cost GPU time. The m4a files and `book.json` are rewritten fro
 
 ```mermaid
 stateDiagram-v2
-    [*] --> cleaning: POST /api/clean (file, voice, speed, auto)
+    [*] --> cleaning: POST /api/clean (file, voice, speed, auto, ocr) · Clean page
+    [*] --> queued: POST /api/convert-std (a cleaned .std.epub) · Convert page
     cleaning --> error: normalize() fails (language, no text, OCR not installed)
     cleaning --> review: .std.epub + report.json written
     review --> queued: Approve & convert (or auto=true right away)

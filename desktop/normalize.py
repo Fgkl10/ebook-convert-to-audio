@@ -455,15 +455,23 @@ def write_std_epub(book: Book, out: Path, source_hash: str) -> None:
     tmp.replace(out)
 
 
+OCR_MODES = ("auto", "always", "never")
+
+
 def normalize(source: str | Path, out: str | Path | None = None, ignore_language: bool = False,
-              progress=None) -> tuple[Path, Report]:
+              progress=None, ocr: str = "auto") -> tuple[Path, Report]:
     """Write a standard EPUB for source. Returns (path written, report). Raises ValueError.
-    progress(done_pages, total_pages) is called while a scanned PDF is read with OCR."""
+    progress(done_pages, total_pages) is called while a scanned PDF is read with OCR.
+    ocr (PDF only, D-030): "auto" reads a PDF with OCR when it is a scan, "always" reads every PDF with OCR
+    (a garbled text layer, a partly scanned book), "never" uses only the PDF's own text layer."""
+    if ocr not in OCR_MODES:
+        raise ValueError(f"ocr must be one of {', '.join(OCR_MODES)}")
     source = Path(source)
     out_arg = out
     out = Path(out) if out else source.with_name(source.name.rsplit(".", 1)[0].removesuffix(".std") + ".std.epub")
     report = Report(str(source))
-    scanned = source.suffix.lower() == ".pdf" and is_scanned(source)
+    pdf = source.suffix.lower() == ".pdf"
+    scanned = pdf and (ocr == "always" or (ocr == "auto" and is_scanned(source)))
     if scanned:  # before load_book: an image-only scan has no text layer to load (D-021)
         book, scan = load_scanned_pdf(source, progress)
         report.removed += scan.removed
@@ -494,6 +502,8 @@ def normalize(source: str | Path, out: str | Path | None = None, ignore_language
             book.chapters = [c for c in chapters if len(c.text.strip()) >= MIN_CHAPTER_CHARS]
     else:
         report.method = f"{source.suffix.lower()} repackaged with the current parser (no cleaning yet)"
+    if pdf and ocr != "auto":
+        report.method += " · OCR forced on" if ocr == "always" else " · OCR turned off: the PDF's text layer only"
     # Same rule parse.py applies when reading the result, so the report shows what will be converted.
     # Back matter and figure labels go for every format, not only EPUB (a user's edits to a .std.epub stay).
     kept, figures = [], 0
@@ -524,6 +534,8 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("source")
     ap.add_argument("--out", help="output path (default: <name>.std.epub next to the source)")
     ap.add_argument("--ignore-language", action="store_true", help="skip the English check")
+    ap.add_argument("--ocr", choices=OCR_MODES, default="auto",
+                    help="PDF only: auto = OCR scanned PDFs (default), always = OCR every page, never = text layer only")
     args = ap.parse_args(argv)
 
     def progress(done: int, total: int) -> None:
@@ -532,7 +544,7 @@ def main(argv: list[str] | None = None) -> None:
             sys.stderr.write("\n")
 
     try:
-        out, report = normalize(args.source, args.out, args.ignore_language, progress)
+        out, report = normalize(args.source, args.out, args.ignore_language, progress, args.ocr)
     except ValueError as e:
         sys.exit(f"error: {e}")
     print(report.render())

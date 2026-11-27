@@ -184,6 +184,53 @@ def test_scan11_language_checked_on_ocr_text(tmp_path, monkeypatch):
         normalize(_scanned_pdf(tmp_path / "hu.pdf"))
 
 
+def test_scan16_no_headings_keeps_text_as_one_chapter():
+    text = [EN_TEXT[i:i + 60] for i in range(0, len(EN_TEXT), 60)]
+    result = rebuild([body(text, y=0.2), body(text, y=0.2)])
+    assert [c.title for c in result.chapters] == ["Full Text"]
+    assert result.chapters[0].text.count("fallen into it.") == 2  # both pages kept
+    assert result.checks == ["no chapter headings found: the whole text is one chapter"]
+    assert not any(why.startswith("before the first chapter") for why, _ in result.removed)
+
+
+def _text_pdf(path):
+    doc = pymupdf.open()
+    for n in range(3):
+        page = doc.new_page()
+        page.insert_textbox(pymupdf.Rect(72, 72, 520, 760), (EN_TEXT + " ") * 4)
+    doc.set_metadata({"title": "The Word Game", "author": "Ada Fictional"})
+    doc.save(str(path))
+    return path
+
+
+EN_TEXT = ("The river ran quietly past the old mill while the morning light grew warmer, and the miller "
+           "said that the water remembers everything that has ever fallen into it.")
+
+
+def test_scan15_ocr_always_reads_a_text_pdf_with_ocr(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(ocr, "make_engine", lambda: calls.append(1) or _fake_engine(quiz_book()))
+    _, report = normalize(_text_pdf(tmp_path / "text.pdf"), ocr="always")
+    assert calls and "scanned PDF read with OCR" in report.method and "OCR forced on" in report.method
+    assert report.chapters[0][0] == "A Morning Walk"  # the chapters come from the OCR text, not the text layer
+
+
+def test_scan15_ocr_never_uses_the_text_layer(tmp_path, monkeypatch):
+    def no_ocr():
+        raise AssertionError("OCR must not run")
+    monkeypatch.setattr(ocr, "make_engine", no_ocr)
+    _, report = normalize(_text_pdf(tmp_path / "text.pdf"), ocr="never")
+    assert "OCR turned off" in report.method and report.chapters
+    with pytest.raises(ValueError, match="No readable text"):  # a scan has no text layer to fall back on
+        normalize(_scanned_pdf(tmp_path / "scan.pdf"), ocr="never")
+    txt = tmp_path / "story.txt"
+    txt.write_text((EN_TEXT + "\n\n") * 4, encoding="utf-8")
+    _, report = normalize(txt, ocr="always")  # ignored for anything but a PDF
+    assert "OCR" not in report.method
+    with pytest.raises(ValueError, match="ocr must be one of"):
+        normalize(txt, ocr="sometimes")
+
+
 def test_scan12_missing_ocr_package_explains_install(tmp_path, monkeypatch):
     monkeypatch.setitem(sys.modules, "doctr", None)
     monkeypatch.setitem(sys.modules, "doctr.models", None)
