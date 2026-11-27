@@ -438,3 +438,17 @@ lines are never wholly in the notes' small print (only their marker numbers are)
 **Consequences:** Smart Notes loses exactly its 39 notes (1,055 words); every removed run ends right before the next part
 heading. The Art of Game Design and Counselling for Toads are unchanged. A note whose continuation lines are not styled
 differently from body text loses only its first paragraph, and the rest stays as a fragment (NORM-11, a known gap).
+
+## D-028 Model caches live inside the project
+Status: Accepted · Milestone: M3
+**Context:** Kokoro-82M (313 MB, from Hugging Face) and the docTR OCR models (124 MB) downloaded into the user's
+`~/.cache`, outside the project. Everything the project uses should stay inside its folder.
+**Decision:** `desktop/__init__.py` sets `HF_HOME=<project>/models/huggingface` and `DOCTR_CACHE_DIR=<project>/models/doctr`
+with `os.environ.setdefault`, before any desktop module imports Kokoro or docTR (both read the variables at import time).
+`models/` is gitignored. The existing copies were moved there (the Hugging Face folder holds plain files on Windows, no
+symlinks); other models in `~/.cache` were not touched.
+**Why:** One folder holds the whole project, so it can be moved, backed up or deleted as a unit. The package `__init__` is
+the one place every entry point (CLI, server, tests) passes through first.
+**Consequences:** A fresh checkout downloads the models into `models/` on first use. A value set in the environment still
+wins, so a shared cache can be used by setting `HF_HOME` / `DOCTR_CACHE_DIR`. Code that imports `kokoro` or `doctr`
+without importing `desktop` first would still use `~/.cache`.

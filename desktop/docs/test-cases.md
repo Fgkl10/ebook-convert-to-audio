@@ -134,6 +134,8 @@ All automated cases use made-up OCR lines and generated images (`tests/scan_fact
 | TTS-02 | Device selection | Run with and without CUDA available | `device` is `cuda` or `cpu` accordingly | Manual |
 | TTS-03 | British voice | `KokoroTTS("bf_emma")` | The pipeline uses `lang_code="b"` | Manual |
 | TTS-04 | Empty result | Text that yields no audio | A zero-length array, with no exception | Manual |
+| DEV-01 | Model caches inside the project | Import `desktop` with `HF_HOME` / `DOCTR_CACHE_DIR` unset, then preset | Unset: both point to `models/huggingface` and `models/doctr` in the project; preset: the user's values are kept (D-028) | Automated `test_dev01_model_caches_inside_project`, `test_dev01_preset_cache_kept` |
+| DEV-02 | Models load from the project offline | `HF_HUB_OFFLINE=1`, `KokoroTTS().synth(…)` and `ocr.make_engine()` | Both load from `models/` with no download, and nothing is written to `~/.cache` | Manual (checked after the move) |
 
 ## Build pipeline (`build.py`)
 

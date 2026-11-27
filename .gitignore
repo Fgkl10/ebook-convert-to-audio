@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 library/
 cache/
+models/
 *.wav
 uploads/
 cache_install.log

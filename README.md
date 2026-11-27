@@ -26,6 +26,8 @@ py -3.10 -m venv .venv
 # Optional, only for scanned PDFs (OCR with docTR, keeps the CUDA torch):
 .venv\Scripts\pip install -r requirements-ocr.txt
 ```
+The models (Kokoro ~313 MB, docTR ~120 MB) download on first use into `models/` inside the project.
+Set `HF_HOME` / `DOCTR_CACHE_DIR` to use another folder.
 
 ## Usage
 ```powershell
