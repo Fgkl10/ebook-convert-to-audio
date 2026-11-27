@@ -3,7 +3,7 @@
 Pure functions over `ocr.Line`s, so they are tested without docTR:
   1. drop running headers, page numbers and the back cover (pages after the last printed page number)
   2. build paragraphs from indentation, vertical gaps and numbered items; join drop caps ("T he" ->
-     "The") and hyphenated line breaks
+     "The") and hyphenated line breaks; fix clear OCR word errors ("ofthe" -> "of the", D-023)
   3. find chapter headings (capitals at the top of a page) confirmed by the book's own contents page,
      the same propose/confirm idea as EPUB (D-020)
   4. for quiz books: when every numbered item of a quiz is its own question and its "KEY TO ..."
@@ -20,6 +20,7 @@ from pathlib import Path
 
 from .ocr import Line, Page
 from .parse import Book, Chapter
+from .words import Lexicon, load_lexicon
 
 TOP, BOTTOM = 0.12, 0.90  # running headers / page numbers live above TOP or below BOTTOM
 HEADER_ZONE = 0.10  # running headers sit above this; chapter headings lower (~0.15)
@@ -105,24 +106,72 @@ def strip_margins(pages: list[Page], removed: list[tuple[str, str]], titles: lis
 
 # ---------------------------------------------------------------- 2. paragraphs
 
-def _join(a: str, b: str, vocabulary: set[str]) -> str:
+def _join(a: str, b: str, vocabulary: set[str], counts: Counter, lex: Lexicon) -> str:
     """Join two lines of one paragraph, undoing end-of-line hyphenation ('mo-' + 'mentary').
-    A hyphen is kept when the hyphenated word appears unbroken elsewhere in the book ('self-confidence')."""
+    The hyphen is kept when the book spells the word with a hyphen elsewhere ('self-confidence'), or
+    when the joined form is not a word but both halves are ('good-' + 'luck', 'half-' + 'hour')."""
     m = re.search(r"(\w+)-$", a)
     if m and b[:1].islower():
         first = m.group(1)
         rest = re.match(r"[\w']+", b).group(0)
+        joined = (first + rest).lower()
         if f"{first}-{rest}".lower() in vocabulary:
+            return a + b
+        if counts[joined] or lex.knows(joined):
+            return a[:-1] + b
+        if lex.knows(first) and lex.knows(rest):
             return a + b
         return a[:-1] + b
     return f"{a} {b}"
 
 
-def _fix_words(text: str) -> str:
+_GLUED = re.compile(r"^(of|if|I|a)([a-z][\w'’]*)$", re.IGNORECASE)  # 'ofthe', 'Ifyou', "Ican't", 'anuisance'
+_LONE_ONE = re.compile(r"(?<=[.!?'\"”’]) 1(?= [A-Z\"“]| ?$)")  # a quote mark read as '1': "…puke.' 1 Rephrase"
+
+
+def _unglue(word: str, lex: Lexicon) -> str | None:
+    """'ofthe' -> 'of the': a small word glued to the next, when the glued form is not a word."""
+    lead = word[: len(word) - len(word.lstrip("\"“‘'("))]  # '"Ican't' -> '"', "Ican't"
+    word = word[len(lead):]
+    core = word.rstrip(".,;:!?\"'”’)")
+    m = _GLUED.match(core)
+    if not m or lex.knows(core):
+        return None
+    head, rest = m.groups()
+    short_ok = head.lower() in ("of", "if") and rest.lower() in ("a", "i")  # 'ofa', 'IfI'
+    if head.lower() in ("i", "a") and (head == "i" or len(rest) < 3):
+        return None  # 'Ioe', 'ift': too short to tell; lowercase 'i' is never the word I
+    if (len(rest) >= 2 or short_ok) and lex.knows(rest):
+        return f"{lead}{head} {rest}{word[len(core):]}"
+    return None
+
+
+def _fix_words(text: str, lex: Lexicon, fixes: Counter) -> str:
+    """Fix clear OCR word errors and count each fix for the report. Only words the dictionary
+    settles are changed; anything unsure is left as read."""
+    text, n = _LONE_ONE.subn("", text)
+    if n:
+        fixes["quote mark read as '1' removed"] += n
     words = text.split(" ")
-    for i in range(1, len(words) - 1):
-        if words[i] in _CAPS_FIX and words[i - 1][-1:].islower() and words[i + 1][:1].islower():
-            words[i] = words[i].lower()
+    for i, w in enumerate(words):
+        prev = words[i - 1] if i else ""
+        nxt = words[i + 1] if i + 1 < len(words) else ""
+        core = w.rstrip(".,;:!?")
+        caps = core.isalpha() and core.isupper() and 2 <= len(core) <= 4
+        lower_next = nxt[:1].islower() or re.match(r"I\b", nxt) is not None  # 'SO I'd run'
+        if caps and lower_next and (core in _CAPS_FIX or (lex.knows(core) and core not in lex.keys)):
+            if i and prev[-1:].islower() or prev[-1:] in (",", ";", ":"):
+                words[i] = w.lower()  # 'not SO subtle', 'at the ZOO, or'
+            elif i == 0:
+                words[i] = w[0] + w[1:].lower()  # 'AS you fall asleep' (big first letter A beside S)
+            if words[i] != w:
+                fixes[f"{core} -> {words[i].rstrip('.,;:!?')}"] += 1
+            continue
+        if lex:
+            split = _unglue(w, lex)
+            if split:
+                fixes[f"{w.rstrip('.,;:!?')} -> {split.rstrip('.,;:!?')}"] += 1
+                words[i] = split
     return " ".join(words)
 
 
@@ -180,8 +229,11 @@ def _cap_letter(line: Line, first_after_heading: bool) -> bool:
             and w[1].text[:1].islower())
 
 
-def paragraphs(pages: list[Page]) -> list[Para]:
-    """Paragraphs in reading order. A heading is a line of capitals at the top of a page, before any body text."""
+def paragraphs(pages: list[Page], lex: Lexicon | None = None, fixes: Counter | None = None) -> list[Para]:
+    """Paragraphs in reading order. A heading is a line of capitals at the top of a page, before any body text.
+    `lex` settles hyphens and glued words (empty: book evidence only); `fixes` counts each word fixed."""
+    lex = lex if lex is not None else Lexicon()
+    fixes = fixes if fixes is not None else Counter()
     spacing = statistics.median(
         [b.box[1] - a.box[1] for page in pages for a, b in zip(page, page[1:]) if 0 < b.box[1] - a.box[1] < 0.1]
         or [0.025])
@@ -228,10 +280,12 @@ def paragraphs(pages: list[Page]) -> list[Para]:
             if starts:
                 paras.append(Para(text, n, numbered=int(item.group(1)) if item else None))
             else:
-                paras[-1].text = _join(paras[-1].text, text, vocabulary)
+                paras[-1].text = _join(paras[-1].text, text, vocabulary, counts, lex)
             in_body, after_cap, prev = True, bool(cap or first_after_heading), ln
     for p in paras:
-        p.text = _fix_words(re.sub(r"\s+", " ", p.text).strip())
+        p.text = re.sub(r"\s+", " ", p.text).strip()
+        if not p.heading:
+            p.text = _fix_words(p.text, lex, fixes)
     return paras
 
 
@@ -356,14 +410,18 @@ def chapter_text(section: _Section) -> tuple[list[str], str]:
     return lines + _text(section.quiz) + [section.key_heading] + _text(section.key), f"book order ({why})"
 
 
-def rebuild(pages: list[Page]) -> ScanResult:
-    """OCR pages -> chapters, with everything removed or decided recorded for the report."""
+def rebuild(pages: list[Page], lex: Lexicon | None = None) -> ScanResult:
+    """OCR pages -> chapters, with everything removed, decided or fixed recorded for the report."""
     result = ScanResult([])
+    fixes: Counter = Counter()
     titles = contents_titles(pages)
     pages = strip_margins(pages, result.removed, titles)
     for page in [pg for pg in pages if any(_key(ln.text) == "contents" for ln in pg)]:
         result.removed.append(("contents page", _short(" ".join(ln.text for ln in page))))
-    paras = paragraphs([pg for pg in pages if not any(_key(ln.text) == "contents" for ln in pg)])
+    paras = paragraphs([pg for pg in pages if not any(_key(ln.text) == "contents" for ln in pg)], lex, fixes)
+    if fixes:
+        result.notes.append(f"OCR words fixed ({sum(fixes.values())}): "
+                            + ", ".join(f"{f} ({n})" if n > 1 else f for f, n in sorted(fixes.items())))
     for section in _sections(paras, titles, result):
         lines, placement = chapter_text(section)
         if placement:
@@ -385,7 +443,7 @@ def load_scanned_pdf(path: Path, progress=None) -> tuple[Book, ScanResult]:
     with pymupdf.open(str(path)) as doc:
         md = doc.metadata or {}
     pages, cover = ocr_pdf(path, progress)
-    result = rebuild(pages)
+    result = rebuild(pages, load_lexicon())
     title = (md.get("title") or "").strip()
     if not title:  # file names from the internet carry "(Author) (site.com)" groups
         title = re.sub(r"\s*[(\[][^)\]]*[)\]]", "", path.stem).strip() or path.stem

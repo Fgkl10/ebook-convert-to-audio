@@ -279,8 +279,7 @@ server by default, so it isn't local. The centre split cut words on page 87 ("yo
 reads them whole. Keeping OCR optional is a deliberate exception to D-013's "add new imports to both
 requirements files". About 15 packages for one kind of book don't belong in every install or in CI.
 **Consequences:** Reading the whole 90-page Kokology takes about 40 s. The first run downloads about 100 MB of models.
-OCR errors remain in the text: glued words ("ofpressure"), a stray "1" for a quote mark, and big first letters that
-docTR misses entirely ("ne day", "a ot"). The report lists these first, under "Check by hand", for review in Sigil.
+Most OCR word errors are fixed by D-023. Big first letters that docTR misses entirely ("ne day", "a ot") remain. The report lists these first, under "Check by hand", for review in Sigil.
 A scan without a contents page falls back to one chapter per heading in capitals.
 Big first letters ("drop caps") come back from docTR in three shapes: glued as a tall first word ("T he"), as a
 line of their own beside the first line (['S'] next to ['ome', 'days']), or as a normal-height letter. They are
@@ -308,3 +307,28 @@ Interleaving choices with their answers would give the answer away before all th
 number, the numbers differ and the chapter falls back to book order, which is always safe.
 **Consequences:** A quiz whose numbering OCR damaged keeps book order instead of interleaving, and the report shows it.
 The key heading is spoken once, before the theme paragraph, as the user preferred ("before answer 1").
+
+## D-023 OCR word errors are fixed by rules checked against a word list, not by a model
+Status: Accepted · Milestone: M3
+**Context:** After D-021 the cleaned Kokology still had about 55 wrong words in 25,865 (0.2%): small words glued to
+the next ("ofthe" ×5, "Ifyou", "Ican't", "anuisance"), "SO" in capitals inside lowercase text, quote marks read as
+"1", and about 7 compounds whose line-break hyphen the cleaner itself removed ("goodluck", "halfhour",
+"up-todate"). Kokoro reads each one oddly, about once every 2–3 minutes of audio. The user asked whether to train a
+small model to fix them.
+**Decision:** No model. `words.py` provides a yes/no English word check from the pronunciation dictionary that
+already ships with Kokoro (misaki), plus simple inflections. `scanned.py` changes a word only when the check settles it:
+- A line-break hyphen is dropped when the book or the dictionary knows the joined word ("mo-mentary" → "momentary").
+  It is kept when the joined form is unknown but both halves are words ("good-" + "luck" → "good-luck").
+- "of", "if", "I" or "a" glued to a known word is split when the glued form is not a word ("ofthe" → "of the").
+  Lowercase "i", and "I" or "a" before fewer than 3 letters ("Ioe"), are too unsure and stay.
+- A short word in capitals between lowercase words ("SO", "ZOO") is lowercased when it is a lowercase word that the
+  dictionary does not list in capitals; acronyms ("CD", "TV") stay. At a paragraph start it becomes "As", "How".
+- A lone "1" after closing punctuation and before a capital or the end of the paragraph is dropped (a quote mark).
+Each fix is counted and listed in the report's notes, so every change can be checked.
+**Why:** There is no training data (one scanned book), and a model that rewrites text can change correct but unusual
+words (names, "kokology") without any sign, which is worse than a typo. The errors fall into a few kinds, and each kind
+has a test that is either right or leaves the word alone. The dictionary costs nothing new to install.
+**Consequences:** On Kokology 94 words are fixed, and what remains is about 8 one-off misreads ("ould", "coffe") plus
+the 3 missed big letters (listed under "Check by hand"), and compounds the book or OCR printed as one word
+("guestroom", "halfhour"), which Kokoro still reads understandably. CI does not install Kokoro, so there the list is empty and
+the dictionary fixes are off; tests pass their own small word list.

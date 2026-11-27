@@ -1,16 +1,18 @@
 """Scanned-PDF cleaner: OCR layout rebuild and quiz answers (desktop/ocr.py, desktop/scanned.py, D-021/D-022).
 IDs refer to desktop/docs/test-cases.md. No docTR here: OCR output is synthetic (tests/scan_factory.py)."""
 import sys
+from collections import Counter
 
 import numpy as np
 import pymupdf
 import pytest
 
-from desktop import ocr
+from desktop import ocr, scanned, words
 from desktop.normalize import normalize
 from desktop.parse import load_book
 from desktop.scanned import paragraphs, rebuild, strip_margins, title_case
-from tests.scan_factory import body, line, quiz_book, spread_image
+from desktop.words import Lexicon
+from tests.scan_factory import STEP, body, line, quiz_book, spread_image
 from tests.test_language import HU
 
 
@@ -35,7 +37,10 @@ def test_scan02_paragraph_rebuild():
     assert walk[1] == ("The path through the hills is quiet at dawn, and the momentary chill makes every "
                        "step feel new. Take a breath and begin the walk.")
     key_text = "\n".join(walk)
-    assert "with self-confidence or with doubt" not in key_text  # 'self-' + 'confidence': no unbroken form seen
+    # no word list here (the CI case): 'self-' + 'confidence' joins unless the book spells it with a hyphen;
+    # with a word list the hyphen stays (SCAN-18)
+    assert "with selfconfidence or with doubt" in key_text
+    assert "with self-confidence or with doubt" in "\n".join(chapter(rebuild(quiz_book(), LEX), "A Morning Walk"))
     assert "about so little" in key_text  # docTR's 'SO' inside lowercase text
     lost = chapter(result, "The Lost Key")
     assert "3. I will sleep on the porch tonight." in lost  # hanging indent continues the choice
@@ -184,3 +189,66 @@ def test_scan12_missing_ocr_package_explains_install(tmp_path, monkeypatch):
     monkeypatch.setitem(sys.modules, "doctr.models", None)
     with pytest.raises(ValueError, match="requirements-ocr.txt"):
         normalize(_scanned_pdf(tmp_path / "scan.pdf"))
+
+
+# ---------------------------------------------------------------- OCR word fixes (D-023)
+
+LEX = Lexicon(["of", "the", "if", "you", "I", "i", "lost", "course", "a", "nuisance", "good", "luck", "half",
+               "hour", "self", "confidence", "momentary", "most", "time", "wait", "nothing", "and", "it", "was",
+               "zoo", "so", "as", "sleep", "often", "we", "went", "to", "then", "rest", "berry", "make", "case"])
+
+
+@pytest.fixture(autouse=True)
+def _test_lexicon(monkeypatch):
+    """The real word list comes from Kokoro, which CI doesn't install: every test uses this small one."""
+    monkeypatch.setattr(scanned, "load_lexicon", lambda: LEX)
+
+
+def _para(lines, lex=LEX, fixes=None):
+    return paragraphs([body(lines)], lex, fixes)[-1].text
+
+
+def test_scan17_lexicon_knows_inflections():
+    assert LEX.knows("berries") and LEX.knows("makes") and LEX.knows("good-luck") and LEX.knows("Of,")
+    assert not LEX.knows("ofthe") and not LEX.knows("goodluck") and not Lexicon().knows("the")
+
+
+def test_scan17_lexicon_empty_without_kokoro(monkeypatch):
+    words.load_lexicon.cache_clear()
+    monkeypatch.setitem(sys.modules, "misaki", None)
+    assert not words.load_lexicon()
+    words.load_lexicon.cache_clear()
+
+
+def test_scan18_hyphen_kept_when_both_halves_are_words():
+    assert _para(["It brings you good-", "luck for a half-", "hour."]) == "It brings you good-luck for a half-hour."
+    assert _para(["It took self-", "confidence."]) == "It took self-confidence."
+    assert _para(["A mo-", "mentary pause."]) == "A momentary pause."  # the joined form is a word
+    assert _para(["It brings you good-", "luck."], lex=Lexicon()) == "It brings you goodluck."  # no list: as before
+
+
+def test_scan19_glued_small_words_split():
+    fixes = Counter()
+    text = _para(["Most ofthe time ifyou wait, Ilost nothing. Ofcourse it was anuisance, ifI wait."], fixes=fixes)
+    assert text == "Most of the time if you wait, I lost nothing. Of course it was a nuisance, if I wait."
+    assert fixes["ofthe -> of the"] == 1 and sum(fixes.values()) == 6
+    assert _para(['"Ilost it," we said.']) == '"I lost it," we said.'  # quote mark before the glued word
+    assert _para(["Ioe often waits."]) == "Ioe often waits."  # too short to tell, a known word: left as read
+    assert _para(["Most ofthe time."], lex=Lexicon()) == "Most ofthe time."  # no word list: no change
+
+
+def test_scan20_capitals_and_stray_one():
+    assert _para(["We went to the ZOO, then SO I'd rest by the CD case."]) == \
+        "We went to the zoo, then so I'd rest by the CD case."  # CD is not a word in lowercase: kept
+    assert _para(["AS you sleep we rest."]) == "As you sleep we rest."  # big first letter A beside S
+    assert _para(['She said "stop." 1 Then we went.']) == 'She said "stop." Then we went.'
+    assert _para(["Most of the time it was over. 1"]) == "Most of the time it was over."
+    assert _para(["Scores 1-20 make page 1 Then rest."]) == "Scores 1-20 make page 1 Then rest."
+
+
+def test_scan20_fixes_listed_in_report():
+    pages = quiz_book()
+    pages[2][3] = line("Take a breath ofthe hills and begin the walk.", 0.29 + 2 * STEP)
+    result = rebuild(pages, LEX)
+    assert "Take a breath of the hills" in "\n".join(chapter(result, "A Morning Walk"))
+    assert any(n.startswith("OCR words fixed (") and "ofthe -> of the" in n for n in result.notes)

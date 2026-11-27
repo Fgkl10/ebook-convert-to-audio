@@ -55,6 +55,7 @@ flowchart TD
     M --> C["contents titles = capitals on pages headed CONTENTS<br/>(contents pages are then removed)"]
     C --> P["paragraphs: new at an indent, a gap or 'N.'<br/>join drop caps ('T he' → 'The') and hyphenated breaks<br/>headings = capitals at the top of a page"]
     P --> H["cut chapters at headings that fuzzy-match a contents<br/>title, in order; 'KEY TO …' opens the answer part"]
+    P -. "OCR words" .- FX["hyphen kept when both halves are words (good-luck);<br/>split 'ofthe', 'Ifyou'; 'SO' → 'so';<br/>drop a quote mark read as '1'; count each fix"]
     P -. "big first letter" .- DC["merge a one-letter line into its line;<br/>join by the book's word counts:<br/>S ome → Some, I he → The, A hospital stays"]
     H --> Q{"quiz items numbered 1..n in both parts<br/>and most items ask a question?"}
     Q -- yes --> I["intro, Q1, Key to …, key intro, A1, Q2, A2, …"]
