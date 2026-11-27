@@ -2,7 +2,7 @@
 
 ## 0. Clean a book, review it, then convert (`desktop.normalize`, D-019/D-020)
 
-The CLI only converts cleaned files (`.std.epub`). The web UI cleans automatically, with no review.
+The CLI only converts cleaned files (`.std.epub`). The web UI cleans too and stops for review (section 2, D-029).
 EPUBs are cut at confirmed headings, scanned PDFs are rebuilt from OCR (0b), and text PDFs and TXT are repackaged.
 
 ```mermaid
@@ -118,35 +118,65 @@ If the process dies mid-book, the next run of the same file (same `book_id`) re-
 Sentences already in `cache/<book_id>/` load from disk instead of running TTS again, so only the
 missing sentences cost GPU time. The m4a files and `book.json` are rewritten from scratch.
 
-## 2. Convert through the server
+## 2. Clean, review and convert through the server (D-029)
+
+### 2a. Draft states
+
+```mermaid
+stateDiagram-v2
+    [*] --> cleaning: POST /api/clean (file, voice, speed, auto)
+    cleaning --> error: normalize() fails (language, no text, OCR not installed)
+    cleaning --> review: .std.epub + report.json written
+    review --> queued: Approve & convert (or auto=true right away)
+    review --> review: upload edited .std.epub (rewritten with the original sha1)
+    queued --> converting: Jobs worker takes it
+    converting --> done: book in library/
+    converting --> review: conversion failed (error shown)
+    done --> queued: convert again (another voice)
+    review --> [*]: Discard
+    done --> [*]: Discard
+    error --> [*]: Discard
+    note right of cleaning: server restart: cleaning becomes error,<br/>queued/converting go back to review
+```
+
+### 2b. Sequence
 
 ```mermaid
 sequenceDiagram
     actor U as User (browser)
     participant UI as index.html
     participant API as server.py
-    participant Q as Jobs queue + worker
+    participant C as Drafts queue + clean worker
+    participant Q as Jobs queue + convert worker
     participant B as build_book
 
-    U->>UI: pick file, voice, speed → Convert
-    UI->>API: POST /api/convert (multipart)
+    U->>UI: pick file, voice, speed, (skip review?) → Clean
+    UI->>API: POST /api/clean (multipart)
     API->>API: validate voice, 0.5≤speed≤2, ext ∈ {epub,pdf,txt}
-    API->>API: save to uploads/
-    API->>Q: submit(job) → status=queued
-    API-->>UI: {job_id}
+    API->>C: drafts/<id>/ with the upload + draft.json, status=cleaning
+    API-->>UI: {draft_id}
     loop every 2 s
-        UI->>API: GET /api/jobs
-        API-->>UI: job list (status, done/total, message)
-        UI->>API: GET /api/books (when job signature changes)
+        UI->>API: GET /api/drafts, GET /api/jobs
+        UI->>API: GET /api/books (when the job signature changes)
     end
-    Q->>Q: take next job → status=running
-    Q->>Q: normalize(upload) → .std.epub (auto, no review; language refused here)
-    Q->>Q: _get_tts(voice, speed) (reuse model if same language)
-    Q->>B: build_book(path, LIBRARY, ..., progress, tts)
-    B-->>Q: progress(done, total, msg)
-    B-->>Q: out_dir
-    Q->>Q: status=done, book_id  (or status=error, error=msg)
+    C->>C: normalize(upload, drafts/<id>/book.std.epub, progress)
+    C-->>UI: message "Reading scanned pages n/N" (OCR)
+    C->>C: report.json, status=review (auto: approve at once)
+    U->>UI: Review
+    UI->>API: GET /api/drafts/{id} (report), GET …/chapters/{n} (one chapter's text)
+    opt fix in Sigil
+        U->>API: GET …/std.epub, edit, POST …/std.epub
+    end
+    U->>UI: Approve & convert (voice, speed)
+    UI->>API: POST /api/drafts/{id}/approve
+    API->>Q: submit(book.std.epub, draft_id) → draft status=queued
+    Q->>Q: draft status=converting; _get_tts (reuse model if same language)
+    Q->>B: build_book(std, LIBRARY, ..., progress, tts)
+    B-->>Q: progress(done, total, msg) / out_dir
+    Q->>Q: job done, draft status=done + book_id (on error: draft back to review)
 ```
+
+`POST /api/convert` is the same as `/api/clean` with `auto=true`.
 
 ## 3. Listen with sentence sync (web player)
 

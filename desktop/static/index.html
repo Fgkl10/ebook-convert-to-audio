@@ -40,6 +40,15 @@
   .player { position:fixed; left:0; right:0; bottom:0; background:var(--card); border-top:1px solid var(--line); padding:10px 16px; }
   .player .inner { max-width:900px; margin:0 auto; }
   audio { width:100%; }
+  #review { display:none; }
+  .checks { border-color: #e0b84a; background: color-mix(in srgb, var(--hl) 50%, var(--card)); }
+  .checks ul, details ul { margin: 6px 0 0; padding-left: 20px; }
+  details { margin-top: 10px; }
+  details summary { cursor:pointer; font-weight:600; }
+  #rvtext p { margin: 0 0 12px; font-size: 16px; line-height: 1.6; font-family: Georgia, "Times New Roman", serif; }
+  #rvtext h3 { margin: 0 0 10px; }
+  .actions { position: sticky; top: 0; z-index: 1; margin: 14px 0; }
+  .err { color: #c0392b; }
 </style>
 </head>
 <body>
@@ -53,17 +62,41 @@
       <div id="qr"></div>
     </div>
 
-    <h2>Convert a book</h2>
+    <h2>Add a book</h2>
     <form id="form" class="card row">
       <input type="file" id="file" accept=".epub,.pdf,.txt" required>
       <label>Voice <select id="voice"></select></label>
       <label>Speed <input id="speed" type="number" min="0.5" max="2" step="0.05" value="1" style="width:80px"></label>
-      <button class="primary" type="submit">Convert</button>
+      <label><input type="checkbox" id="auto"> Convert right after cleaning (skip review)</label>
+      <button class="primary" type="submit" id="go">Clean</button>
     </form>
+
+    <h2>Cleaning &amp; review</h2>
+    <div id="drafts"></div>
+    <h2>Converting</h2>
     <div id="jobs"></div>
 
     <h2>Library</h2>
     <div id="books" class="books"></div>
+  </section>
+
+  <section id="review">
+    <button id="rvback">← Back</button>
+    <h1 id="rvtitle" style="margin-top:14px"></h1>
+    <div class="muted" id="rvmethod"></div>
+    <div class="card row actions">
+      <label>Voice <select id="rvvoice"></select></label>
+      <label>Speed <input id="rvspeed" type="number" min="0.5" max="2" step="0.05" value="1" style="width:80px"></label>
+      <button class="primary" id="rvapprove">Approve &amp; convert</button>
+      <a id="rvdownload"><button type="button">Download .std.epub</button></a>
+      <button id="rvupload" type="button">Upload edited .std.epub</button>
+      <input type="file" id="rvfile" accept=".epub" hidden>
+      <button id="rvdiscard" type="button">Discard</button>
+    </div>
+    <div id="rvchecks"></div>
+    <div class="card chapters" id="rvchapters"></div>
+    <div id="rvmore"></div>
+    <div class="card" id="rvtext" style="margin-top:14px"></div>
   </section>
 
   <section id="reader">
@@ -94,8 +127,10 @@ async function loadInfo() {
   const info = await (await fetch('/api/info')).json();
   $('#url').textContent = info.url;
   if (info.qr_svg) $('#qr').innerHTML = info.qr_svg;
-  $('#voice').innerHTML = info.voices.map(v => `<option ${v===info.default_voice?'selected':''}>${v}</option>`).join('');
+  const opts = info.voices.map(v => `<option ${v===info.default_voice?'selected':''}>${v}</option>`).join('');
+  $('#voice').innerHTML = opts; $('#rvvoice').innerHTML = opts;
 }
+const show = (id) => ['#home', '#review', '#reader'].forEach(s => $(s).style.display = s === id ? 'block' : 'none');
 
 async function loadBooks() {
   const books = await (await fetch('/api/books')).json();
@@ -108,30 +143,121 @@ async function loadBooks() {
   document.querySelectorAll('.book').forEach(el => el.onclick = () => openBook(el.dataset.id));
 }
 
+const DRAFT_STATUS = { cleaning: 'cleaning', review: 'ready for review', queued: 'waiting to convert',
+  converting: 'converting', done: 'converted', error: 'failed' };
+
+function renderDrafts(drafts) {
+  $('#drafts').innerHTML = drafts.length ? `<div class="card">${drafts.map(d => {
+    const pct = d.total ? (100*d.done/d.total).toFixed(0) : 0;
+    const info = d.chapters ? ` · ${d.chapters} ch${d.checks ? ` · <b>${d.checks} to check</b>` : ''}` : '';
+    const btns = [
+      ['review', 'done'].includes(d.status) ? `<button data-review="${d.id}">Review</button>` : '',
+      d.status === 'done' && d.book_id ? `<button data-open="${d.book_id}">Listen</button>` : '',
+      ['review', 'done', 'error'].includes(d.status) ? `<button data-discard="${d.id}">Discard</button>` : '',
+    ].join(' ');
+    return `<div class="job"><div class="row" style="justify-content:space-between"><b>${esc(d.file)}</b>
+        <span class="muted">${DRAFT_STATUS[d.status] || d.status}${info}</span></div>
+      <div class="row" style="justify-content:space-between"><span class="muted ${d.error?'err':''}">${esc(d.error || d.message)}</span><span>${btns}</span></div>
+      ${d.status==='cleaning' && d.total ? `<div class="bar"><div style="width:${pct}%"></div></div>` : ''}</div>`;
+  }).join('')}</div>` : '<div class="muted">Nothing here. Add a book above.</div>';
+  document.querySelectorAll('[data-review]').forEach(el => el.onclick = () => openReview(el.dataset.review));
+  document.querySelectorAll('[data-open]').forEach(el => el.onclick = () => openBook(el.dataset.open));
+  document.querySelectorAll('[data-discard]').forEach(el => el.onclick = () => discard(el.dataset.discard));
+}
+
 let lastJobsSig = '';
 async function pollJobs() {
-  const jobs = await (await fetch('/api/jobs')).json();
-  const active = jobs.filter(j => j.status !== 'done' || Date.now()/1000 - j.created < 600);
-  $('#jobs').innerHTML = active.length ? `<div class="card" style="margin-top:10px">${active.map(j => {
-    const pct = j.total ? (100*j.done/j.total).toFixed(1) : 0;
-    return `<div class="job"><div class="row" style="justify-content:space-between"><b>${esc(j.file)}</b><span class="muted">${j.status}${j.total?` · ${j.done}/${j.total} sentences · ${pct}%`:''}</span></div>
-      <div class="muted">${esc(j.error || j.message)}</div>${j.status==='running'?`<div class="bar"><div style="width:${pct}%"></div></div>`:''}</div>`;
-  }).join('')}</div>` : '';
-  const sig = jobs.map(j => j.status + j.done).join();
-  if (sig !== lastJobsSig) { lastJobsSig = sig; loadBooks(); }
+  try {
+    const [jobs, drafts] = await Promise.all([fetch('/api/jobs'), fetch('/api/drafts')].map(async p => (await p).json()));
+    renderDrafts(drafts);
+    const active = jobs.filter(j => j.status !== 'done' || Date.now()/1000 - j.created < 600);
+    $('#jobs').innerHTML = active.length ? `<div class="card">${active.map(j => {
+      const pct = j.total ? (100*j.done/j.total).toFixed(1) : 0;
+      return `<div class="job"><div class="row" style="justify-content:space-between"><b>${esc(j.file)}</b><span class="muted">${j.status}${j.total?` · ${j.done}/${j.total} sentences · ${pct}%`:''}</span></div>
+        <div class="muted">${esc(j.error || j.message)}</div>${j.status==='running'?`<div class="bar"><div style="width:${pct}%"></div></div>`:''}</div>`;
+    }).join('')}</div>` : '<div class="muted">No conversions running.</div>';
+    const sig = jobs.map(j => j.status + j.done).join();
+    if (sig !== lastJobsSig) { lastJobsSig = sig; loadBooks(); }
+  } catch (e) { /* server restarting: try again */ }
   setTimeout(pollJobs, 2000);
 }
 
+$('#auto').onchange = () => $('#go').textContent = $('#auto').checked ? 'Clean & convert' : 'Clean';
 $('#form').onsubmit = async (e) => {
   e.preventDefault();
   const fd = new FormData();
   fd.append('file', $('#file').files[0]);
   fd.append('voice', $('#voice').value);
   fd.append('speed', $('#speed').value);
-  const r = await fetch('/api/convert', { method: 'POST', body: fd });
+  fd.append('auto', $('#auto').checked);
+  const r = await fetch('/api/clean', { method: 'POST', body: fd });
   if (!r.ok) alert((await r.json()).detail);
   $('#file').value = '';
 };
+
+async function discard(id) {
+  if (!confirm('Discard this cleaned book? The uploaded file and the cleaned version are deleted.')) return false;
+  const r = await fetch(`/api/drafts/${id}`, { method: 'DELETE' });
+  if (!r.ok) { alert((await r.json()).detail); return false; }
+  return true;
+}
+
+// ---------------- review a cleaned book before converting
+let draft = null;
+const list = (items) => `<ul>${items.map(t => `<li>${esc(t)}</li>`).join('')}</ul>`;
+
+async function openReview(id) {
+  draft = await (await fetch(`/api/drafts/${id}`)).json();
+  const rep = draft.report;
+  show('#review'); window.scrollTo(0, 0);
+  $('#rvtitle').textContent = draft.file;
+  $('#rvmethod').textContent = rep.method;
+  $('#rvvoice').value = draft.voice; $('#rvspeed').value = draft.speed;
+  $('#rvapprove').disabled = !['review', 'done'].includes(draft.status);
+  $('#rvapprove').textContent = draft.status === 'done' ? 'Convert again' : 'Approve & convert';
+  $('#rvdownload').href = `/api/drafts/${id}/std.epub`;
+  $('#rvchecks').innerHTML = rep.checks.length
+    ? `<div class="card checks"><b>Check by hand (${rep.checks.length})</b>${list(rep.checks)}</div>` : '';
+  $('#rvchapters').innerHTML = rep.chapters.map(([t, n], i) =>
+    `<div data-i="${i}">${i+1}. ${esc(t)} <span class="muted">${n.toLocaleString()} chars</span></div>`).join('');
+  document.querySelectorAll('#rvchapters div').forEach(el => el.onclick = () => reviewChapter(+el.dataset.i));
+  const more = [
+    ['Removed', rep.removed.map(([why, text]) => `${why}: ${text}`)],
+    ['TOC entries ignored', rep.unconfirmed],
+    ['Notes', rep.notes],
+  ].filter(([, items]) => items.length);
+  $('#rvmore').innerHTML = more.map(([title, items]) =>
+    `<details class="card" style="margin-top:10px"><summary>${title} (${items.length})</summary>${list(items)}</details>`).join('');
+  if (rep.chapters.length) reviewChapter(0);
+}
+
+async function reviewChapter(i) {
+  document.querySelectorAll('#rvchapters div').forEach((el, k) => el.classList.toggle('on', k === i));
+  const r = await fetch(`/api/drafts/${draft.id}/chapters/${i}`);
+  if (!r.ok) { $('#rvtext').textContent = (await r.json()).detail; return; }
+  const ch = await r.json();
+  $('#rvtext').innerHTML = `<h3>${esc(ch.title)}</h3>` + ch.paragraphs.map(p => `<p>${esc(p)}</p>`).join('');
+}
+
+$('#rvback').onclick = () => { show('#home'); draft = null; };
+$('#rvapprove').onclick = async () => {
+  const fd = new FormData();
+  fd.append('voice', $('#rvvoice').value);
+  fd.append('speed', $('#rvspeed').value);
+  const r = await fetch(`/api/drafts/${draft.id}/approve`, { method: 'POST', body: fd });
+  if (!r.ok) { alert((await r.json()).detail); return; }
+  show('#home'); draft = null;
+};
+$('#rvupload').onclick = () => $('#rvfile').click();
+$('#rvfile').onchange = async () => {
+  const fd = new FormData();
+  fd.append('file', $('#rvfile').files[0]);
+  $('#rvfile').value = '';
+  const r = await fetch(`/api/drafts/${draft.id}/std.epub`, { method: 'POST', body: fd });
+  if (!r.ok) { alert((await r.json()).detail); return; }
+  openReview(draft.id);
+};
+$('#rvdiscard').onclick = async () => { if (await discard(draft.id)) { show('#home'); draft = null; } };
 
 // ---------------- reader with sentence sync
 let book = null, chIdx = 0, starts = [], spans = [], cur = -1;
@@ -139,7 +265,7 @@ const audio = $('#audio');
 
 async function openBook(id) {
   book = await (await fetch(`/api/books/${id}`)).json();
-  $('#home').style.display = 'none'; $('#reader').style.display = 'block'; $('#player').hidden = false;
+  show('#reader'); $('#player').hidden = false;
   $('#rtitle').textContent = book.title; $('#rauthor').textContent = book.author || '';
   $('#chapters').innerHTML = book.chapters.map((c, i) => `<div data-i="${i}">${esc(c.title)} <span class="muted">${fmt(c.duration_ms)}</span></div>`).join('');
   document.querySelectorAll('#chapters div').forEach(el => el.onclick = () => loadChapter(+el.dataset.i, 0, true));
@@ -186,7 +312,7 @@ requestAnimationFrame(tick);
 
 audio.onended = () => { if (chIdx + 1 < book.chapters.length) loadChapter(chIdx + 1, 0, true); };
 $('#rate').onchange = () => audio.playbackRate = +$('#rate').value;
-$('#back').onclick = () => { audio.pause(); $('#home').style.display = ''; $('#reader').style.display = 'none'; $('#player').hidden = true; book = null; };
+$('#back').onclick = () => { audio.pause(); show('#home'); $('#player').hidden = true; book = null; };
 
 loadInfo(); pollJobs();
 </script>

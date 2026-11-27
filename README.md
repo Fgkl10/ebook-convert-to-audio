@@ -38,7 +38,7 @@ Set `HF_HOME` / `DOCTR_CACHE_DIR` to use another folder.
 
 # Or run the server and use the web UI (also reachable from the phone)
 .venv\Scripts\python -m desktop.server
-# open http://localhost:8000
+# open http://localhost:8000: upload a book, it is cleaned, review it (or tick "skip review"), then Approve & convert
 ```
 
 ## Roadmap
