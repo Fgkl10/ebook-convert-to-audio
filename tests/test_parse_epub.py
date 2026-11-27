@@ -60,9 +60,48 @@ def test_par07_note_links_without_sup_removed_cross_references_kept():
     text = "\n".join(" ".join(lines) for _, lines in body_blocks(clean_body(html)))
     assert "The mill stopped at noon. It was quiet." in text
     assert "Nobody came back, not even the miller." in text
-    assert "\nA note at the end of the chapter" in text
+    assert "A note at the end of the chapter" not in text  # the whole footnote paragraph goes (PAR-07c)
     assert "See Chapters 9 through 11, 24, and 33, Figure 5, page 12 and Lens #3." in text
     assert "\n12\n" in text and "example.com" not in text and "at 7 today" in text
+
+
+def test_par07_footnote_paragraphs_removed():
+    from desktop.parse import body_blocks, clean_body
+
+    html = ("<html><body><div class='calibre'>"
+            '<p>The mill stopped at noon.<a href="#n1">1</a> The miller went home.</p>'
+            '<p>\xa0<span class="c4"><a href="#r1">1</a></span> A made-up note about the mill and its history.</p>'
+            '<p class="c3">\xa0</p>'
+            '<p><a href="#r2"><span class="c9">[2]</span></a>Another note, glued to its backlink, that runs</p>'
+            '<p><span class="c9">on over a second line and</span></p><p><span class="c9">a third.</span></p>'
+            '<p class="c3"> </p>'  # the empty paragraph ends the note
+            '<p>Body text resumes after the notes.</p>'
+            '<aside epub:type="footnote"><p>A labelled note with no number.</p></aside>'
+            '<div role="doc-endnote">An endnote labelled by role.</div>'
+            '<p><a href="c3.xhtml">3</a></p>'  # a lone number link (page list, contents): kept
+            '<p>3 rivers meet here, and the text goes on.</p>'  # a number that is not a link: kept
+            "</div><div><a href='#top'>4</a><p>A container opening with a link is never dropped.</p></div>"
+            "</body></html>").encode()
+    stats = {}
+    text = "\n".join(" ".join(lines) for _, lines in body_blocks(clean_body(html, stats)))
+    assert "The mill stopped at noon. The miller went home." in text
+    for gone in ("made-up note", "Another note", "second line", "a third", "labelled note", "endnote labelled"):
+        assert gone not in text
+    assert "Body text resumes after the notes." in text
+    assert "\n3\n" in text and "3 rivers meet here" in text and "container opening" in text
+    assert stats == {"note paragraphs": 4}
+
+
+def test_par07_note_without_an_end_keeps_following_lines():
+    from desktop.parse import MAX_NOTE_LINES, body_blocks, clean_body
+
+    lines = "".join(f"<p>Body line {i} of a long passage.</p>" for i in range(MAX_NOTE_LINES + 3))
+    small = "".join(f'<p><span class="c9">Small line {i} of a long passage.</span></p>' for i in range(MAX_NOTE_LINES + 3))
+    for following in (lines, small):  # body-style lines; small print with no end within MAX_NOTE_LINES
+        html = f'<html><body><p><a href="#r1"><span class="c9">1</span></a> A note.</p>{following}</body></html>'
+        text = "\n".join(" ".join(ls) for _, ls in body_blocks(clean_body(html.encode())))
+        assert "A note." not in text
+        assert "line 0 of" in text and f"line {MAX_NOTE_LINES + 2} of" in text  # nothing after the note lost
 
 
 def test_par08_cover_from_cover_item(novel):

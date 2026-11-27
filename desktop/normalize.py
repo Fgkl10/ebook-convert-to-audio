@@ -119,9 +119,10 @@ def _plausible_title(title: str) -> bool:
 
 # ---------------------------------------------------------------- EPUB
 
-def _epub_blocks(eb) -> tuple[list[Block], dict[str, int], dict[tuple[str, str], int], set[str]]:
+def _epub_blocks(eb, stats: dict | None = None) -> tuple[list[Block], dict[str, int], dict[tuple[str, str], int],
+                                                         set[str]]:
     """All text blocks in spine order, plus: file -> first block index, (file, id) -> block index,
-    and the set of files that are contents pages."""
+    and the set of files that are contents pages. `stats` counts what clean_body removed."""
     import ebooklib
     from bs4 import Tag
 
@@ -134,7 +135,7 @@ def _epub_blocks(eb) -> tuple[list[Block], dict[str, int], dict[tuple[str, str],
         if item is None or item.get_type() != ebooklib.ITEM_DOCUMENT:
             continue
         name = posixpath.basename(item.get_name())
-        body = clean_body(item.get_content())
+        body = clean_body(item.get_content(), stats)
         if body is None:
             continue
         file_blocks = body_blocks(body)
@@ -327,7 +328,10 @@ def _normalize_epub(path: Path, report: Report) -> list[Chapter] | None:
     from ebooklib import epub
 
     eb = epub.read_epub(str(path), options={"ignore_ncx": False})
-    blocks, file_start, anchors, contents = _epub_blocks(eb)
+    stats: dict = {}
+    blocks, file_start, anchors, contents = _epub_blocks(eb, stats)
+    if stats.get("note paragraphs"):
+        report.notes.append(f"footnote / endnote paragraphs removed: {stats['note paragraphs']}")
     guide_front = {posixpath.basename(g.get("href", "")) for g in eb.guide
                    if g.get("type", "").lower() in _FRONT_MATTER_GUIDE and "#" not in g.get("href", "")}
 

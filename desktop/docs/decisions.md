@@ -414,5 +414,27 @@ Numbers that are plain text, not links ("SQ4R,8"), are left, since they can't be
 word is a marker. The rule lives with the `<sup>` rule, so every EPUB path (cleaner, fallback, plain parsing) gets it.
 **Consequences:** Smart Notes loses exactly its 58 marker numbers (all checked by hand), and the footnote paragraphs
 inside its chapters lose their leading backlink number. The Art of Game Design and Counselling for Toads are unchanged.
-The footnote paragraphs themselves are still read in the middle of chapters (NORM-11). Unlinked plain-text markers
-remain, and a marker right after a pointer word ("…in figure.3") would be kept.
+The footnote paragraphs themselves are still read in the middle of chapters (NORM-11; removed by D-027). Unlinked
+plain-text markers remain, and a marker right after a pointer word ("…in figure.3") would be kept.
+
+## D-027 Footnote paragraphs inside chapters are removed
+Status: Accepted · Milestone: M3 · Extends D-025, D-026
+**Context:** Smart Notes (a Calibre conversion of a print layout) collects 39 footnotes at the end of each part, so they
+were read between the last paragraph of one chapter and the next part heading. Each note is a paragraph that opens with a
+number-only link back to its reference ("1 The research on willpower…"). Most continue over more `<p>` lines, one per
+printed line, until an empty paragraph. None is labelled as a footnote in the markup.
+**Decision:** In `clean_body`, before the note markers are stripped (D-026), these are removed:
+- elements labelled as notes (`epub:type` footnote/endnote/rearnote/note, `role` doc-footnote/doc-endnote);
+- a `<p>`, `<li>`, or a `<div>`/`<aside>` with no block children, that opens with a number-only note link and has more
+  text after it, together with its continuation lines: following `<p>` siblings whose text is (≥90%) in the same
+  inline style as the note's number (its small print), up to an empty paragraph, the next note, another kind of
+  element or the end of the parent. If a line in another style comes first, or there is no end within
+  `MAX_NOTE_LINES` (8), only the opening paragraph goes.
+The cleaner's report counts the notes removed.
+**Why:** A note read in the middle of the text breaks the flow and, with endnotes and markers gone, no longer belongs to
+anything. The opening backlink is how EPUBs tie a note to its reference. The style test is what makes it safe: a
+footnote followed directly by body text (no empty line) must not take the body text with it, and in Smart Notes body
+lines are never wholly in the notes' small print (only their marker numbers are).
+**Consequences:** Smart Notes loses exactly its 39 notes (1,055 words); every removed run ends right before the next part
+heading. The Art of Game Design and Counselling for Toads are unchanged. A note whose continuation lines are not styled
+differently from body text loses only its first paragraph, and the rest stays as a fragment (NORM-11, a known gap).

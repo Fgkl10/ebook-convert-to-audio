@@ -120,9 +120,88 @@ def _is_note_ref(a) -> bool:
     return not _POINTER.search(before[-60:])
 
 
-def clean_body(html: bytes):
+_NOTE_TYPES = {"footnote", "footnotes", "endnote", "endnotes", "rearnote", "rearnotes", "note"}
+_NOTE_ROLES = {"doc-footnote", "doc-endnote", "doc-endnotes"}
+_INLINE_WRAPPERS = {"span", "sup", "b", "strong", "em", "i", "small", "font"}
+
+
+def _opening_link(el):
+    """The link a block opens with, looking through inline wrappers ('<p>\xa0<span><a>1</a></span> The…'),
+    or None when the block opens with text or another element."""
+    from bs4 import NavigableString, Tag
+
+    for child in el.children:
+        if isinstance(child, NavigableString):
+            if child.strip():
+                return None
+            continue
+        if isinstance(child, Tag):
+            if child.name == "a":
+                return child
+            return _opening_link(child) if child.name in _INLINE_WRAPPERS else None
+    return None
+
+
+def _is_note_paragraph(el) -> bool:
+    """A footnote or endnote text: labelled as one, or a paragraph opening with a number-only link back
+    to its reference ('1 The research on willpower…') followed by the note itself (D-027)."""
+    if set((el.get("epub:type") or "").split()) & _NOTE_TYPES or set((el.get("role") or "").split()) & _NOTE_ROLES:
+        return True
+    if el.name not in ("p", "li", "div", "aside"):
+        return False
+    if el.name in ("div", "aside") and el.find(["p", "div", "li", "h1", "h2", "h3", "h4", "h5", "h6", "table"]):
+        return False  # a container (a whole Calibre chapter can open with a link): never drop it
+    a = _opening_link(el)
+    if a is None or not a.get("href") or not _NOTE_MARK.fullmatch(a.get_text(strip=True)):
+        return False
+    return len(el.get_text(" ", strip=True)) > len(a.get_text(strip=True)) + 2  # more than the number itself
+
+
+MAX_NOTE_LINES = 8  # a note may run on over this many following <p> lines (Calibre: one per printed line)
+
+
+def _inline_classes(el) -> set[str]:
+    return {c for d in el.find_all(True) for c in (d.get("class") or [])}
+
+
+def _all_in_style(line, classes: set[str]) -> bool:
+    """Nearly all of the line's text sits in inline elements styled like the note (its small print)."""
+    marked = [d for d in line.find_all(True) if set(d.get("class") or []) & classes]
+    ids = {id(d) for d in marked}
+    # count each styled run once: skip elements nested inside another styled element
+    top = [d for d in marked if not any(id(p) in ids for p in d.parents)]
+    styled = sum(len(d.get_text(strip=True)) for d in top)
+    return styled >= 0.9 * len(line.get_text(strip=True))
+
+
+def _note_continuation(el) -> list:
+    """The <p> lines that continue a footnote paragraph (Calibre: one per printed line): following
+    siblings styled like the note's own number (its small print), up to an empty paragraph, the next
+    note, another kind of element or the end of the parent. Without such an end within MAX_NOTE_LINES,
+    nothing is taken, and a line in body style is never taken: body text must never be lost with a note."""
+    from bs4 import Tag
+
+    classes = _inline_classes(el)
+    lines, sib = [], el.next_sibling
+    while sib is not None:
+        if isinstance(sib, Tag):
+            if sib.name != el.name or not sib.get_text(strip=True) or _is_note_paragraph(sib):
+                return lines
+            if not classes or not _all_in_style(sib, classes):
+                return []  # a line in another style before the note ended: take nothing
+            lines.append(sib)
+            if len(lines) > MAX_NOTE_LINES:
+                return []
+        elif str(sib).strip():
+            return lines  # loose text between paragraphs: stop
+        sib = sib.next_sibling
+    return lines
+
+
+def clean_body(html: bytes, stats: dict | None = None):
     """Parse one XHTML file and strip what is never read aloud. Returns the <body> (or None when the
-    whole file is labelled front matter). Shared with normalize.py so both see the same text."""
+    whole file is labelled front matter). Shared with normalize.py so both see the same text.
+    `stats`, when given, counts what was removed ('note paragraphs')."""
     soup = parse_html(html)
     body = soup.body or soup
     if body.name == "body" and _is_front_matter_element(body):
@@ -133,6 +212,16 @@ def clean_body(html: bytes):
             el.decompose()
     for tag in soup(["script", "style", "head", "nav"]):
         tag.decompose()
+    # Footnote and endnote texts (before the markers go: a note is recognised by its opening backlink).
+    notes = 0
+    for el in body.find_all(["p", "li", "div", "aside", "section", "ol", "ul"]):
+        if not el.decomposed and _is_note_paragraph(el):
+            for line in _note_continuation(el) if el.name == "p" else []:
+                line.decompose()
+            el.decompose()
+            notes += 1
+    if stats is not None:
+        stats["note paragraphs"] = stats.get("note paragraphs", 0) + notes
     # Footnote reference markers like <sup><a href="#fn1">1</a></sup> read badly.
     for sup in soup.find_all("sup"):
         if sup.find("a") or sup.get_text(strip=True).isdigit():
