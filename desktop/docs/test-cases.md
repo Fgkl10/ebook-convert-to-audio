@@ -157,43 +157,62 @@ All automated cases use made-up OCR lines and generated images (`tests/scan_fact
 | BLD-13 | List chapters | `python -m desktop.build book.epub --list-chapters` | Numbered chapters with sentence counts, the same numbers `--chapters` uses. No TTS is loaded | Manual |
 | BLD-11 | Re-convert with fewer chapters | Rebuild the same file after the parser drops a chapter | **Gap:** stale `chNNN.m4a` files from the previous run remain in the folder (unreferenced) | Gap |
 
-## Server API (`server.py`)
+## Server API v1 (`api.py` + `service.py`, D-032)
+
+All paths are under `/api/v1` unless they start with `/`. The tests are in `tests/test_server.py` (the flow) and
+`tests/test_api.py` (one test per endpoint, plus the contract).
 
 | ID | Case | Steps / input | Expected | Status |
 |---|---|---|---|---|
-| SRV-01 | Info | `GET /api/info` | Name, LAN URL with the port, QR SVG (or null), voices, default voice | Manual |
-| SRV-02 | List books | `GET /api/books` with 2 books, one corrupted `book.json` | 2 valid entries sorted newest first, and the corrupted book is skipped | Manual |
-| SRV-03 | Get book | `GET /api/books/{id}` | The full manifest | Manual |
-| SRV-04 | Invalid book id | `GET /api/books/..%2Fetc` and `/api/books/Nope!` | 404 | Manual |
-| SRV-05 | File path traversal | `GET /api/books/{id}/files/..\book.json`, `/.hidden` | 404 | Manual |
-| SRV-06 | Range requests | `GET …/files/ch000.m4a` with `Range: bytes=1000-` | 206 Partial Content | Manual |
-| SRV-07 | Delete book | `DELETE /api/books/{id}` | `{ok:true}`, folder removed, then 404 afterwards | Manual |
-| SRV-08 | Upload validation | `/api/clean` with an unknown voice, speed 2.5, a `.docx` upload | 400 with a clear message in each case | Automated `test_srv24_bad_ids_and_inputs` |
-| SRV-09 | One-step convert | `POST /api/convert` with a small TXT | `{draft_id}`; the draft is cleaned and converted with no review stop, and the book appears in `/api/books` | Automated `test_srv21_convert_endpoint_is_clean_with_auto` |
+| API-01 | Exact route list | `GET /openapi.json` | Exactly the 17 (method, path) pairs of the v1 table; version "1"; schemas `Draft`, `DraftDetail`, `Job`, `BookSummary`, `Book`, `Info`, `ApproveRequest`, `Error`; `/docs` loads | Automated `test_api01_routes_are_exactly_v1` |
+| API-02 | Old routes gone | `GET /api/books`, `/api/jobs`, `POST /api/clean`, `/api/convert` | 404 | Automated `test_api02_old_unversioned_routes_are_gone` |
+| API-03 | Page calls only the API | Scan `static/app.js` | Every `${API}/…` and `getJSON('/…')` path matches a v1 route; no other `/api/` path; `index.html` has no inline `<script>` or `<style>` | Automated `test_api03_page_calls_only_existing_v1_routes` |
+| API-04 | Backend has no HTTP | Read `service.py` | No `fastapi` or `HTTPException`; `NotFound` 404, `Conflict` 409, `Invalid` 400 | Automated `test_api04_backend_has_no_http_in_it` |
+| API-05 | Tests never touch real data | `tests/conftest.py` sets `EBOOK_AUDIO_DATA` | The service's data folder is a temp folder, not the project | Automated `test_api05_test_data_folder_is_not_the_project` |
+| API-06 | Page and static files | `GET /`, `/static/app.css`, `/static/app.js`, `/static/nope.js` | HTML that loads `app.js`; CSS and JS with their types; 404 for a missing file | Automated `test_api06_page_and_static_files` |
+| API-08 | Draft list and detail | Upload with `bf_emma`, 1.2 | The detail has the voice, speed and report; the list has the draft without the report | Automated `test_api08_draft_list_and_detail` |
+| API-09 | Approve body | Approve with `{"speed": 3}`, `{"speed": "fast"}`, no body, an unknown draft | 400, 422, 200 with the upload's voice and speed (checked in `GET /jobs/{id}`), 404 | Automated `test_api09_approve_takes_json_with_defaults` |
+| API-10 | Before cleaning | A draft whose cleaning never runs: `GET …/std.epub`, `…/chapters/0`, `PUT …/std.epub`, `DELETE` | 409 "This book is not cleaned yet" for both GETs, report null, PUT 409, DELETE 409 | Automated `test_api10_std_download_before_cleaning_is_conflict` |
+| API-11 | Job progress | Approve, poll `GET /jobs/{id}` | Runs to `done` with `done == total > 0`, `draft_id`, `book_id`, no internal fields; `/jobs` lists it; an unknown id is 404 `{"detail": "No such job"}` | Automated `test_api11_job_progress_until_done`; real Kokoro Manual (checked: a made-up TXT, 6 sentences, `bf_emma`, 62 s including the model load) |
+| API-15 | Error format | Unknown draft, book, job, voice; `POST /drafts` with no file | 404 `application/json` with a string `detail`; 422 with FastAPI's list `detail` | Automated `test_api15_errors_are_json_detail` |
+| API-16 | Service without HTTP | Call `Drafts.get`, `Drafts.create` (.docx), `read_book`, `voice_sample` directly | `NotFound` / `Invalid`, with no server | Automated `test_api16_service_raises_without_http` |
+| SRV-01 | Info | `GET /info` | `api_version` 1, name, LAN URL with the port, QR SVG (or null), voices, default voice, OCR modes | Automated `test_api07_info` |
+| SRV-02 | List books | `GET /books` | Entries with chapters, size, cover, complete. **Gap:** a corrupted `book.json` being skipped is not tested | Automated `test_api12_book_list_and_manifest` (corrupted manifest Manual) |
+| SRV-03 | Get book | `GET /books/{id}` | The full manifest, including fields outside the schema (`chapter_selection`) | Automated `test_api12_book_list_and_manifest` |
+| SRV-04 | Invalid book id | `GET /books/nope`, `/books/UPPER`, `/books/..%2Fdrafts` | 404 with `detail` | Automated `test_api12_book_list_and_manifest` |
+| SRV-05 | File path traversal | `GET /books/{id}/files/missing.m4a`, `.hidden`, `..%2Fbook.json`, `..%5Cbook.json` | 404 | Automated `test_api13_file_download_with_range` |
+| SRV-06 | Range requests | `GET …/files/ch000.m4a` in full, with `Range: bytes=0-99` and `bytes=2000-` | 200 with `accept-ranges: bytes`; 206 with exactly those bytes (resuming a download) | Automated `test_api13_file_download_with_range`; live Manual (checked: 206 with 100 bytes from a real m4a) |
+| SRV-07 | Delete book | `DELETE /books/{id}` twice | `{ok:true}`, folder removed, list empty; the second is 404 | Automated `test_api14_delete_book` |
+| SRV-08 | Upload validation | `POST /drafts` with an unknown voice, speed 2.5, a `.docx` upload | 400 with a clear message in each case | Automated `test_srv24_bad_ids_and_inputs` |
+| SRV-09 | One-step convert | `POST /drafts` with `auto=true` (the old `/api/convert` is gone, API-02) | Cleaned and converted with no review stop, and the book appears in `/books` | Automated `test_srv21_auto_converts_without_review` |
 | SRV-10 | Cleaning error reporting | Upload a Hungarian TXT | Draft `status=error` with the language message, no report, approve refused (409); the clean worker keeps running | Automated `test_srv10_language_refusal_is_a_draft_error` |
 | SRV-11 | Sequential jobs | Submit 2 conversions at once | The second stays `queued` until the first finishes | Manual |
 | SRV-12 | Model reuse | Jobs and samples with `af_*`, `am_*`, then `b*` voices | The model loads once for both languages (one `KModel`, a pipeline per language, D-031), and each job uses its own voice | Manual (checked: 14 samples American then British, then a `bm_lewis` conversion in 3.8 s with no reload) |
-| SRV-30 | Voice sample | `GET /api/voices/bm_george/sample` twice; an unknown voice | `audio/mp4`; made once (the second call doesn't synthesize) and served from `cache/voice-samples/`; 404 for an unknown voice | Automated `test_srv30_voice_sample_made_once_and_cached`; real Kokoro Manual (checked: all 14 voices, about 5.2–5.7 s each; ~4 s to make the first time, including the voice download; 0.03 s cached) |
+| SRV-30 | Voice sample | `GET /voices/bm_george/sample` twice; an unknown voice | `audio/mp4`; made once (the second call doesn't synthesize) and served from `cache/voice-samples/`; 404 for an unknown voice | Automated `test_srv30_voice_sample_made_once_and_cached`; real Kokoro Manual (checked: all 14 voices, about 5.2–5.7 s each; ~4 s to make the first time, including the voice download; 0.03 s cached) |
 | SRV-31 | Sample during a conversion | Approve with `af_heart`, request a `bm_george` sample meanwhile | The book is converted entirely in `af_heart`; the sample passes its own voice and never changes the model's | Automated `test_srv31_sample_does_not_change_a_conversions_voice` |
 | SRV-13 | Upload file name sanitizing | Upload `../../evil name.txt` | Saved as `drafts/<id>/evil name.txt` (path dropped, unsafe characters replaced; a name that clashes with the draft's own files becomes `book.<ext>`) | Manual |
 | SRV-14 | mDNS | Start the server and browse `_ebookaudio._tcp` from another device | The service is visible with the correct IP and port. If multicast is blocked, the server still runs and prints a hint | Manual |
 | SRV-15 | Restart during a conversion | Restart the server while a draft converts | The job list is empty again (jobs live in memory), but the draft comes back as "ready for review" with "approve again to resume"; approving resumes from the sentence cache (SRV-25) | Manual |
 | SRV-16 | Delete during conversion | `DELETE` a book that is still converting | **Gap:** undefined. The build may recreate the folder or fail | Gap |
-| SRV-17 | `.md` upload | Upload a `.md` file | **Gap:** rejected by `/api/clean` although `parse.py` supports `.md` | Gap |
+| SRV-17 | `.md` upload | Upload a `.md` file | **Gap:** rejected by `POST /drafts` although `parse.py` supports `.md` | Gap |
 | SRV-18 | Uploads cleanup | After many conversions | Each upload lives in its draft folder and goes when the draft is discarded (SRV-23). **Gap:** drafts are never removed automatically, and the old `uploads/` folder is no longer used | Gap (partly) |
-| SRV-19 | Clean stops for review | `/api/clean` with a synthetic EPUB | Draft goes `cleaning` → `review`; `GET /api/drafts/{id}` gives the report; `/chapters/{n}` gives a chapter's title and paragraphs (404 past the end); no job is created; `/std.epub` downloads as `<name>.std.epub` | Automated `test_srv19_clean_stops_for_review` |
-| SRV-20 | Approve converts | Approve a reviewed TXT with voice `am_adam`, speed 1.1 | Draft `queued` → `converting` → `done` with `book_id`; the book is in the library with that voice and the TXT's own name as title; an unknown voice is refused (400) | Automated `test_srv20_approve_converts_into_library`; real Kokoro Manual (checked: a made-up TXT cleaned, approved with `bf_emma`, converted in 40 s, audio served) |
-| SRV-21 | Skip review | `/api/clean` with `auto=true` | Converted with no review stop | Automated `test_srv21_auto_converts_without_review` |
-| SRV-22 | Edited .std.epub upload | Download the std, rename a chapter, drop the `ebook-audio:*` markers (as an editor might), upload it back, approve | The report shows the new title and an "edited .std.epub uploaded" note; the book is converted with the new title and keeps the id from the original upload; a non-EPUB upload is refused (400) | Automated `test_srv22_edited_std_replaces_draft_and_keeps_book_id` |
-| SRV-23 | Discard | `DELETE /api/drafts/{id}` on a reviewed draft | `{ok:true}`, folder gone, 404 afterwards, list empty; refused (409) while cleaning or converting | Automated `test_srv23_discard_removes_draft` (the 409 is Manual) |
-| SRV-24 | Draft ids | `/api/drafts/nope`, `..%2Flibrary`, `Nope!/std.epub`, `abc/chapters/0` | 404 | Automated `test_srv24_bad_ids_and_inputs` |
+| SRV-19 | Clean stops for review | `POST /drafts` with a synthetic EPUB | Draft goes `cleaning` → `review`; `GET /drafts/{id}` gives the report; `/chapters/{n}` gives a chapter's title and paragraphs (404 past the end); no job is created; `/std.epub` downloads as `<name>.std.epub` | Automated `test_srv19_clean_stops_for_review` |
+| SRV-20 | Approve converts | Approve a reviewed TXT with JSON `{"voice": "am_adam", "speed": 1.1}` | Draft `queued` → `converting` → `done` with `book_id`; the book is in the library with that voice and the TXT's own name as title; an unknown voice is refused (400) | Automated `test_srv20_approve_converts_into_library`; real Kokoro Manual (checked: a made-up TXT cleaned, approved with `bf_emma`, converted in 40 s, audio served) |
+| SRV-21 | Skip review | `POST /drafts` with `auto=true` | Converted with no review stop | Automated `test_srv21_auto_converts_without_review` |
+| SRV-22 | Edited .std.epub upload | Download the std, rename a chapter, drop the `ebook-audio:*` markers (as an editor might), `PUT` it back, approve | The report shows the new title and an "edited .std.epub uploaded" note; the book is converted with the new title and keeps the id from the original upload; a non-EPUB upload is refused (400) | Automated `test_srv22_edited_std_replaces_draft_and_keeps_book_id` |
+| SRV-23 | Discard | `DELETE /drafts/{id}` on a reviewed draft, then again | `{ok:true}`, folder gone, 404 afterwards (also for the second delete), list empty; refused (409) while cleaning or converting | Automated `test_srv23_discard_removes_draft`; the 409 while cleaning in `test_api10_std_download_before_cleaning_is_conflict` (while converting: Manual) |
+| SRV-24 | Draft ids | `/drafts/nope`, `..%2Flibrary`, `Nope!/std.epub`, `abc/chapters/0` | 404 | Automated `test_srv24_bad_ids_and_inputs` |
 | SRV-25 | Drafts survive a restart | Draft folders left `cleaning`, `converting`, `review` | `cleaning` → error "interrupted by a server restart"; `converting` → review with "approve again"; `review` unchanged; saved to `draft.json` | Automated `test_srv25_restart_marks_interrupted_drafts` |
 | SRV-26 | Cleaning runs beside a conversion | Upload a book while another converts | It is cleaned and ready for review without waiting for the conversion (separate worker) | Manual |
-| SRV-28 | OCR mode on upload | `/api/clean` with `ocr=always`; with `ocr=sometimes` | The mode is stored in the draft and passed to `normalize`; an unknown mode is refused (400) | Automated `test_srv28_ocr_mode_reaches_normalize` |
-| SRV-29 | Upload a cleaned book | `/api/convert-std` with a std downloaded from a draft; with a plain EPUB, a TXT, a non-zip | The std is converted at once (no cleaning) under the same book id as the original upload; the others are refused (400, "clean it on the Clean page first") and leave no draft | Automated `test_srv29_upload_cleaned_book_converts_directly`; real Kokoro Manual (checked) |
-| SRV-27 | Real books through the server | Clean the Kokology PDF and The Art of Game Design through `/api/clean` | Kokology: OCR progress "Reading scanned pages n/90" in the draft message, then 55 chapters with 4 to check; AoGD: 38 chapters; both the same as the CLI | Manual (checked) |
+| SRV-28 | OCR mode on upload | `POST /drafts` with `ocr=always`; with `ocr=sometimes` | The mode is stored in the draft and passed to `normalize`; an unknown mode is refused (400) | Automated `test_srv28_ocr_mode_reaches_normalize` |
+| SRV-29 | Upload a cleaned book | `POST /drafts/cleaned` with a std downloaded from a draft; with a plain EPUB, a TXT, a non-zip | The std is converted at once (no cleaning) under the same book id as the original upload; the others are refused (400, "clean it on the Clean page first") and leave no draft | Automated `test_srv29_upload_cleaned_book_converts_directly`; real Kokoro Manual (checked) |
+| SRV-27 | Real books through the server | Clean the Kokology PDF and The Art of Game Design through `/api/clean` (before D-032; the same code now behind `POST /drafts`) | Kokology: OCR progress "Reading scanned pages n/90" in the draft message, then 55 chapters with 4 to check; AoGD: 38 chapters; both the same as the CLI | Manual (checked) |
 
-## Web UI (`static/index.html`)
+## Web UI (`static/index.html`, `app.js`, `app.css`)
+
+**Gap:** after the split into three files (D-032), the UI has not been clicked through in a browser. `app.js` passes
+`node --check`, the page and its files load on a live server, and API-03 checks every URL it calls. The UI rows below
+stay Manual.
 
 | ID | Case | Steps | Expected | Status |
 |---|---|---|---|---|

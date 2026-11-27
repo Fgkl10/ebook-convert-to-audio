@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -34,7 +35,9 @@ from .parse import Book, load_book
 from .segment import split_text
 from .tts import DEFAULT_VOICE, SAMPLE_RATE
 
-ROOT = Path(__file__).resolve().parent.parent
+# Data folder for library/, cache/ and drafts/: the project, unless EBOOK_AUDIO_DATA points elsewhere (D-032), so a
+# second server (e.g. for testing) can run without touching the first one's books.
+ROOT = Path(os.environ.get("EBOOK_AUDIO_DATA") or Path(__file__).resolve().parent.parent).resolve()
 SENTENCE_GAP_S = 0.25
 PARAGRAPH_GAP_S = 0.6
 CHAPTER_LEAD_S = 0.3

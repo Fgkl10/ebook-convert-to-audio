@@ -10,7 +10,10 @@ library over the LAN. It is a Python package (`desktop/`) with three entry point
   `--ignore-language` skips the English check (D-018).
   `--chapters 3` / `2-4` / `1,3,5-6` converts only those (1-based, after front matter is skipped) into
   `library/<book_id>-ch<spec>/`, a separate folder, so test conversions never touch the full book
-- `python -m desktop.server [--port 8000]`: FastAPI server + web UI
+- `python -m desktop.server [--port 8000]`: one process with three layers (D-032): the backend (`service.py`), its
+  JSON API under `/api/v1` (`api.py`), and the web page (`static/`), which only calls that API. Interactive API docs
+  are at `/docs`, and the contract is at `/openapi.json`. `EBOOK_AUDIO_DATA=<folder>` moves `library/`, `cache/` and
+  `drafts/` out of the project, for example for a second test server.
 
 ## Module diagram
 
@@ -18,8 +21,14 @@ library over the LAN. It is a Python package (`desktop/`) with three entry point
 flowchart LR
     subgraph Entry points
         CLI["build.main()<br/>CLI"]
-        SRV["server.py<br/>FastAPI app"]
+        SRV["server.py<br/>app, static files, mDNS"]
     end
+
+    subgraph "Server layers (D-032)"
+        API["api.py<br/>/api/v1 routes + schemas"]
+        SVC["service.py<br/>Drafts, Jobs, library,<br/>voice samples (no HTTP)"]
+    end
+    SRV --> API --> SVC
 
     subgraph Conversion pipeline
         PARSE["parse.py<br/>load_book()"]
@@ -32,7 +41,7 @@ flowchart LR
 
     LIB[("library/&lt;book_id&gt;/<br/>book.json, chNNN.m4a, cover")]
     UP[("drafts/&lt;id&gt;/<br/>upload, book.std.epub,<br/>report.json, draft.json")]
-    UI["static/index.html<br/>web UI + player"]
+    UI["static/ index.html + app.js + app.css<br/>web UI + player (display only)"]
     PHONE["Phone / browser<br/>(Android app in M4+)"]
     MDNS["zeroconf<br/>_ebookaudio._tcp"]
 
@@ -44,22 +53,22 @@ flowchart LR
     SCAN --> WORDS
     REVIEW(["you: review .std.epub<br/>(CLI: in a reader / Sigil;<br/>web: review page)"])
     NORM --> REVIEW --> CLI
-    SRV -- "Drafts clean worker" --> NORM
+    SVC -- "Drafts clean worker" --> NORM
     NORM --> PARSE
     CLI --> BUILD
-    REVIEW -- "Approve" --> SRV
-    SRV -- "Jobs convert worker<br/>(approved .std.epub)" --> BUILD
-    SRV --> UP
+    REVIEW -- "Approve" --> API
+    SVC -- "Jobs convert worker<br/>(approved .std.epub)" --> BUILD
+    SVC --> UP
     BUILD --> PARSE
     BUILD --> SEG
     BUILD --> CACHE
     CACHE -. miss .-> TTS
     BUILD --> FFMPEG --> LIB
     BUILD --> LIB
-    SRV -- "reads" --> LIB
-    SRV -- "serves" --> UI
-    UI -- "HTTP /api/*" --> SRV
-    PHONE -- "HTTP /api/*" --> SRV
+    SVC -- "reads" --> LIB
+    SRV -- "serves /, /static" --> UI
+    UI -- "JSON /api/v1/*" --> API
+    PHONE -- "JSON /api/v1/*" --> API
     SRV --> MDNS
     MDNS -. discovery .-> PHONE
 ```
@@ -77,8 +86,10 @@ flowchart LR
 | `language.py` | Refuses books whose text isn't in a language the voices speak (English today), judged from the share of English function words in text sampled across the book. Metadata is only a hint. Called by `build_book` before TTS loads. | `check_language(book)`, `english_score(book)` |
 | `tts.py` | Wrapper around Kokoro-82M. One model on the GPU with one text pipeline per voice language (a/b) sharing it; `synth` is locked so a voice sample can run between two sentences of a conversion (D-031). One call per sentence, mono float32 at 24 kHz. Uses CUDA when available. | `KokoroTTS(voice, speed).synth(text, voice=None, speed=None)`, `VOICES`, `SAMPLE_RATE` |
 | `build.py` | Orchestrates the pipeline: plan, synthesize (cached), stitch with silence gaps, compute timestamps, encode m4a with ffmpeg, write `book.json` after each chapter. | `build_book(source, out_root, voice, speed, progress, tts) -> Path` |
-| `server.py` | REST API; drafts on disk with a clean worker (upload → `normalize` → review), a separate single-worker conversion queue for approved books (D-029); static web UI, mDNS advertisement, QR code for the LAN URL. | FastAPI `app`, `Drafts`, `Jobs`, `advertise()` |
-| `static/index.html` | Single-page UI with three tabs (D-030): **Clean** (upload with OCR mode, clean or clean & convert, "Cleaning & review" list), **Convert** (upload a cleaned `.std.epub`, approved books, conversion progress), **Library**. Also: review page (check-by-hand list, chapters and their text, removed parts, approve / Sigil download and upload / discard), conversion progress, library grid, reader with sentence highlighting and tap-to-seek. | served at `/` |
+| `service.py` | The backend, with no HTTP in it (D-032): drafts on disk with a clean worker (upload → `normalize` → review), a separate single-worker conversion queue for approved books (D-029), the library (list, manifest, file, delete) and cached voice samples. Every input check lives here, and refusals raise `Invalid` (400), `NotFound` (404) or `Conflict` (409). | `Drafts`, `Jobs`, `drafts`, `jobs`, `list_books()`, `read_book()`, `book_file()`, `delete_book()`, `voice_sample()`, `ServiceError` |
+| `api.py` | The JSON API v1 (`APIRouter(prefix="/api/v1")`): thin routes that call `service.py` and return Pydantic models, which are the written contract for the web page and the Android app. Uploads are multipart and every other body is JSON. Every error is `{"detail": ...}`. | `router`, `API_VERSION`, models `Draft`, `DraftDetail`, `Job`, `BookSummary`, `Book`, `Info`, `ApproveRequest`, `Error` |
+| `server.py` | The FastAPI `app`: includes the router, maps `ServiceError` to its status, serves `/` and `/static`, advertises mDNS (`path=/api/v1`) and prints the URLs at startup. No domain logic. | `app`, `advertise()`, `main()` |
+| `static/` | `index.html` (markup), `app.css`, `app.js`: plain files with no build step. They display data and call only `/api/v1`; they don't clean or convert anything (checked by `test_api03`). Single-page UI with three tabs (D-030): **Clean** (upload with OCR mode, clean or clean & convert, "Cleaning & review" list), **Convert** (upload a cleaned `.std.epub`, approved books, conversion progress), **Library**. Also: review page (check-by-hand list, chapters and their text, removed parts, approve / Sigil download and upload / discard), conversion progress, library grid, reader with sentence highlighting and tap-to-seek. | served at `/` |
 
 ## On-disk layout
 
@@ -138,28 +149,35 @@ Invariants:
 - `chapter_selection` is `null` for a full book, or the `--chapters` spec (e.g. `"2-4"`) for a partial one.
 - `complete: false` means the book is still converting (or was interrupted), but the chapters listed so far are playable.
 
-## HTTP API
+## HTTP API v1 (D-032)
+
+The web page and the Android app use the same API. All paths are under `/api/v1`, and the schemas are in
+`/openapi.json` (browsable at `/docs`). A breaking change goes into a new `/api/v2`; v1 keeps working. Uploads are
+multipart, every other body is JSON, and every error is `{"detail": "..."}` with 400 (invalid input), 404 (unknown
+id), 409 (wrong state) or 422 (a field of the wrong type, where `detail` is FastAPI's list). `test_api01` pins the exact
+route list.
+
+Not under `/api/v1`: `GET /` (the web page), `/static/*` (its files), `/docs` and `/openapi.json`.
 
 | Method & path | Purpose |
 |---|---|
-| `GET /` | Web UI |
-| `GET /api/info` | Host name, LAN URL, QR SVG, voice list, default voice |
-| `GET /api/books` | Library summary (title, author, cover, chapters, duration, size, complete) |
-| `GET /api/books/{id}` | Full `book.json` |
-| `GET /api/books/{id}/files/{name}` | Audio/cover file, with HTTP Range support |
-| `DELETE /api/books/{id}` | Delete a book folder |
-| `POST /api/clean` | Multipart `file`, `voice`, `speed` (0.5–2.0), `auto`, `ocr` (`auto`/`always`/`never`, PDF only) → `{draft_id}`; cleaned, then waits for review (or converts at once with `auto=true`) |
-| `POST /api/convert` | Same as `/api/clean` with `auto=true` → `{draft_id}` |
-| `POST /api/convert-std` | Multipart `file` (a cleaned `.std.epub`), `voice`, `speed` → `{draft_id, job_id}`; no cleaning, converted at once; 400 for anything without the `ebook-audio:normalized` marker |
-| `GET /api/drafts` | All drafts (status, message, OCR progress, chapters, checks, job and book ids) |
-| `GET /api/drafts/{id}` | One draft plus its `report` (null until cleaned) |
-| `GET /api/drafts/{id}/chapters/{n}` | `{index, title, paragraphs}` of one cleaned chapter |
-| `GET /api/drafts/{id}/std.epub` | Download the cleaned book (for Sigil) |
-| `POST /api/drafts/{id}/std.epub` | Upload an edited `.std.epub` (multipart `file`); 400 if unreadable |
-| `POST /api/drafts/{id}/approve` | Form `voice`, `speed` → `{job_id}`; 409 unless the draft is in review or done |
-| `DELETE /api/drafts/{id}` | Discard a draft and its files; 409 while cleaning or converting |
-| `GET /api/voices/{voice}/sample` | ~5 s m4a of the voice reading a fixed sentence (made once, then cached); 404 for an unknown voice |
-| `GET /api/jobs` | All conversion jobs (queued/running/done/error, progress, `draft_id`) |
+| `GET /info` | `{api_version: 1, name, url, qr_svg, voices, default_voice, ocr_modes}` |
+| `GET /voices/{voice}/sample` | ~5 s m4a of the voice reading a fixed sentence (made once, then cached); 404 for an unknown voice |
+| `POST /drafts` | Upload and clean. Multipart `file`, `voice`, `speed` (0.5–2.0), `auto`, `ocr` (`auto`/`always`/`never`, PDF only) → `{draft_id}`. Waits for review, or converts at once with `auto=true` (replaces the old `/api/clean` and `/api/convert`) |
+| `POST /drafts/cleaned` | Multipart `file` (a cleaned `.std.epub`), `voice`, `speed` → `{draft_id, job_id}`. No cleaning; converted at once. 400 for anything without the `ebook-audio:normalized` marker |
+| `GET /drafts` | All drafts (`Draft`: status, message, OCR progress, chapters, checks, job and book ids) |
+| `GET /drafts/{id}` | One draft plus its `report` (null until cleaned) |
+| `GET /drafts/{id}/chapters/{n}` | `{index, title, paragraphs}` of one cleaned chapter; 409 before cleaning |
+| `GET /drafts/{id}/std.epub` | Download the cleaned book (for Sigil); 409 before cleaning |
+| `PUT /drafts/{id}/std.epub` | Replace it with an edited `.std.epub` (multipart `file`) → `{chapters}`; 400 if unreadable |
+| `POST /drafts/{id}/approve` | JSON `{voice?, speed?}` (or no body: the voice and speed chosen at upload) → `{job_id}`; 409 unless the draft is in review or done |
+| `DELETE /drafts/{id}` | Discard a draft and its files; 409 while cleaning or converting |
+| `GET /jobs` | All conversion jobs (`Job`: queued/running/done/error, `done`/`total` sentences, message, `draft_id`, `book_id`) |
+| `GET /jobs/{id}` | One job's progress |
+| `GET /books` | Library summary (`BookSummary`: title, author, cover, chapters, duration, size, complete) |
+| `GET /books/{id}` | The full `book.json` (`Book`) |
+| `GET /books/{id}/files/{name}` | A chapter's audio or the cover, with HTTP Range (206). To download a book, fetch each chapter's `audio` file from the manifest; an interrupted download resumes with `Range: bytes=<have>-` |
+| `DELETE /books/{id}` | Delete a book folder |
 
 Book and draft IDs are validated against `^[a-z0-9\-]{1,80}$` (a draft id must also be a known draft), and file
 names reject `/`, `\`, and a leading `.` (path-traversal guard).

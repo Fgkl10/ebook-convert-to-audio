@@ -14,7 +14,7 @@ Convert ebooks (EPUB / PDF / TXT) into audiobooks on a Windows PC using a **loca
 ## Components
 | Folder | What |
 |---|---|
-| `desktop/` | Python converter (`build.py`), LAN server + web UI (`server.py`) |
+| `desktop/` | Python converter (`build.py`); one server process (`server.py`) with the backend (`service.py`), a JSON API under `/api/v1` (`api.py`) and the web page (`static/`) |
 | `android/` | Kotlin app (Media3 player, sentence sync) — *coming in M4/M5* |
 
 ## Setup (Windows)
@@ -40,6 +40,12 @@ Set `HF_HOME` / `DOCTR_CACHE_DIR` to use another folder.
 .venv\Scripts\python -m desktop.server
 # open http://localhost:8000: upload a book, it is cleaned, review it (or tick "skip review"), then Approve & convert
 ```
+
+### API
+The web page does everything through a JSON API, and the Android app uses the same one. All endpoints are under
+`/api/v1`: upload and clean, review report, approve, conversion progress, the library and audio download. See
+<http://localhost:8000/docs> for the interactive reference, or `desktop/docs/architecture.md` for the table.
+Set `EBOOK_AUDIO_DATA=<folder>` to keep `library/`, `cache/` and `drafts/` somewhere other than the project.
 
 ## Roadmap
 - M1 TTS proof · M2 converter CLI · M3 server + web UI

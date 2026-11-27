@@ -127,6 +127,8 @@ Status: Accepted · Milestone: M3
 **Why:** There is nothing to install or bundle, and FastAPI serves it directly. It also serves as a reference implementation of
 the sentence-sync logic for the Android app (binary search over `start_ms`).
 **Consequences:** It will get harder to maintain if the UI grows. If it does, revisit this decision with a new entry.
+*Update (D-032):* the page is now split into `index.html`, `app.css` and `app.js`. These are still static files with
+no build step and no framework.
 
 ## D-013 CI with a lighter dependency set, required before merge
 Status: Accepted · Milestone: M3
@@ -519,3 +521,48 @@ click instant. The text hash in the file name means changing the sentence makes 
 **Consequences:** The first ▶ of a session waits for the model to load (~10 s), and the first sample of each voice
 ~4 s (it downloads the voice file into `models/`). During a conversion a sample waits for the current sentence.
 Samples are never deleted automatically (about 50 kB each).
+
+## D-032 Backend, JSON API v1 and web page as separate layers in one server
+Status: Accepted · Milestone: M3 · Changes the routes of D-029, D-030 and D-031
+**Context:** The Android app (M4+) will do everything the web page does: upload, clean, review the report, approve,
+follow the conversion, list the library and download audio. In `server.py` the domain logic (`Drafts`, `Jobs`,
+library reading, voice samples) was mixed with the HTTP routes and raised `HTTPException`. The URLs had no version,
+approve took HTML form fields, and the responses had no written schema. The page held its HTML, CSS and JS in one
+file. The user wanted the backend and the frontend apart while keeping one server and one start command, and no
+separate frontend project or build step.
+**Decision:**
+- **`service.py`** is the backend, with no FastAPI import. It holds `Drafts`, `Jobs`, the library functions and the
+  voice samples. All input checks live there (voice, speed, OCR mode, file type), and refusals raise `Invalid`,
+  `NotFound` or `Conflict`, each carrying its HTTP status.
+- **`api.py`** is the JSON API, `APIRouter(prefix="/api/v1")`. Its routes are thin, and its Pydantic response models
+  are the contract (`/openapi.json`, browsable at `/docs`). One exception handler turns a `ServiceError` into
+  `{"detail": msg}`, the same shape FastAPI uses for its own errors.
+- **`server.py`** builds the app, serves `/` and `/static`, advertises mDNS with `path=/api/v1`, and starts uvicorn.
+- **`static/`** is `index.html`, `app.css` and `app.js`. The page only displays data and calls `/api/v1`.
+- The routes follow resources:
+  - `POST /drafts` replaces `/api/clean`, and `/api/convert` is dropped, since it is the same call with `auto=true`;
+  - `POST /drafts/cleaned` replaces `/api/convert-std`;
+  - the edited std is replaced with `PUT /drafts/{id}/std.epub`;
+  - `GET /jobs/{id}` is new, so a client can follow one conversion.
+- Uploads stay multipart; every other body is JSON. Approve takes `{voice?, speed?}`, and a field left out falls back
+  to the choice made at upload.
+- Downloads stay per file: the manifest lists each chapter's `.m4a`, fetched with HTTP Range. There is no zip.
+- The old unversioned routes are removed rather than kept as aliases. This page was their only client.
+- `EBOOK_AUDIO_DATA` (read by `build.ROOT`) moves `library/`, `cache/` and `drafts/` out of the project.
+  `tests/conftest.py` sets it before anything is imported.
+**Why:**
+- A versioned prefix lets installed copies of the app keep working when the API changes: a breaking change goes into
+  `/api/v2`, and `/info` reports `api_version` so the app can refuse a server it doesn't support.
+- JSON bodies are what Android HTTP clients (Retrofit, Ktor) send by default.
+- Per-file downloads resume chapter by chapter over flaky Wi-Fi, and a finished chapter plays while the rest is still
+  downloading.
+- With no HTTP in the backend, it can be tested and reused (the CLI, a later desktop app) without a server.
+- `test_api01` pins the exact route list, so any change to the contract shows up as a failing test that has to be
+  changed on purpose.
+- The data-folder override fixes a real incident: a test server, and even importing the server module in a test run,
+  shared and rewrote the drafts of the user's running server.
+**Consequences:**
+- Bookmarks or scripts that call `/api/...` must move to `/api/v1/...`.
+- The page is still served by the same process, so the web UI and the API always match in version.
+- A new endpoint needs a model in `api.py`, a line in `EXPECTED_ROUTES` and a test.
+- There is still no authentication (D-011): the API is for a trusted home network.

@@ -128,8 +128,8 @@ missing sentences cost GPU time. The m4a files and `book.json` are rewritten fro
 
 ```mermaid
 stateDiagram-v2
-    [*] --> cleaning: POST /api/clean (file, voice, speed, auto, ocr) · Clean page
-    [*] --> queued: POST /api/convert-std (a cleaned .std.epub) · Convert page
+    [*] --> cleaning: POST /api/v1/drafts (file, voice, speed, auto, ocr) · Clean page
+    [*] --> queued: POST /api/v1/drafts/cleaned (a cleaned .std.epub) · Convert page
     cleaning --> error: normalize() fails (language, no text, OCR not installed)
     cleaning --> review: .std.epub + report.json written
     review --> queued: Approve & convert (or auto=true right away)
@@ -148,46 +148,47 @@ stateDiagram-v2
 
 ```mermaid
 sequenceDiagram
-    actor U as User (browser)
-    participant UI as index.html
-    participant API as server.py
-    participant C as Drafts queue + clean worker
-    participant Q as Jobs queue + convert worker
+    actor U as User (browser or Android app)
+    participant UI as static/app.js (or the app)
+    participant API as api.py (/api/v1)
+    participant C as service.Drafts: queue + clean worker
+    participant Q as service.Jobs: queue + convert worker
     participant B as build_book
 
     U->>UI: pick file, voice, speed, (skip review?) → Clean
-    UI->>API: POST /api/clean (multipart)
-    API->>API: validate voice, 0.5≤speed≤2, ext ∈ {epub,pdf,txt}
-    API->>C: drafts/<id>/ with the upload + draft.json, status=cleaning
-    API-->>UI: {draft_id}
+    UI->>API: POST /api/v1/drafts (multipart)
+    API->>C: Drafts.create(): validate voice, 0.5≤speed≤2, ocr, ext ∈ {epub,pdf,txt}
+    C->>C: drafts/<id>/ with the upload + draft.json, status=cleaning
+    API-->>UI: {draft_id} (a refusal: 400 {"detail": "..."})
     loop every 2 s
-        UI->>API: GET /api/drafts, GET /api/jobs
-        UI->>API: GET /api/books (when the job signature changes)
+        UI->>API: GET /api/v1/drafts, GET /api/v1/jobs (the app may poll GET /jobs/{id})
+        UI->>API: GET /api/v1/books (when the job signature changes)
     end
     C->>C: normalize(upload, drafts/<id>/book.std.epub, progress)
     C-->>UI: message "Reading scanned pages n/N" (OCR)
     C->>C: report.json, status=review (auto: approve at once)
     U->>UI: Review
-    UI->>API: GET /api/drafts/{id} (report), GET …/chapters/{n} (one chapter's text)
+    UI->>API: GET /api/v1/drafts/{id} (report), GET …/chapters/{n} (one chapter's text)
     opt fix in Sigil
-        U->>API: GET …/std.epub, edit, POST …/std.epub
+        U->>API: GET …/std.epub, edit, PUT …/std.epub
     end
     U->>UI: Approve & convert (voice, speed)
-    UI->>API: POST /api/drafts/{id}/approve
-    API->>Q: submit(book.std.epub, draft_id) → draft status=queued
-    Q->>Q: draft status=converting; _get_tts (reuse model if same language)
+    UI->>API: POST /api/v1/drafts/{id}/approve, JSON {"voice", "speed"} (both optional)
+    API->>Q: submit(book.std.epub, draft_id) → draft status=queued; → {job_id}
+    Q->>Q: draft status=converting; one shared model (D-031)
     Q->>B: build_book(std, LIBRARY, ..., progress, tts)
     B-->>Q: progress(done, total, msg) / out_dir
     Q->>Q: job done, draft status=done + book_id (on error: draft back to review)
 ```
 
-`POST /api/convert` is the same as `/api/clean` with `auto=true`.
+There is no separate one-step convert route: `POST /api/v1/drafts` with `auto=true` cleans and converts with no review
+stop (D-032).
 
 ## 3. Listen with sentence sync (web player)
 
 ```mermaid
 flowchart TD
-    A([click a book]) --> B["GET /api/books/{id}<br/>→ book.json"]
+    A([click a book]) --> B["GET /api/v1/books/{id}<br/>→ book.json"]
     B --> C["render chapter list"]
     C --> D["loadChapter(i)<br/>render one span per sentence,<br/>grouped into &lt;p&gt; by p"]
     D --> E["audio.src = /files/chNNN.m4a"]
@@ -211,12 +212,12 @@ sequenceDiagram
     participant P as Phone
 
     M->>M: create library/ if missing
-    M->>Z: register _ebookaudio._tcp.local. (LAN IP, port, path=/api)
+    M->>Z: register _ebookaudio._tcp.local. (LAN IP, port, path=/api/v1)
     Note over M,Z: on failure: print a hint and keep running without mDNS
     M->>V: run on 0.0.0.0:port
     P->>Z: browse _ebookaudio._tcp (M4+)
-    P->>V: GET /api/books …
-    Note over P,V: or scan the QR code from GET /api/info shown in the web UI
+    P->>V: GET /api/v1/info (check api_version), GET /api/v1/books …
+    Note over P,V: or scan the QR code from GET /api/v1/info shown in the web UI
     V-->>M: shutdown
     M->>Z: unregister + close
 ```
