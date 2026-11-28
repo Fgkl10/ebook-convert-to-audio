@@ -5,7 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -54,7 +54,8 @@ import app.ebookaudio.player.PlayerScreen
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 
-class MainActivity : ComponentActivity() {
+/** An AppCompatActivity so the in-app language choice also applies on Android 8–12 (A-019). */
+class MainActivity : AppCompatActivity() {
     private lateinit var connection: PlayerConnection
 
     /** A book file handed in by "Open with" or Share (A-013), until the upload screen takes it. */

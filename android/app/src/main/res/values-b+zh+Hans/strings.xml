@@ -120,6 +120,8 @@
     <string name="unpair_text">本机上的书仍可播放。要再次使用电脑，请扫描它的二维码。</string>
     <string name="delete_all_title">删除全部下载？</string>
     <string name="delete_all_text">书仍保留在电脑上。收听进度会保留。</string>
+    <string name="language">语言</string>
+    <string name="language_system">跟随手机语言</string>
     <string name="bg_title">熄屏播放</string>
     <string name="bg_intro">有些手机为了省电会停止后台应用。为了让书能持续播放：</string>
     <string name="bg_steps_xiaomi">1. 应用信息 → 省电策略 → 无限制\n2. 应用信息 → 自启动 → 开启\n3. 在最近任务中，将应用卡片下拉锁定</string>

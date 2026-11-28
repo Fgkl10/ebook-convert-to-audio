@@ -120,6 +120,8 @@
     <string name="unpair_text">本機上的書仍可播放。要再次使用電腦，請掃描它的 QR 碼。</string>
     <string name="delete_all_title">刪除所有下載？</string>
     <string name="delete_all_text">書仍保留在電腦上。收聽進度會保留。</string>
+    <string name="language">語言</string>
+    <string name="language_system">跟隨手機語言</string>
     <string name="bg_title">關閉螢幕時播放</string>
     <string name="bg_intro">有些手機為了省電會停止背景應用程式。為了讓書能持續播放：</string>
     <string name="bg_steps_xiaomi">1. 應用程式資訊 → 省電策略 → 無限制\n2. 應用程式資訊 → 自動啟動 → 開啟\n3. 在最近使用的應用程式中，將卡片往下拉以鎖定</string>

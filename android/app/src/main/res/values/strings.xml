@@ -124,6 +124,12 @@
     <string name="unpair_text">Books on this phone still play. To use the PC again, scan its QR code.</string>
     <string name="delete_all_title">Delete all downloads?</string>
     <string name="delete_all_text">The books stay on the PC. Listening positions are kept.</string>
+    <string name="language">Language</string>
+    <string name="language_system">Phone\'s language</string>
+    <!-- Each language in its own script, the same in every translation (A-019). -->
+    <string name="language_en" translatable="false">English</string>
+    <string name="language_zh_hans" translatable="false">简体中文</string>
+    <string name="language_zh_hant" translatable="false">繁體中文</string>
     <string name="bg_title">Playing with the screen off</string>
     <string name="bg_intro">Some phones stop apps in the background to save battery. So that books keep playing:</string>
     <string name="bg_steps_xiaomi">1. App info → Battery saver → No restrictions\n2. App info → Autostart → on\n3. In Recents, pull the app\'s card down to lock it</string>

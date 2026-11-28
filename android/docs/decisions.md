@@ -37,6 +37,7 @@ Consequences: trade-offs we accept
 | A-016 | Sleep timer in the playback service | player | |
 | A-017 | English, Simplified and Traditional Chinese | all screens | desktop D-040 |
 | A-018 | Background-playback steps per phone maker | ui | generalizes A-007's HyperOS note |
+| A-019 | Language choice in Settings, through AppCompat | ui | amends A-017 |
 
 ## A-001 Kotlin + Jetpack Compose, one `:app` module
 Status: Accepted · Milestone: M4a
@@ -240,7 +241,7 @@ Decision:
   `values-b+zh+Hant`. Script qualifiers, not region ones (`zh-rCN`, `zh-rTW`): Android 7+ resolves zh-CN/SG to Hans
   and zh-TW/HK/MO to Hant, so one folder covers each script. Traditional uses Taiwan wording.
 - The app follows the phone's language. On Android 13+ the system's per-app language setting lists the three
-  languages, from `generateLocaleConfig` (no AppCompat, no in-app picker: the user's choice).
+  languages, from `generateLocaleConfig`. (At first there was no in-app picker; A-019 added one.)
 - `ConvertRules` returns values instead of English text (`StatusLabel`, `ApproveLabel`, `MixedVoice`), so it stays a
   pure, tested function; `ConvertText.kt` maps them to resources. `Format.duration` became the composable
   `durationText`.
@@ -266,3 +267,21 @@ Why: Showing only the relevant steps is shorter than a list for every maker; the
 manufacturer field is unusual. A pure function is unit-tested (`BackgroundTipsTest`).
 Consequences: The steps follow each vendor's documented settings and change between OS versions; only the Xiaomi
 steps were tried on a real phone. Unknown makers get the stock-Android steps.
+
+## A-019 Language choice in Settings, through AppCompat
+Status: Accepted · Milestone: M6a · Amends A-017
+Context: A-017 left the language to the system. On the test phone (HyperOS 2, Android 14) the user could not find
+the system's per-app language screen, and asked for a choice inside the app.
+Decision: Settings has a **Language** section: Phone's language / English / 简体中文 / 繁體中文. The language names are
+written in their own script and not translated, so each can be found whatever the current language. A tap calls
+`AppCompatDelegate.setApplicationLocales` (empty list = the phone's language), which recreates the activity in the
+new language. `AppLanguage.fromTags` maps the current locale list back to a choice, and treats zh-TW/HK/MO as
+Traditional because the system setting may store a region. To make this work on Android 8–12, `MainActivity`
+became an `AppCompatActivity` (theme parent `Theme.AppCompat.DayNight.NoActionBar`; Compose still draws
+everything), and the manifest enables AppCompat's `AppLocalesMetadataHolderService` with `autoStoreLocales`.
+Why: AndroidX AppCompat (open source, not a Google service) is the standard way to get one API for every Android
+version. On 13+ it writes through to the system's own setting, so the two never disagree. A hand-made
+`attachBaseContext` wrapper would need its own storage and would not update the system setting.
+Consequences: A new dependency, `androidx.appcompat:appcompat` 1.8.0. On Android 8–12 the choice reaches the
+activity only. The download notification there (built from the application context) and Media3's notification
+stay in the phone's language.

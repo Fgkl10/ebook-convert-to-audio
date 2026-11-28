@@ -4,8 +4,16 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.material3.RadioButton
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.Role
+import androidx.core.os.LocaleListCompat
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -42,7 +50,7 @@ import app.ebookaudio.R
 import app.ebookaudio.graph
 import kotlinx.coroutines.launch
 
-/** The paired PC, storage, and how to keep the phone's battery saver from stopping playback (A-018). */
+/** The paired PC, storage, the app's language (A-019), and how to keep the phone's battery saver from stopping playback (A-018). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(onBack: () -> Unit, onPair: () -> Unit) {
@@ -84,6 +92,29 @@ fun SettingsScreen(onBack: () -> Unit, onPair: () -> Unit) {
                     Text(stringResource(R.string.delete_all_downloads))
                 }
             }
+            Section(stringResource(R.string.language)) {
+                val current = remember { AppLanguage.fromTags(AppCompatDelegate.getApplicationLocales().toLanguageTags()) }
+                Column(Modifier.selectableGroup()) {
+                    for (lang in AppLanguage.entries) {
+                        Row(
+                            Modifier.fillMaxWidth().selectable(
+                                selected = lang == current,
+                                role = Role.RadioButton,
+                                onClick = {
+                                    // The activity is recreated in the new language; Settings stays open.
+                                    if (lang != current) {
+                                        AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(lang.tag))
+                                    }
+                                },
+                            ).padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = lang == current, onClick = null)
+                            Text(languageName(lang), Modifier.padding(start = 12.dp))
+                        }
+                    }
+                }
+            }
             Section(stringResource(R.string.bg_title)) {
                 val vendor = remember { BackgroundTips.vendorOf(Build.MANUFACTURER, Build.BRAND) }
                 Text(stringResource(R.string.bg_intro))
@@ -117,6 +148,15 @@ fun SettingsScreen(onBack: () -> Unit, onPair: () -> Unit) {
         )
     }
 }
+
+/** Each language in its own script, so it can be found whatever language the app is in. */
+@Composable
+private fun languageName(lang: AppLanguage): String = stringResource(when (lang) {
+    AppLanguage.SYSTEM -> R.string.language_system
+    AppLanguage.ENGLISH -> R.string.language_en
+    AppLanguage.SIMPLIFIED -> R.string.language_zh_hans
+    AppLanguage.TRADITIONAL -> R.string.language_zh_hant
+})
 
 @Composable
 private fun Section(title: String, content: @Composable () -> Unit) {
