@@ -890,3 +890,18 @@ Status: Accepted · Milestone: M3 (wrap-up before M4)
 - Checked live (real Kokoro, scratch data folder): cancel in chapter 2 → stopped in 0.5 s, chapter 1 kept, no
   leftovers, a second cancel → 409, the server kept serving; approving again finished the book. Delete while
   converting → 409.
+
+## D-039 Web reader: sentence buttons and text size, same rules as the phone
+Status: Accepted · Milestone: M5
+**Context:** M5 added a read-along view to the Android app (android A-015). The user asked for the web reader to get
+the same text size control and previous/next sentence buttons (not the sleep timer).
+**Decision:**
+- The player bar has **‹ Sentence**, **Sentence ›**, **A−** and **A+**.
+- ‹ Sentence restarts the current sentence when more than 1.5 s (`RESTART_MS`) into it, else goes to the one before.
+  Sentence › does nothing on the last sentence. Both start playback when paused. The same `sentenceAt` binary search
+  as the highlight (D-012) is used.
+- Text size 12–32 px in steps of 2, default 18 (`TEXT_SIZE`), set as the `--text-size` CSS variable on `#text` and
+  remembered in `localStorage` (a private window just doesn't remember it).
+**Why:** The phone and the PC readers behave alike. The numbers are written in both places; AND-11
+(`tests/test_android_contract.py`) fails if they drift apart.
+**Consequences:** No server change. The size is per browser, not per book or user.

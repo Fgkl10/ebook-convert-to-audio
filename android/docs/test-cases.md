@@ -77,11 +77,34 @@ Status legend: Automated · Manual · Gap
 | AND-M10 | Headphones unplugged | Unplug or disconnect headphones while playing | Pauses | Manual, pass (2026-11-28) |
 | AND-M11 | Long playback with the screen off on HyperOS | Battery "No restrictions" + Autostart; play 30+ min screen off | Keeps playing | Manual, pass (2026-11-28) |
 
+## Read-along and sleep timer (M5)
+
+These manual cases used a made-up two-chapter book (both chapters converted, so "end of chapter" could be checked
+against the next one).
+
+| ID | Case | Steps / input | Expected | Status |
+|---|---|---|---|---|
+| AND-09 | Sentence lookup and buttons | Positions before, at and between sentence starts, past the end; 1,000 sentences; previous at 0.5 s / 1 s / 2 s into a sentence; next on the last sentence; paragraph grouping | Same rules as the web reader (A-015) | Automated `SentenceSyncTest` |
+| AND-10 | Sleep timer logic | Minutes count down, never below 0, expire; fade over the last 10 s; end of chapter uses the chapter's time left at the speed; invalid minutes refused | As listed (A-016) | Automated `SleepTimerTest` |
+| AND-11 | The web reader and the app share the reading rules | Read `app.js`, `index.html`, `app.css`, `SentenceSync.kt`, `Settings.kt`, `PlayerScreen.kt` | Same restart threshold and text size range; the web buttons exist and are wired; both clients start playback from a sentence button | Automated `tests/test_android_contract.py::test_and11_web_reader_and_app_share_the_reading_rules` |
+| AND-M22 | Read along while streaming | Play a book that isn't downloaded; open the player | Text shown; current sentence highlighted, a third of the way down; hand scroll holds the auto-scroll until 4 s after; tapping a sentence plays from it | Manual, pass (2026-11-28) |
+| AND-M23 | Buttons and remembered settings | ‹ Sentence / Sentence ›; Larger / Smaller text; cover ⇄ text; force-close and reopen | As in A-015; text size and text/cover choice remembered | Manual, pass (2026-11-28) |
+| AND-M24 | Keep the screen on | Screen timeout 15–30 s; text view playing, paused, cover view | Stays on only while the text is shown and playing (failed with `View.keepScreenOn`; passes with the window flag) | Manual, pass (2026-11-28) |
+| AND-M25 | Minutes timer with the screen locked | Sleep → Other… → 1 minute; lock the phone | Fades over the last 10 s and pauses; normal volume on the next play | Manual, pass (2026-11-28) |
+| AND-M26 | End of this chapter | Near the end of chapter 1 → End of this chapter | Stops at the end of chapter 1; chapter 2 doesn't start | Manual, pass (2026-11-28) |
+| AND-M27 | Timer state after leaving the player | Set a timer, pause, leave the player, come back | The sleep button and the mini player still show the time left | Manual, pass (2026-11-28) |
+| AND-M28 | Read along offline | Download the book; airplane mode; open the player | Text from the phone's copy | Manual, pass (2026-11-28) |
+| AND-G05 | End-of-chapter timer on the book's last chapter | Set "End of this chapter" in the last chapter | Playback ends; the timer clears (`STATE_ENDED`) | Gap (handled in code, not run on the phone) |
+| AND-G06 | Sleep timer after the service is stopped | Set a timer, then stop playback from the notification | The timer is gone (in memory only, A-016) | Gap (by design, not tested) |
+
 ## Known gaps
 
 - No instrumented (on-device) tests and no Compose UI tests in CI: screens are checked by hand (AND-M*).
 - `PlaybackService` and `DownloadWorker` themselves are only tested on the phone; their logic (`Downloader`,
-  `Versions`, `Position`) is unit-tested.
+  `Versions`, `Position`, `SleepTimer`) is unit-tested. The sleep timer's service glue (session command, extras,
+  fade applied to the player, end-of-item pause) is manual only (AND-M25..M27).
+- The read-along view (`ReadAlong.kt`: scrolling, highlight, taps) is checked by hand only; its lookup is
+  `SentenceSync` (AND-09).
 - Cleartext HTTP on plain Wi-Fi (A-005, desktop AUTH-06).
 - Test setup: files copied to the phone with `adb push` don't show in the file picker until the media scanner indexes
   them (`adb shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file:///sdcard/...`).

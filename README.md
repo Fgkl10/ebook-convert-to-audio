@@ -19,7 +19,7 @@ Convert ebooks (EPUB / PDF / TXT) into audiobooks on a Windows PC using a **loca
 | `desktop/tts/` | Kokoro speech, sentence timing, the converter |
 | `desktop/server/` | Backend and the JSON API under `/api/v1` |
 | `desktop/web/` | The web page (HTML/JS/CSS) |
-| `android/` | Android app: pair with the PC, download books, play offline in the background (M4a); sentence sync in M5 |
+| `android/` | Android app: pair with the PC, download books, play offline in the background (M4a), manage conversions (M4b), read along with the audio and a sleep timer (M5) |
 
 ## Setup (Windows)
 Requires Python 3.10–3.12, ffmpeg on PATH, NVIDIA GPU recommended.
@@ -88,7 +88,13 @@ review the cleaning report and chapter text, pick voice (with a sample), speed a
 progress, cancel or discard. Books can also be sent to the app with **Open with** or **Share** from a file manager,
 WeChat or a browser. A book's ⋮ menu can delete it from the PC. Editing the cleaned book in Sigil stays on the PC.
 
+The player shows the chapter text with the sentence being read highlighted (tap a sentence to play from it; the
+picture icon switches to the cover). It has previous/next sentence buttons, a text size setting (⋮), keeps the
+screen on while the text is shown and playing, and a **Sleep** timer: 15/30/45/60 minutes, any number of minutes, or
+the end of the chapter, fading out over the last 10 seconds. The web page's reader has the same sentence buttons and
+text size (A− / A+).
+
 ## Roadmap
 - M1 TTS proof · M2 converter CLI · M3 server + web UI
 - M4a Android player (pairing, downloads, background / lock screen) · M4b manage conversions from the phone
-- M5 sentence sync · M6 polish
+- M5 read-along on the phone, sleep timer, web reader controls · M6 polish
