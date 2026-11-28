@@ -8,6 +8,7 @@ To rewrite the fixtures after a deliberate API change: set UPDATE_ANDROID_FIXTUR
 """
 import json
 import os
+import re
 from pathlib import Path
 
 from tests.test_api import _approve
@@ -17,10 +18,18 @@ FIXTURES = Path(__file__).resolve().parent.parent / "android" / "app" / "src" / 
 TOKEN = "T" * 32  # stands in for the test server's random token
 
 
+def _scrub_field(key, value, token):
+    if key == "qr_svg" and value:
+        return "<svg/>"
+    if key == "source" and isinstance(value, str):  # a report's source is a path on the PC: keep the file name
+        return re.split(r"[\\/]", value)[-1]
+    return _scrub(value, token)
+
+
 def _scrub(value, token):
-    """No real token or QR drawing in a committed file."""
+    """No real token, QR drawing or PC path in a committed file."""
     if isinstance(value, dict):
-        return {k: ("<svg/>" if k == "qr_svg" and v else _scrub(v, token)) for k, v in value.items()}
+        return {k: _scrub_field(k, v, token) for k, v in value.items()}
     if isinstance(value, list):
         return [_scrub(v, token) for v in value]
     if isinstance(value, str):
@@ -71,6 +80,11 @@ def test_and01_android_fixtures_match_the_server(api, monkeypatch):  # noqa: F81
         "info.json": api.get(f"{V1}/info").json(),
         "books.json": api.get(f"{V1}/books").json(),
         "book.json": api.get(f"{V1}/books/{book_id}").json(),
+        # the Convert tab (M4b)
+        "drafts.json": api.get(f"{V1}/drafts").json(),
+        "draft.json": api.get(f"{V1}/drafts/{draft_id}").json(),
+        "draft_chapter.json": api.get(f"{V1}/drafts/{draft_id}/chapters/0").json(),
+        "jobs.json": api.get(f"{V1}/jobs").json(),
     }
     live = {name: _scrub(body, auth.token()) for name, body in live.items()}
     if os.environ.get("UPDATE_ANDROID_FIXTURES") == "1":

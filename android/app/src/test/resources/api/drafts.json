@@ -1,0 +1,27 @@
+[
+  {
+    "id": "5e8b7867b777",
+    "file": "story.txt",
+    "source": "story.txt",
+    "status": "done",
+    "message": "Converted",
+    "done": 0,
+    "total": 0,
+    "auto": false,
+    "voice": "af_heart",
+    "speed": 1.0,
+    "ocr": "auto",
+    "error": null,
+    "created": 1795834538.4878643,
+    "chapters": 2,
+    "checks": 0,
+    "job_id": "8cd2366b345e",
+    "book_id": "story-63e1f08d",
+    "source_sha1": "63e1f08d09f9a7ad48f0e9afe5de949b59601495",
+    "last_chapters": null,
+    "converted": [
+      1,
+      2
+    ]
+  }
+]
