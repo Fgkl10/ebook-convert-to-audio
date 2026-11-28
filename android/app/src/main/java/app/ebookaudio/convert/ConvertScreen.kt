@@ -35,14 +35,18 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import app.ebookaudio.R
 import app.ebookaudio.api.ApiClient
 import app.ebookaudio.api.Draft
 import app.ebookaudio.api.Job
 import app.ebookaudio.api.NotPaired
 import app.ebookaudio.graph
 import app.ebookaudio.library.Message
+import app.ebookaudio.ui.errorText
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -58,7 +62,9 @@ fun ConvertScreen(
     onSettings: () -> Unit,
     onPair: () -> Unit,
 ) {
-    val graph = LocalContext.current.graph
+    val context = LocalContext.current
+    val res = LocalResources.current
+    val graph = context.graph
     val scope = rememberCoroutineScope()
     var api by remember { mutableStateOf<ApiClient?>(null) }
     var drafts by remember { mutableStateOf<List<Draft>?>(null) }
@@ -77,7 +83,7 @@ fun ConvertScreen(
         } catch (e: NotPaired) {
             notPaired = true
         } catch (e: IOException) {
-            error = "Can't reach the PC (${api?.baseUrl}). Is the server running, and ZeroTier on?"
+            error = res.getString(R.string.convert_cant_reach, api?.baseUrl.orEmpty())
         }
     }
 
@@ -89,7 +95,7 @@ fun ConvertScreen(
     fun act(block: suspend (ApiClient) -> Unit) {
         val a = api ?: return
         scope.launch {
-            try { block(a) } catch (e: IOException) { error = e.message }
+            try { block(a) } catch (e: IOException) { error = res.errorText(e) }
             refresh()
         }
     }
@@ -98,22 +104,32 @@ fun ConvertScreen(
         contentWindowInsets = WindowInsets(0),
         topBar = {
             TopAppBar(
-                title = { Text("Convert on the PC") },
-                actions = { IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, "Settings") } },
+                title = { Text(stringResource(R.string.convert_title)) },
+                actions = {
+                    IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, stringResource(R.string.settings)) }
+                },
             )
         },
         floatingActionButton = {
             if (!notPaired) ExtendedFloatingActionButton(onClick = onAdd, icon = { Icon(Icons.Filled.Add, null) },
-                text = { Text("Add a book") })
+                text = { Text(stringResource(R.string.add_book)) })
         },
     ) { padding ->
         if (notPaired) {
             Column(Modifier.padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Pair with the PC to convert books from this phone.")
-                OutlinedButton(onClick = onPair) { Text("Pair with the PC") }
+                Text(stringResource(R.string.convert_pair_hint))
+                OutlinedButton(onClick = onPair) { Text(stringResource(R.string.pair_with_pc)) }
             }
             return@Scaffold
         }
+        val cancelText = stringResource(R.string.confirm_cancel_conversion)
+        val discardText = stringResource(R.string.confirm_discard_draft)
+        val runningTitle = stringResource(R.string.conversions_running)
+        val noRunning = stringResource(R.string.no_conversions)
+        val cleanedTitle = stringResource(R.string.cleaned_to_review)
+        val cleanedEmpty = stringResource(R.string.cleaned_empty)
+        val approvedTitle = stringResource(R.string.approved)
+        val approvedEmpty = stringResource(R.string.approved_empty)
         val all = drafts
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(bottom = 88.dp)) {
             error?.let { item { Message(it, isError = true) } }
@@ -122,19 +138,19 @@ fun ConvertScreen(
                 return@LazyColumn
             }
             val visible = ConvertRules.visibleJobs(jobs, System.currentTimeMillis() / 1000.0)
-            section("Conversions running", visible.isEmpty(), "No conversions running.")
+            section("running", runningTitle, visible.isEmpty(), noRunning)
             items(visible, key = { "job-" + it.id }) { j ->
                 JobCard(j, onCancel = {
                     confirm = Confirm(cancelText) { it.cancelJob(j.id) }
                 })
             }
             val cleaning = all.filter(ConvertRules::isCleaning)
-            section("Cleaned, to review", cleaning.isEmpty(), "Nothing here. Add a book to clean it on the PC.")
+            section("cleaned", cleanedTitle, cleaning.isEmpty(), cleanedEmpty)
             items(cleaning, key = { "draft-" + it.id }) { d ->
                 DraftCard(d, onReview, onListen, onCancel = {}, onDiscard = { confirm = Confirm(discardText) { it.discardDraft(d.id) } })
             }
             val approved = all.filterNot(ConvertRules::isCleaning)
-            section("Approved", approved.isEmpty(), "No approved books yet.")
+            section("approved", approvedTitle, approved.isEmpty(), approvedEmpty)
             items(approved, key = { "draft-" + it.id }) { d ->
                 DraftCard(d, onReview, onListen,
                     onCancel = { confirm = Confirm(cancelText) { it.cancelDraft(d.id) } },
@@ -147,8 +163,10 @@ fun ConvertScreen(
         AlertDialog(
             onDismissRequest = { confirm = null },
             text = { Text(c.text) },
-            confirmButton = { TextButton(onClick = { confirm = null; act { c.action(it) } }) { Text("Yes") } },
-            dismissButton = { TextButton(onClick = { confirm = null }) { Text("No") } },
+            confirmButton = {
+                TextButton(onClick = { confirm = null; act { c.action(it) } }) { Text(stringResource(R.string.yes)) }
+            },
+            dismissButton = { TextButton(onClick = { confirm = null }) { Text(stringResource(R.string.no)) } },
         )
     }
 }
@@ -156,17 +174,11 @@ fun ConvertScreen(
 /** A question before an action on the PC. */
 private class Confirm(val text: String, val action: suspend (ApiClient) -> Unit)
 
-private const val cancelText = "Cancel this conversion? Finished chapters stay in the library; approving again " +
-    "resumes where it stopped."
-
-private const val discardText = "Discard this cleaned book? The uploaded file and the cleaned version are deleted " +
-    "on the PC. A converted book stays in the library."
-
-private fun LazyListScope.section(title: String, empty: Boolean, emptyText: String) {
-    item(key = "title-$title") {
+private fun LazyListScope.section(key: String, title: String, empty: Boolean, emptyText: String) {
+    item(key = "title-$key") {
         Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp, 16.dp, 16.dp, 4.dp))
     }
-    if (empty) item(key = "empty-$title") { Message(emptyText) }
+    if (empty) item(key = "empty-$key") { Message(emptyText) }
 }
 
 @Composable
@@ -175,13 +187,14 @@ private fun JobCard(j: Job, onCancel: () -> Unit) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(j.file, style = MaterialTheme.typography.titleSmall)
             val pct = if (j.total > 0) 100f * j.done / j.total else 0f
-            Text(j.status + if (j.total > 0) " · ${j.done}/${j.total} sentences · ${"%.1f".format(pct)}%" else "",
-                style = MaterialTheme.typography.bodySmall)
+            val status = jobStatusText(j.status)
+            Text(if (j.total > 0) status + " · " + stringResource(R.string.job_progress, j.done, j.total, "%.1f".format(pct))
+                else status, style = MaterialTheme.typography.bodySmall)
             if (j.status == "running") LinearProgressIndicator(progress = { pct / 100 }, modifier = Modifier.fillMaxWidth())
             val note = j.error ?: j.message
             if (note.isNotBlank()) Text(note, style = MaterialTheme.typography.bodySmall,
                 color = if (j.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
-            if (ConvertRules.canCancel(j)) TextButton(onClick = onCancel) { Text("Cancel") }
+            if (ConvertRules.canCancel(j)) TextButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) }
         }
     }
 }
@@ -197,8 +210,12 @@ private fun DraftCard(
     Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(d.file, style = MaterialTheme.typography.titleSmall)
-            val info = if (d.chapters > 0) " · ${d.chapters} ch" + (if (d.checks > 0) " · ${d.checks} to check" else "") else ""
-            Text(ConvertRules.statusLabel(d) + info, style = MaterialTheme.typography.bodySmall)
+            val parts = mutableListOf(statusText(ConvertRules.statusLabel(d)))
+            if (d.chapters > 0) {
+                parts += stringResource(R.string.draft_chapters, d.chapters)
+                if (d.checks > 0) parts += stringResource(R.string.draft_checks, d.checks)
+            }
+            Text(parts.joinToString(" · "), style = MaterialTheme.typography.bodySmall)
             if (d.status == "cleaning" && d.total > 0) {
                 LinearProgressIndicator(progress = { d.done.toFloat() / d.total }, modifier = Modifier.fillMaxWidth())
             }
@@ -206,12 +223,14 @@ private fun DraftCard(
             if (note.isNotBlank()) Text(note, style = MaterialTheme.typography.bodySmall,
                 color = if (d.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (ConvertRules.canCancel(d)) TextButton(onClick = onCancel) { Text("Cancel") }
+                if (ConvertRules.canCancel(d)) TextButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) }
                 if (ConvertRules.canReview(d)) TextButton(onClick = { onReview(d.id) }) {
-                    Text(if (d.status == "done") "Review again" else "Review")
+                    Text(stringResource(if (d.status == "done") R.string.review_again else R.string.review))
                 }
-                if (ConvertRules.canListen(d)) TextButton(onClick = { onListen(d.bookId!!) }) { Text("Listen") }
-                if (ConvertRules.canDiscard(d)) TextButton(onClick = onDiscard) { Text("Discard") }
+                if (ConvertRules.canListen(d)) TextButton(onClick = { onListen(d.bookId!!) }) {
+                    Text(stringResource(R.string.listen))
+                }
+                if (ConvertRules.canDiscard(d)) TextButton(onClick = onDiscard) { Text(stringResource(R.string.discard)) }
             }
         }
     }

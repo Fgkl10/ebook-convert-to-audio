@@ -59,5 +59,8 @@ details summary { cursor:pointer; font-weight:600; }
 .tabs { display:flex; gap:6px; margin: 18px 0 4px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .tabs a { padding: 8px 14px; border-radius: 8px 8px 0 0; color: var(--muted); text-decoration: none; font-weight: 600; }
 .tabs a.on { color: var(--fg); background: var(--card); border: 1px solid var(--line); border-bottom-color: var(--card); margin-bottom: -1px; }
+.langs { display:flex; gap:4px; }
+.langs button { padding: 2px 8px; font-size: 13px; }
+.langs button.on { outline: 2px solid var(--accent); }
 .tab { display: none; }
 .tab.on { display: block; }

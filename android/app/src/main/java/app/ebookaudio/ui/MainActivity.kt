@@ -33,12 +33,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.core.content.IntentCompat
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import app.ebookaudio.R
 import app.ebookaudio.convert.ConvertScreen
 import app.ebookaudio.convert.ReviewScreen
 import app.ebookaudio.convert.UploadScreen
@@ -186,11 +188,11 @@ fun AppNav(connection: PlayerConnection, incoming: MutableStateFlow<Uri?>) {
                 NavigationBar(windowInsets = WindowInsets(0)) {
                     NavigationBarItem(
                         selected = route == "library", onClick = { nav.toTab("library") },
-                        icon = { Icon(Icons.AutoMirrored.Filled.LibraryBooks, null) }, label = { Text("Library") },
+                        icon = { Icon(Icons.AutoMirrored.Filled.LibraryBooks, null) }, label = { Text(stringResource(R.string.tab_library)) },
                     )
                     NavigationBarItem(
                         selected = route == "convert", onClick = { nav.toTab("convert") },
-                        icon = { Icon(Icons.Filled.Transform, null) }, label = { Text("Convert") },
+                        icon = { Icon(Icons.Filled.Transform, null) }, label = { Text(stringResource(R.string.tab_convert)) },
                     )
                 }
             }

@@ -2,6 +2,7 @@ package app.ebookaudio.ui
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -35,11 +36,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import app.ebookaudio.R
 import app.ebookaudio.graph
 import kotlinx.coroutines.launch
 
-/** The paired PC, storage, and how to keep HyperOS from stopping playback. */
+/** The paired PC, storage, and how to keep the phone's battery saver from stopping playback (A-018). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(onBack: () -> Unit, onPair: () -> Unit) {
@@ -54,8 +57,10 @@ fun SettingsScreen(onBack: () -> Unit, onPair: () -> Unit) {
         contentWindowInsets = WindowInsets(0),
         topBar = {
             TopAppBar(
-                title = { Text("Settings") },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
+                title = { Text(stringResource(R.string.settings)) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back)) }
+                },
             )
         },
     ) { padding ->
@@ -63,25 +68,30 @@ fun SettingsScreen(onBack: () -> Unit, onPair: () -> Unit) {
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Section("PC") {
+            Section(stringResource(R.string.settings_pc)) {
                 val p = pairing
-                Text(if (p != null) "${p.pcName.ifBlank { "PC" }} at ${p.baseUrl}" else "Not paired")
-                Button(onClick = onPair) { Text(if (p != null) "Pair again" else "Pair with the PC") }
-                if (p != null) OutlinedButton(onClick = { confirm = "unpair" }) { Text("Unpair") }
+                Text(if (p != null) {
+                    stringResource(R.string.pc_at, p.pcName.ifBlank { stringResource(R.string.settings_pc) }, p.baseUrl)
+                } else stringResource(R.string.not_paired))
+                Button(onClick = onPair) {
+                    Text(stringResource(if (p != null) R.string.pair_again else R.string.pair_with_pc))
+                }
+                if (p != null) OutlinedButton(onClick = { confirm = "unpair" }) { Text(stringResource(R.string.unpair)) }
             }
-            Section("Storage") {
-                Text("Books on this phone use ${Format.size(used)}.")
-                if (used > 0) OutlinedButton(onClick = { confirm = "delete" }) { Text("Delete all downloads") }
+            Section(stringResource(R.string.storage)) {
+                Text(stringResource(R.string.storage_used, Format.size(used)))
+                if (used > 0) OutlinedButton(onClick = { confirm = "delete" }) {
+                    Text(stringResource(R.string.delete_all_downloads))
+                }
             }
-            Section("Playing with the screen off (HyperOS)") {
-                Text("HyperOS may stop the app in the background. So that books keep playing:")
-                Text("1. App info → Battery saver → No restrictions\n" +
-                    "2. App info → Autostart → on\n" +
-                    "3. In Recents, pull the app's card down to lock it", style = MaterialTheme.typography.bodyMedium)
+            Section(stringResource(R.string.bg_title)) {
+                val vendor = remember { BackgroundTips.vendorOf(Build.MANUFACTURER, Build.BRAND) }
+                Text(stringResource(R.string.bg_intro))
+                Text(stringResource(vendor.steps), style = MaterialTheme.typography.bodyMedium)
                 Button(onClick = {
                     context.startActivity(Intent(ACTION_APPLICATION_DETAILS_SETTINGS,
                         Uri.fromParts("package", context.packageName, null)))
-                }) { Text("Open app info") }
+                }) { Text(stringResource(R.string.open_app_info)) }
             }
         }
     }
@@ -89,10 +99,9 @@ fun SettingsScreen(onBack: () -> Unit, onPair: () -> Unit) {
     confirm?.let { what ->
         AlertDialog(
             onDismissRequest = { confirm = null },
-            title = { Text(if (what == "unpair") "Unpair from the PC?" else "Delete all downloads?") },
+            title = { Text(stringResource(if (what == "unpair") R.string.unpair_title else R.string.delete_all_title)) },
             text = {
-                Text(if (what == "unpair") "Books on this phone still play. To use the PC again, scan its QR code."
-                else "The books stay on the PC. Listening positions are kept.")
+                Text(stringResource(if (what == "unpair") R.string.unpair_text else R.string.delete_all_text))
             },
             confirmButton = {
                 TextButton(onClick = {
@@ -102,9 +111,9 @@ fun SettingsScreen(onBack: () -> Unit, onPair: () -> Unit) {
                         graph.library.deleteAll()
                         used = graph.library.sizeBytes()
                     }
-                }) { Text(if (what == "unpair") "Unpair" else "Delete") }
+                }) { Text(stringResource(if (what == "unpair") R.string.unpair else R.string.delete)) }
             },
-            dismissButton = { TextButton(onClick = { confirm = null }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { confirm = null }) { Text(stringResource(R.string.cancel)) } },
         )
     }
 }

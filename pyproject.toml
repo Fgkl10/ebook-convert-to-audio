@@ -23,4 +23,4 @@ ebook-convert = "desktop.tts.build:main"
 include = ["desktop*"]
 
 [tool.setuptools.package-data]
-"desktop.web" = ["*.html", "*.js", "*.css"]
+"desktop.web" = ["*.html", "*.js", "*.css", "i18n/*.json"]

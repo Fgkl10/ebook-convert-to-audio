@@ -27,12 +27,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.ebookaudio.R
 import app.ebookaudio.api.Sentence
 import app.ebookaudio.graph
 import kotlinx.coroutines.CancellationException
@@ -149,7 +151,7 @@ fun ReadAlong(
                 )
             }
         }
-        if (paragraphs.isEmpty()) Text("No text for this chapter.", Modifier.align(Alignment.Center))
+        if (paragraphs.isEmpty()) Text(stringResource(R.string.no_text), Modifier.align(Alignment.Center))
     }
 }
 

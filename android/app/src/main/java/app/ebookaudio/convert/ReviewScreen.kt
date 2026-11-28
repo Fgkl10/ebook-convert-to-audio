@@ -40,15 +40,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.media3.session.MediaController
+import app.ebookaudio.R
 import app.ebookaudio.api.ApiClient
 import app.ebookaudio.api.DraftChapter
 import app.ebookaudio.api.DraftDetail
 import app.ebookaudio.api.Info
 import app.ebookaudio.graph
 import app.ebookaudio.library.Message
+import app.ebookaudio.ui.errorText
 import kotlinx.coroutines.launch
 import java.io.IOException
 
@@ -57,6 +61,7 @@ import java.io.IOException
 @Composable
 fun ReviewScreen(draftId: String, book: MediaController?, onBack: () -> Unit, onApproved: () -> Unit) {
     val graph = LocalContext.current.graph
+    val res = LocalResources.current
     val scope = rememberCoroutineScope()
     val sample = rememberSamplePlayer()
     var api by remember { mutableStateOf<ApiClient?>(null) }
@@ -82,14 +87,14 @@ fun ReviewScreen(draftId: String, book: MediaController?, onBack: () -> Unit, on
             voice = d.bookVoice ?: d.voice
             speed = d.bookSpeed ?: d.speed
         } catch (e: IOException) {
-            error = e.message ?: "Can't reach the PC"
+            error = res.errorText(e)
         }
     }
 
     fun open(index: Int) {
         val a = api ?: return
         scope.launch {
-            try { reading = a.draftChapter(draftId, index) } catch (e: IOException) { error = e.message }
+            try { reading = a.draftChapter(draftId, index) } catch (e: IOException) { error = res.errorText(e) }
         }
     }
 
@@ -102,7 +107,7 @@ fun ReviewScreen(draftId: String, book: MediaController?, onBack: () -> Unit, on
                 a.approve(draftId, voice, speed, ConvertRules.approveChapters(d, picked))
                 onApproved()
             } catch (e: IOException) {
-                error = e.message
+                error = res.errorText(e)
             } finally {
                 busy = false
             }
@@ -113,15 +118,15 @@ fun ReviewScreen(draftId: String, book: MediaController?, onBack: () -> Unit, on
         contentWindowInsets = WindowInsets(0),
         topBar = {
             TopAppBar(
-                title = { Text(draft?.file ?: "Review", maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
+                title = { Text(draft?.file ?: stringResource(R.string.review), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back)) } },
             )
         },
     ) { padding ->
         val d = draft
         val report = d?.report
         if (d == null || report == null) {
-            Message(error ?: if (d != null) "This book isn't cleaned yet." else "Loading…", isError = error != null)
+            Message(error ?: stringResource(if (d != null) R.string.not_cleaned_yet else R.string.loading), isError = error != null)
             return@Scaffold
         }
         val chapters = report.chapters
@@ -133,25 +138,25 @@ fun ReviewScreen(draftId: String, book: MediaController?, onBack: () -> Unit, on
                     if (report.checks.isNotEmpty()) {
                         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text("Check by hand (${report.checks.size})", style = MaterialTheme.typography.titleSmall)
+                                Text(stringResource(R.string.check_by_hand, report.checks.size), style = MaterialTheme.typography.titleSmall)
                                 report.checks.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
                             }
                         }
                     }
-                    Details("Removed", report.removed)
-                    Details("TOC entries ignored", report.unconfirmed)
-                    Details("Notes", report.notes)
+                    Details(stringResource(R.string.report_removed), report.removed)
+                    Details(stringResource(R.string.report_toc_ignored), report.unconfirmed)
+                    Details(stringResource(R.string.report_notes), report.notes)
                 }
             }
             item {
                 Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Chapters (${chapters.size})", style = MaterialTheme.typography.titleMedium,
+                    Text(stringResource(R.string.chapters_header, chapters.size), style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.weight(1f))
-                    TextButton(onClick = { picked = (1..chapters.size).toSet() }) { Text("All") }
-                    TextButton(onClick = { picked = emptySet() }) { Text("None") }
-                    TextButton(onClick = { picked = ConvertRules.newOnly(d) }) { Text("New") }
+                    TextButton(onClick = { picked = (1..chapters.size).toSet() }) { Text(stringResource(R.string.pick_all)) }
+                    TextButton(onClick = { picked = emptySet() }) { Text(stringResource(R.string.pick_none)) }
+                    TextButton(onClick = { picked = ConvertRules.newOnly(d) }) { Text(stringResource(R.string.pick_new)) }
                 }
-                Text("Tap a chapter to read its text.", Modifier.padding(horizontal = 16.dp),
+                Text(stringResource(R.string.tap_chapter_hint), Modifier.padding(horizontal = 16.dp),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             itemsIndexed(chapters) { i, (title, chars) ->
@@ -163,7 +168,8 @@ fun ReviewScreen(draftId: String, book: MediaController?, onBack: () -> Unit, on
                     Checkbox(checked = n in picked, onCheckedChange = { on -> picked = if (on) picked + n else picked - n })
                     Column(Modifier.weight(1f)) {
                         Text("$n. $title", maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        Text("%,d chars".format(chars) + if (n in d.converted) " · ✓ converted" else "",
+                        val size = stringResource(R.string.chapter_chars, "%,d".format(chars))
+                        Text(if (n in d.converted) size + " · " + stringResource(R.string.chapter_converted) else size,
                             style = MaterialTheme.typography.bodySmall,
                             color = if (n in d.converted) MaterialTheme.colorScheme.primary
                             else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -174,14 +180,14 @@ fun ReviewScreen(draftId: String, book: MediaController?, onBack: () -> Unit, on
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     info?.let { VoiceAndSpeed(it.voices, voice, speed, { v -> voice = v }, { s -> speed = s }, api, sample, book) }
                     ConvertRules.mixedVoiceWarning(d, picked, voice, speed)?.let {
-                        Text(it, color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.bodySmall)
+                        Text(mixedVoiceText(it), color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.bodySmall)
                     }
                     error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = ::approve, enabled = !busy && ConvertRules.canApprove(d, picked)) {
-                            Text(ConvertRules.approveLabel(d, picked))
+                            Text(approveText(ConvertRules.approveLabel(d, picked)))
                         }
-                        TextButton(onClick = { confirmDiscard = true }) { Text("Discard") }
+                        TextButton(onClick = { confirmDiscard = true }) { Text(stringResource(R.string.discard)) }
                     }
                 }
             }
@@ -200,17 +206,17 @@ fun ReviewScreen(draftId: String, book: MediaController?, onBack: () -> Unit, on
     if (confirmDiscard) {
         AlertDialog(
             onDismissRequest = { confirmDiscard = false },
-            text = { Text("Discard this cleaned book? The uploaded file and the cleaned version are deleted on the PC.") },
+            text = { Text(stringResource(R.string.confirm_discard_review)) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmDiscard = false
                     val a = api ?: return@TextButton
                     scope.launch {
-                        try { a.discardDraft(draftId); onBack() } catch (e: IOException) { error = e.message }
+                        try { a.discardDraft(draftId); onBack() } catch (e: IOException) { error = res.errorText(e) }
                     }
-                }) { Text("Discard") }
+                }) { Text(stringResource(R.string.discard)) }
             },
-            dismissButton = { TextButton(onClick = { confirmDiscard = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { confirmDiscard = false }) { Text(stringResource(R.string.cancel)) } },
         )
     }
 }
@@ -223,7 +229,7 @@ private fun Details(title: String, items: List<String>) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.clickable { open = !open }.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("$title (${items.size})", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.details_count, title, items.size), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
                 Icon(if (open) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, null)
             }
             if (open) items.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }

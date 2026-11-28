@@ -61,6 +61,9 @@ decisions about one part can be found without splitting this log. "Relation" sho
 | D-036 | Safe to stop with Ctrl+C | tts, server | |
 | D-037 | Pairing a phone: token and address choice | server, web | |
 | D-038 | Cancel a conversion, chapter versions | tts, server, web | |
+| D-039 | Web reader: sentence buttons and text size | web | same rules as android A-015 |
+| D-040 | Web page in English, Simplified and Traditional Chinese | web | android A-017 |
+| D-041 | README in three languages; MIT license | repo | exception to "everything in English" |
 
 ---
 
@@ -905,3 +908,50 @@ the same text size control and previous/next sentence buttons (not the sleep tim
 **Why:** The phone and the PC readers behave alike. The numbers are written in both places; AND-11
 (`tests/test_android_contract.py`) fails if they drift apart.
 **Consequences:** No server change. The size is per browser, not per book or user.
+
+## D-040 Web page in English, Simplified and Traditional Chinese
+Status: Accepted · Milestone: M6a
+**Context:** The user asked for Simplified and Traditional Chinese support. For now that means the interface; Chinese
+voices come later (the language check, D-018, still accepts English books only). The Android app gets the same three
+languages (android A-017).
+**Decision:**
+- The page's text lives in `desktop/web/i18n/en.json`, `zh-Hans.json` and `zh-Hant.json`: flat `key → text` maps with
+  `{name}` placeholders. `index.html` marks static text with `data-i18n` (and `data-i18n-html`, `-title`,
+  `-placeholder`, `-aria`); `app.js` builds its dynamic text with `t(key, vars)`. Keys are written as literals, so a
+  test can find every one.
+- The language is a saved choice (`localStorage` `ebookAudioLang`), else the browser's `navigator.languages`:
+  zh-TW / zh-HK / zh-MO / zh-Hant → Traditional, any other `zh` → Simplified, else English. The **EN / 简体 / 繁體**
+  buttons save the choice and reload the page, which redraws every list in the new language.
+- The page loads English plus the chosen language before its first render. A missing key falls back to English,
+  then to the key itself.
+- The files are served by the existing `/static` mount (open to every device, like `app.js`); they are package data
+  in `pyproject.toml`. No server change.
+- Traditional Chinese uses Taiwan wording (檔案, 設定, 網路, 伺服器, 權杖). The Android strings use the same words for
+  shared labels, such as "Other addresses" → 其他地址 / 其他位址, which the app's pairing messages refer to.
+**Why:** No build step and no library (the page is plain files, D-032). JSON files can be checked by pytest.
+Reloading on a switch is simpler and safer than re-rendering every list by hand.
+**Consequences:**
+- Text that comes from the server stays English: error `detail`s, draft and job `message`s, the cleaning report's
+  checks, method and removed-item reasons. Translating those means message codes in the API (a later change).
+- `tests/test_web_i18n.py` fails when a language misses a key, a placeholder differs, the page or script uses an
+  unknown key, or a key is unused.
+- A switch reloads the page: an open review or reader is left (the tab in the URL hash stays).
+
+## D-041 README in three languages; MIT license
+Status: Accepted · Milestone: M6a
+**Context:** The user asked for a formal, professional README, in Simplified and Traditional Chinese as well, and for
+the project to present itself as working on any Android phone, not only Xiaomi HyperOS. CLAUDE.md says everything
+in the repository is written in English.
+**Decision:**
+- `README.md` (English) is the source. `README.zh-CN.md` and `README.zh-TW.md` are full translations with the same
+  sections and a language switcher at the top of each. They are the one deliberate exception to the English rule:
+  user-facing documents meant to be read in that language. Code, comments, component docs, commits and PRs stay
+  English.
+- The README states Android 8.0+ on any vendor. Vendor-specific install and background-playback steps are tables
+  (Xiaomi, Huawei/Honor, Samsung, OPPO/OnePlus/realme, vivo/iQOO, stock Android), matching the app's Settings screen
+  (android A-018).
+- The code is MIT-licensed (`LICENSE`, the user's choice). The README notes that some dependencies are AGPL-3.0
+  (PyMuPDF, EbookLib) and that Kokoro-82M is Apache-2.0.
+**Why:** Chinese-speaking users can read the setup in their language. The license makes reuse terms clear.
+**Consequences:** A README change must be made in all three files in the same PR. The vendor steps are written from
+the vendors' documented settings; only Xiaomi HyperOS was tried on a real phone.

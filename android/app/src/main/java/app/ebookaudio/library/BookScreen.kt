@@ -50,10 +50,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.media3.session.MediaController
+import app.ebookaudio.R
 import app.ebookaudio.api.ApiClient
 import app.ebookaudio.api.Book
 import app.ebookaudio.api.BookChapter
@@ -62,6 +66,7 @@ import app.ebookaudio.graph
 import app.ebookaudio.player.Playlist
 import app.ebookaudio.player.rememberNowPlaying
 import app.ebookaudio.ui.Format
+import app.ebookaudio.ui.errorText
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.launch
 import java.io.IOException
@@ -72,6 +77,7 @@ import java.io.IOException
 fun BookScreen(bookId: String, controller: MediaController?, onBack: () -> Unit, onPlayer: () -> Unit) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val res = LocalResources.current
     val graph = context.graph
     val library = graph.library
     var local by remember { mutableStateOf(library.book(bookId)) }
@@ -93,7 +99,7 @@ fun BookScreen(bookId: String, controller: MediaController?, onBack: () -> Unit,
         try {
             server = api?.book(bookId)
         } catch (e: IOException) {
-            serverError = e.message ?: "Can't reach the PC"
+            serverError = res.errorText(e)
         }
     }
     LaunchedEffect(download) { local = library.book(bookId) } // a chapter finished, or the download ended
@@ -103,12 +109,14 @@ fun BookScreen(bookId: String, controller: MediaController?, onBack: () -> Unit,
         topBar = {
             TopAppBar(
                 title = { Text(server?.title ?: local?.title ?: "", maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
+                navigationIcon = {
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back)) }
+                },
                 actions = {
                     if (server != null) {
-                        IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More") }
+                        IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, stringResource(R.string.more)) }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                            DropdownMenuItem(text = { Text("Delete from PC") },
+                            DropdownMenuItem(text = { Text(stringResource(R.string.delete_from_pc)) },
                                 onClick = { menu = false; confirmPcDelete = true })
                         }
                     }
@@ -118,7 +126,7 @@ fun BookScreen(bookId: String, controller: MediaController?, onBack: () -> Unit,
     ) { padding ->
         val book = server ?: local
         if (book == null) {
-            Message(serverError ?: "Loading…", isError = serverError != null)
+            Message(serverError ?: stringResource(R.string.loading), isError = serverError != null)
             return@Scaffold
         }
         val have = local?.chapters?.associateBy { it.number } ?: emptyMap()
@@ -144,7 +152,7 @@ fun BookScreen(bookId: String, controller: MediaController?, onBack: () -> Unit,
                     Column(Modifier.padding(start = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(book.title, style = MaterialTheme.typography.titleLarge)
                         if (!book.author.isNullOrBlank()) Text(book.author, style = MaterialTheme.typography.bodyMedium)
-                        Text("${have.size} of ${numbers.size} chapters on this phone" +
+                        Text(pluralStringResource(R.plurals.chapters_on_phone, numbers.size, have.size, numbers.size) +
                             (if (local != null) " · ${Format.size(library.sizeBytes(bookId))}" else ""),
                             style = MaterialTheme.typography.bodySmall)
                     }
@@ -154,18 +162,19 @@ fun BookScreen(bookId: String, controller: MediaController?, onBack: () -> Unit,
                 FlowRow(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     val p = position
                     Button(onClick = { play(p?.chapter, p?.ms ?: 0) }, enabled = controller != null) {
-                        Text(if (p != null) "Continue · ch ${p.chapter}, ${Format.clock(p.ms)}" else "Play")
+                        Text(if (p != null) stringResource(R.string.continue_at, p.chapter, Format.clock(p.ms))
+                            else stringResource(R.string.play))
                     }
                     when {
                         download != null -> OutlinedButton(onClick = { Downloads.cancel(context, bookId) }) {
-                            Text("Stop download")
+                            Text(stringResource(R.string.stop_download))
                         }
                         toGet.isNotEmpty() -> OutlinedButton(onClick = { Downloads.start(context, bookId) }) {
-                            Text("Download ${toGet.size} · ${Format.size(toGet.sumOf { it.sizeBytes })}")
+                            Text(stringResource(R.string.download_n, toGet.size, Format.size(toGet.sumOf { it.sizeBytes })))
                         }
                     }
                     if (local != null && download == null) {
-                        TextButton(onClick = { confirmDelete = true }) { Text("Delete from phone") }
+                        TextButton(onClick = { confirmDelete = true }) { Text(stringResource(R.string.delete_from_phone)) }
                     }
                 }
             }
@@ -178,15 +187,16 @@ fun BookScreen(bookId: String, controller: MediaController?, onBack: () -> Unit,
                         } else {
                             LinearProgressIndicator(Modifier.fillMaxWidth())
                         }
-                        Text(if (d.running) "${d.chapter} · ${Format.size(d.doneBytes)} of ${Format.size(d.totalBytes)}"
-                            else "Waiting for the network…", style = MaterialTheme.typography.bodySmall)
+                        Text(if (d.running) stringResource(R.string.download_progress, d.chapter,
+                                Format.size(d.doneBytes), Format.size(d.totalBytes))
+                            else stringResource(R.string.waiting_network), style = MaterialTheme.typography.bodySmall)
                     }
                     if (download == null && failure != null) {
                         Text(failure, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                     }
                     pcMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary) }
                     if (server == null && serverError != null) {
-                        Text("The PC is out of reach: only the chapters on this phone play.",
+                        Text(stringResource(R.string.pc_out_of_reach),
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                     }
                 }
@@ -209,10 +219,10 @@ fun BookScreen(bookId: String, controller: MediaController?, onBack: () -> Unit,
     if (confirmPcDelete) {
         AlertDialog(
             onDismissRequest = { confirmPcDelete = false },
-            title = { Text("Delete from the PC?") },
+            title = { Text(stringResource(R.string.delete_from_pc_title)) },
             text = {
-                Text("The book and its audio are deleted on the PC; it can only come back by converting it again. " +
-                    if (local != null) "The copy on this phone stays." else "")
+                Text(stringResource(R.string.delete_from_pc_text) +
+                    if (local != null) " " + stringResource(R.string.copy_stays) else "")
             },
             confirmButton = {
                 TextButton(onClick = {
@@ -221,31 +231,32 @@ fun BookScreen(bookId: String, controller: MediaController?, onBack: () -> Unit,
                     scope.launch {
                         try {
                             a.deleteBook(bookId) // 409 while it's converting (A-014)
-                            if (local == null) onBack() else { server = null; pcMessage = "Deleted from the PC. The copy on this phone stays." }
+                            if (local == null) onBack()
+                            else { server = null; pcMessage = res.getString(R.string.deleted_from_pc) }
                         } catch (e: IOException) {
-                            pcMessage = e.message
+                            pcMessage = res.errorText(e)
                         }
                     }
-                }) { Text("Delete") }
+                }) { Text(stringResource(R.string.delete)) }
             },
-            dismissButton = { TextButton(onClick = { confirmPcDelete = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { confirmPcDelete = false }) { Text(stringResource(R.string.cancel)) } },
         )
     }
 
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            title = { Text("Delete from this phone?") },
-            text = { Text("The book stays on the PC; you can download it again. Your listening position is kept.") },
+            title = { Text(stringResource(R.string.delete_from_phone_title)) },
+            text = { Text(stringResource(R.string.delete_from_phone_text)) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmDelete = false
                     if (controller?.currentMediaItem?.mediaId?.startsWith("$bookId|") == true) controller.stop()
                     library.delete(bookId)
                     local = null
-                }) { Text("Delete") }
+                }) { Text(stringResource(R.string.delete)) }
             },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(stringResource(R.string.cancel)) } },
         )
     }
 }
@@ -274,11 +285,13 @@ private fun ChapterRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         when (state) {
-            Versions.State.DOWNLOADED -> Icon(Icons.Filled.CheckCircle, "On this phone",
+            Versions.State.DOWNLOADED -> Icon(Icons.Filled.CheckCircle, stringResource(R.string.on_this_phone),
                 Modifier.padding(12.dp).size(20.dp), tint = MaterialTheme.colorScheme.primary)
-            Versions.State.NOT_DOWNLOADED -> IconButton(onClick = onDownload) { Icon(Icons.Filled.Download, "Download") }
+            Versions.State.NOT_DOWNLOADED -> IconButton(onClick = onDownload) {
+                Icon(Icons.Filled.Download, stringResource(R.string.download))
+            }
             Versions.State.UPDATE_AVAILABLE -> IconButton(onClick = onDownload) {
-                Icon(Icons.Filled.Update, "Changed on the PC: download again", tint = MaterialTheme.colorScheme.tertiary)
+                Icon(Icons.Filled.Update, stringResource(R.string.changed_on_pc), tint = MaterialTheme.colorScheme.tertiary)
             }
         }
     }

@@ -7,94 +7,103 @@
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
+<!-- Text comes from /static/i18n/<lang>.json through data-i18n* attributes (D-040); the English here is the fallback. -->
 <main>
   <section id="home">
     <div class="row" style="justify-content:space-between">
       <div>
-        <h1>Ebook Audio</h1>
-        <div class="muted">Convert ebooks to audiobooks with Kokoro TTS. Phone app connects to: <b id="url">…</b></div>
-        <div class="err" id="unpaired" hidden>This device isn't paired: scan the QR code shown on the PC's page.</div>
+        <div class="row" style="justify-content:space-between">
+          <h1 data-i18n="app.name">Ebook Audio</h1>
+          <div class="langs" id="langs" role="group" data-i18n-aria="lang.label" aria-label="Language">
+            <button type="button" data-lang="en" lang="en">EN</button>
+            <button type="button" data-lang="zh-Hans" lang="zh-Hans">简体</button>
+            <button type="button" data-lang="zh-Hant" lang="zh-Hant">繁體</button>
+          </div>
+        </div>
+        <div class="muted"><span data-i18n="app.tagline">Convert ebooks to audiobooks with Kokoro TTS. Phone app connects to:</span> <b id="url">…</b></div>
+        <div class="err" id="unpaired" hidden data-i18n="app.unpaired">This device isn't paired: scan the QR code shown on the PC's page.</div>
         <details class="addrbox">
-          <summary class="muted">Other addresses (pick the one your phone can reach, e.g. ZeroTier)</summary>
+          <summary class="muted" data-i18n="addr.summary">Other addresses (pick the one your phone can reach, e.g. ZeroTier)</summary>
           <div id="addrs" class="row"></div>
           <form id="addrform" class="row">
-            <input id="addrin" placeholder="Type an address, e.g. 10.251.93.75" aria-label="Type an address" required>
-            <button>Show QR</button>
+            <input id="addrin" placeholder="Type an address, e.g. 10.251.93.75" aria-label="Type an address" required
+                   data-i18n-placeholder="addr.placeholder" data-i18n-aria="addr.aria">
+            <button data-i18n="addr.show">Show QR</button>
           </form>
           <div class="muted formmsg" id="addrmsg"></div>
         </details>
       </div>
-      <div id="qr" title="Scan with the phone to pair it"></div>
+      <div id="qr" title="Scan with the phone to pair it" data-i18n-title="qr.title"></div>
     </div>
 
     <nav class="tabs">
-      <a href="#clean" data-tab="clean">1 · Clean</a>
-      <a href="#convert" data-tab="convert">2 · Convert</a>
-      <a href="#library" data-tab="library">3 · Library</a>
+      <a href="#clean" data-tab="clean" data-i18n="tab.clean">1 · Clean</a>
+      <a href="#convert" data-tab="convert" data-i18n="tab.convert">2 · Convert</a>
+      <a href="#library" data-tab="library" data-i18n="tab.library">3 · Library</a>
     </nav>
 
     <div class="tab" id="tab-clean">
-      <h2>Clean a book</h2>
+      <h2 data-i18n="clean.heading">Clean a book</h2>
       <form id="form" class="card row">
         <input type="file" id="file" accept=".epub,.pdf,.txt" required>
-        <label title="PDF only. Auto: OCR when the PDF is a scan. Always: OCR every page (garbled text layer, partly scanned book). Never: the PDF's own text only.">
-          OCR (PDF only) <select id="ocr" disabled><option value="auto">Auto</option><option value="always">Always</option><option value="never">Never</option></select></label>
-        <label>Voice <select id="voice"></select></label><button type="button" class="hear" data-for="#voice" title="Hear this voice">▶</button>
-        <label>Speed <input id="speed" type="number" min="0.5" max="2" step="0.05" value="1" style="width:80px"></label>
-        <label><input type="checkbox" id="auto"> Convert right after cleaning (skip review)</label>
-        <button class="primary" type="submit" id="go">Clean</button>
+        <label data-i18n-title="ocr.title" title="PDF only. Auto: OCR when the PDF is a scan. Always: OCR every page (garbled text layer, partly scanned book). Never: the PDF's own text only.">
+          <span data-i18n="ocr.label">OCR (PDF only)</span> <select id="ocr" disabled><option value="auto" data-i18n="ocr.auto">Auto</option><option value="always" data-i18n="ocr.always">Always</option><option value="never" data-i18n="ocr.never">Never</option></select></label>
+        <label><span data-i18n="form.voice">Voice</span> <select id="voice"></select></label><button type="button" class="hear" data-for="#voice" title="Hear this voice" data-i18n-title="form.hear">▶</button>
+        <label><span data-i18n="form.speed">Speed</span> <input id="speed" type="number" min="0.5" max="2" step="0.05" value="1" style="width:80px"></label>
+        <label><input type="checkbox" id="auto"> <span data-i18n="clean.auto">Convert right after cleaning (skip review)</span></label>
+        <button class="primary" type="submit" id="go" data-i18n="clean.go">Clean</button>
       </form>
-      <div class="muted formmsg" id="ocrhint">OCR reads scanned PDFs. Pick a PDF to choose a mode; EPUB and TXT files have their own text, so they need no OCR.</div>
+      <div class="muted formmsg" id="ocrhint" data-i18n="ocr.hint">OCR reads scanned PDFs. Pick a PDF to choose a mode; EPUB and TXT files have their own text, so they need no OCR.</div>
       <div class="muted formmsg" id="cleanmsg"></div>
-      <h2>Cleaning &amp; review</h2>
+      <h2 data-i18n="clean.list">Cleaning &amp; review</h2>
       <div id="drafts"></div>
     </div>
 
     <div class="tab" id="tab-convert">
-      <h2>Convert a cleaned book</h2>
+      <h2 data-i18n="convert.heading">Convert a cleaned book</h2>
       <form id="stdform" class="card row">
         <input type="file" id="stdfile" accept=".epub" required>
-        <label>Voice <select id="stdvoice"></select></label><button type="button" class="hear" data-for="#stdvoice" title="Hear this voice">▶</button>
-        <label>Speed <input id="stdspeed" type="number" min="0.5" max="2" step="0.05" value="1" style="width:80px"></label>
-        <button class="primary" type="submit" id="stdgo">Convert</button>
+        <label><span data-i18n="form.voice">Voice</span> <select id="stdvoice"></select></label><button type="button" class="hear" data-for="#stdvoice" title="Hear this voice" data-i18n-title="form.hear">▶</button>
+        <label><span data-i18n="form.speed">Speed</span> <input id="stdspeed" type="number" min="0.5" max="2" step="0.05" value="1" style="width:80px"></label>
+        <button class="primary" type="submit" id="stdgo" data-i18n="convert.go">Convert</button>
       </form>
-      <div class="muted formmsg">Only for a <b>.std.epub</b> that is already cleaned (from the command line, or edited in Sigil). To convert an original book, use the Clean page. Books approved there appear below too.</div>
+      <div class="muted formmsg" data-i18n-html="convert.note">Only for a <b>.std.epub</b> that is already cleaned (from the command line, or edited in Sigil). To convert an original book, use the Clean page. Books approved there appear below too.</div>
       <div class="muted formmsg" id="stdmsg"></div>
-      <h2>Approved books</h2>
+      <h2 data-i18n="convert.approved">Approved books</h2>
       <div id="approved"></div>
-      <h2>Conversion progress</h2>
+      <h2 data-i18n="convert.progress">Conversion progress</h2>
       <div id="jobs"></div>
     </div>
 
     <div class="tab" id="tab-library">
-      <h2>Library</h2>
+      <h2 data-i18n="library.heading">Library</h2>
       <div id="books" class="books"></div>
     </div>
   </section>
 
   <section id="review">
-    <button id="rvback">← Back</button>
+    <button id="rvback" data-i18n="review.back">← Back</button>
     <h1 id="rvtitle" style="margin-top:14px"></h1>
     <div class="muted" id="rvmethod"></div>
     <div class="card row actions">
-      <label>Voice <select id="rvvoice"></select></label><button type="button" class="hear" data-for="#rvvoice" title="Hear this voice">▶</button>
-      <label>Speed <input id="rvspeed" type="number" min="0.5" max="2" step="0.05" value="1" style="width:80px"></label>
-      <button class="primary" id="rvapprove">Approve &amp; convert</button>
-      <a id="rvdownload"><button type="button">Download .std.epub</button></a>
-      <button id="rvupload" type="button">Upload edited .std.epub</button>
+      <label><span data-i18n="form.voice">Voice</span> <select id="rvvoice"></select></label><button type="button" class="hear" data-for="#rvvoice" title="Hear this voice" data-i18n-title="form.hear">▶</button>
+      <label><span data-i18n="form.speed">Speed</span> <input id="rvspeed" type="number" min="0.5" max="2" step="0.05" value="1" style="width:80px"></label>
+      <button class="primary" id="rvapprove" data-i18n="review.approve_all">Approve &amp; convert</button>
+      <a id="rvdownload"><button type="button" data-i18n="review.download">Download .std.epub</button></a>
+      <button id="rvupload" type="button" data-i18n="review.upload">Upload edited .std.epub</button>
       <input type="file" id="rvfile" accept=".epub" hidden>
-      <button id="rvdiscard" type="button">Discard</button>
+      <button id="rvdiscard" type="button" data-i18n="btn.discard">Discard</button>
     </div>
     <div class="muted formmsg" id="rvmix" hidden></div>
     <div id="rvchecks"></div>
-    <div class="muted rvpick">Chapters to convert: <a href="#" id="rvall">all</a> · <a href="#" id="rvnone">none</a> · <a href="#" id="rvnew">not converted yet</a></div>
+    <div class="muted rvpick"><span data-i18n="review.pick">Chapters to convert:</span> <a href="#" id="rvall" data-i18n="review.pick_all">all</a> · <a href="#" id="rvnone" data-i18n="review.pick_none">none</a> · <a href="#" id="rvnew" data-i18n="review.pick_new">not converted yet</a></div>
     <div class="card chapters" id="rvchapters"></div>
     <div id="rvmore"></div>
     <div class="card" id="rvtext" style="margin-top:14px"></div>
   </section>
 
   <section id="reader">
-    <button id="back">← Library</button>
+    <button id="back" data-i18n="reader.back">← Library</button>
     <h1 id="rtitle" style="margin-top:14px"></h1>
     <div class="muted" id="rauthor"></div>
     <div class="card chapters" id="chapters" style="margin:14px 0"></div>
@@ -107,12 +116,12 @@
     <div class="row" style="justify-content:space-between">
       <b id="nowch"></b>
       <span>
-        <button id="prevs" title="Restart this sentence, or go to the previous one">‹ Sentence</button>
-        <button id="nexts" title="Next sentence">Sentence ›</button>
-        <button id="smaller" title="Smaller text" aria-label="Smaller text">A−</button>
-        <button id="larger" title="Larger text" aria-label="Larger text">A+</button>
+        <button id="prevs" title="Restart this sentence, or go to the previous one" data-i18n="player.prev" data-i18n-title="player.prev_title">‹ Sentence</button>
+        <button id="nexts" title="Next sentence" data-i18n="player.next" data-i18n-title="player.next_title">Sentence ›</button>
+        <button id="smaller" title="Smaller text" aria-label="Smaller text" data-i18n-title="player.smaller" data-i18n-aria="player.smaller">A−</button>
+        <button id="larger" title="Larger text" aria-label="Larger text" data-i18n-title="player.larger" data-i18n-aria="player.larger">A+</button>
       </span>
-      <label class="muted">Speed <select id="rate"><option>0.75</option><option selected>1</option><option>1.25</option><option>1.5</option><option>1.75</option><option>2</option></select></label>
+      <label class="muted"><span data-i18n="form.speed">Speed</span> <select id="rate"><option>0.75</option><option selected>1</option><option>1.25</option><option>1.5</option><option>1.75</option><option>2</option></select></label>
     </div>
     <audio id="audio" controls preload="auto"></audio>
   </div>

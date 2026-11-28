@@ -5,24 +5,34 @@ import app.ebookaudio.api.DraftDetail
 import app.ebookaudio.api.Job
 
 /**
+ * A draft's status line: [status] (a draft status, or null to show only the partial count) and, when only some
+ * chapters are in the library, [converted] of [total]. The screen turns it into text (A-017).
+ */
+data class StatusLabel(val status: String?, val converted: Int? = null, val total: Int = 0)
+
+/** The approve button: convert all again, approve all, or convert [Some.count] chapters. */
+sealed interface ApproveLabel {
+    data object AllAgain : ApproveLabel
+    data object All : ApproveLabel
+    data class Some(val count: Int) : ApproveLabel
+}
+
+/** Kept chapters of the book use [voice] at [speed]×, unlike the new ones. */
+data class MixedVoice(val voice: String, val speed: Double?)
+
+/**
  * The Convert tab's rules, the same as the PC's web page (desktop/web/app.js) so both clients agree (A-011). Pure
- * functions, unit-tested in ConvertRulesTest.
+ * functions, unit-tested in ConvertRulesTest. They return values, not text, so the screens can localize them.
  */
 object ConvertRules {
-    private val STATUS = mapOf(
-        "cleaning" to "cleaning", "review" to "ready for review", "queued" to "waiting to convert",
-        "converting" to "converting", "done" to "converted", "error" to "failed",
-    )
-
     /** Drafts still being cleaned or reviewed; the others were approved (app.js CLEAN_STATES). */
     fun isCleaning(d: Draft) = d.status in setOf("cleaning", "review", "error")
 
     /** "ready for review", or "converted 3 of 12" when only some chapters are in the library (D-035). */
-    fun statusLabel(d: Draft): String {
-        val some = if (d.converted.isNotEmpty() && d.converted.size < d.chapters)
-            "converted ${d.converted.size} of ${d.chapters}" else ""
-        if (some.isNotEmpty() && d.status == "done") return some
-        return (STATUS[d.status] ?: d.status) + if (some.isNotEmpty()) " · $some" else ""
+    fun statusLabel(d: Draft): StatusLabel {
+        val some = d.converted.isNotEmpty() && d.converted.size < d.chapters
+        if (!some) return StatusLabel(d.status)
+        return StatusLabel(if (d.status == "done") null else d.status, d.converted.size, d.chapters)
     }
 
     fun canCancel(d: Draft) = d.status in setOf("queued", "converting")
@@ -54,13 +64,13 @@ object ConvertRules {
 
     fun canApprove(d: DraftDetail, picked: Set<Int>) = picked.isNotEmpty() && d.status in setOf("review", "done")
 
-    fun approveLabel(d: DraftDetail, picked: Set<Int>): String {
+    fun approveLabel(d: DraftDetail, picked: Set<Int>): ApproveLabel {
         val all = d.report?.chapters?.size ?: 0
         val n = picked.size
         return when {
-            n == all && d.status == "done" -> "Convert all again"
-            n == all -> "Approve & convert"
-            else -> "Convert $n chapter${if (n == 1) "" else "s"}"
+            n == all && d.status == "done" -> ApproveLabel.AllAgain
+            n == all -> ApproveLabel.All
+            else -> ApproveLabel.Some(n)
         }
     }
 
@@ -69,12 +79,12 @@ object ConvertRules {
         if (picked.size == (d.report?.chapters?.size ?: 0)) null else picked.sorted()
 
     /** A warning when kept chapters of the book use another voice or speed than the new ones would. */
-    fun mixedVoiceWarning(d: DraftDetail, picked: Set<Int>, voice: String, speed: Double): String? {
+    fun mixedVoiceWarning(d: DraftDetail, picked: Set<Int>, voice: String, speed: Double): MixedVoice? {
         val kept = d.converted.count { it !in picked }
         val bookVoice = d.bookVoice ?: return null
         if (kept == 0) return null
         if (voice == bookVoice && speed == d.bookSpeed) return null
-        return "Other chapters of this book use $bookVoice at ${d.bookSpeed}×; the book will mix voices."
+        return MixedVoice(bookVoice, d.bookSpeed)
     }
 
     private val UPLOADABLE = Regex("""\.(epub|pdf|txt)$""", RegexOption.IGNORE_CASE)

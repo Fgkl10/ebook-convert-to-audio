@@ -26,7 +26,7 @@ Status legend: Automated · Manual · Gap
 
 | ID | Case | Steps / input | Expected | Status |
 |---|---|---|---|---|
-| AND-07 | The web page's rules | Status labels, buttons per status, visible jobs, default picks (fresh, partly converted, interrupted run), "New only", approve label and chapters (`null` = all), mixed-voice warning, uploadable names | Same results as `desktop/web/app.js` | Automated `ConvertRulesTest` |
+| AND-07 | The web page's rules | Status labels, buttons per status, visible jobs, default picks (fresh, partly converted, interrupted run), "New only", approve label and chapters (`null` = all), mixed-voice warning, uploadable names | Same results as `desktop/web/app.js`. Labels are values (`StatusLabel`, `ApproveLabel`, `MixedVoice`) that the screens localize (A-017) | Automated `ConvertRulesTest` |
 | AND-08 | Requests | Multipart upload (fields, exact file bytes, progress), cleaned upload route, approve body with `"chapters": null` and with a list, cancel/discard/delete methods and paths, 409/401 errors, voice sample URL | As listed | Automated `ApiClientTest` |
 | AND-08b | Upload over a closed pooled connection | The server closes the connection after a 400; the next upload reuses it | Resent on a fresh connection; succeeds | Automated `ApiClientTest.uploadRetriesWhenThePooledConnectionWasClosed` |
 | AND-M12 | Upload, review, convert one chapter | Picker → .txt → sample ▶ → Upload & clean → Review → read a chapter → untick one → Convert 1 chapter → progress → Listen | Only the ticked chapter is converted | Manual, pass (2026-11-28) |
@@ -96,6 +96,18 @@ against the next one).
 | AND-M28 | Read along offline | Download the book; airplane mode; open the player | Text from the phone's copy | Manual, pass (2026-11-28) |
 | AND-M29 | End-of-chapter timer on the book's last chapter | Set "End of this chapter" in the last chapter | Playback ends; the timer clears (`STATE_ENDED`) | Manual, pass (2026-11-28) |
 | AND-G06 | Sleep timer after the service is stopped | Set a timer, then stop playback from the notification | The timer is gone (in memory only, A-016) | Gap (by design, not tested) |
+
+## Languages and other phones (M6a)
+
+| ID | Case | Steps / input | Expected | Status |
+|---|---|---|---|---|
+| AND-12 | Battery steps per phone maker | `vendorOf` with Xiaomi, Redmi, POCO, HUAWEI, HONOR, samsung, OnePlus, realme, vivo, " iQOO ", an unknown manufacturer with a known brand, Google, motorola, null, "" | The matching vendor; the brand when the manufacturer is unknown; Other for the rest (A-018) | Automated `BackgroundTipsTest` |
+| AND-13 | Every string translated | Build with lint | `MissingTranslation` / `ExtraTranslation` (errors) find no key missing from or extra in `values-b+zh+Hans` / `values-b+zh+Hant`; no `LocalContext.getString` in composition | Automated `:app:lintDebug` (CI) |
+| AND-M30 | App in Simplified Chinese | Phone language 简体中文 (or, on Android 13+, Settings → Apps → the app → Language) | Every screen, dialog, menu and the download notification in Simplified Chinese; numbers and times as before; messages from the PC stay English | Manual, not run yet |
+| AND-M31 | App in Traditional Chinese | Phone or per-app language 繁體中文（台灣） | As AND-M30 in Traditional Chinese (Taiwan wording) | Manual, not run yet |
+| AND-M32 | Settings shows the phone maker's steps | Open Settings on the Redmi K60E | "Playing with the screen off" with the Xiaomi steps; Open app info works | Manual, not run yet |
+| AND-G07 | Battery steps on other makers' phones | Open Settings on a Samsung, Huawei/Honor, OPPO/OnePlus/realme, vivo and a Pixel | The steps match that phone's menus | Gap (only a Xiaomi phone is available; the steps follow the vendors' documented settings) |
+| AND-G08 | Server messages in Chinese | Use the app in Chinese; cause a PC error; review a cleaned book | Error details, draft/job messages and cleaning-report entries are English (A-017, desktop D-040) | Gap (known limitation) |
 
 ## Known gaps
 

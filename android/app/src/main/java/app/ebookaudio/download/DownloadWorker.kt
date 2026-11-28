@@ -17,6 +17,7 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import app.ebookaudio.R
 import app.ebookaudio.api.NotPaired
 import app.ebookaudio.graph
 import kotlinx.coroutines.Dispatchers
@@ -81,8 +82,10 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
     override suspend fun doWork(): Result {
         val bookId = Downloads.bookOf(this) ?: return Result.failure()
         val graph = applicationContext.graph
-        val api = graph.api() ?: return Result.failure(workDataOf(Downloads.ERROR to NotPaired().message))
-        runCatching { setForeground(foreground("Downloading", 0, 0)) } // best effort: works while the app is open
+        val ctx = applicationContext
+        val api = graph.api() ?: return Result.failure(workDataOf(Downloads.ERROR to ctx.getString(R.string.not_paired_error)))
+        val downloading = ctx.getString(R.string.dl_downloading)
+        runCatching { setForeground(foreground(downloading, 0, 0)) } // best effort: works while the app is open
         var lastUpdate = 0L
         return try {
             withContext(Dispatchers.IO) {
@@ -93,19 +96,19 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
                             lastUpdate = now
                             setProgressAsync(workDataOf(Downloads.DONE to done, Downloads.TOTAL to total,
                                 Downloads.CHAPTER to chapter))
-                            notify(foreground(chapter.ifEmpty { "Downloading" }, done, total))
+                            notify(foreground(chapter.ifEmpty { downloading }, done, total))
                         }
                     },
                     isStopped = { isStopped })
             }
             Result.success()
         } catch (e: NotPaired) {
-            Result.failure(workDataOf(Downloads.ERROR to e.message))
+            Result.failure(workDataOf(Downloads.ERROR to ctx.getString(R.string.not_paired_error)))
         } catch (e: IOException) {
             if (runAttemptCount < 5) Result.retry()
-            else Result.failure(workDataOf(Downloads.ERROR to "Download failed: ${e.message}"))
+            else Result.failure(workDataOf(Downloads.ERROR to ctx.getString(R.string.dl_failed, e.message.orEmpty())))
         } catch (e: IllegalArgumentException) {
-            Result.failure(workDataOf(Downloads.ERROR to (e.message ?: "Bad data from the PC")))
+            Result.failure(workDataOf(Downloads.ERROR to (e.message ?: ctx.getString(R.string.dl_bad_data))))
         }
     }
 
@@ -118,11 +121,12 @@ class DownloadWorker(context: Context, params: WorkerParameters) : CoroutineWork
 
     private fun foreground(text: String, done: Long, total: Long): ForegroundInfo {
         val nm = applicationContext.getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(NotificationChannel(channel, "Downloads", NotificationManager.IMPORTANCE_LOW))
+        nm.createNotificationChannel(NotificationChannel(channel, applicationContext.getString(R.string.dl_channel),
+            NotificationManager.IMPORTANCE_LOW))
         val percent = if (total > 0) (done * 100 / total).toInt() else 0
         val notification = NotificationCompat.Builder(applicationContext, channel)
             .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle("Downloading a book")
+            .setContentTitle(applicationContext.getString(R.string.dl_title))
             .setContentText(text)
             .setProgress(100, percent, total == 0L)
             .setOngoing(true)
