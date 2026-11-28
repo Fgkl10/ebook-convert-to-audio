@@ -41,10 +41,10 @@ flowchart LR
 | (root) | `EbookAudioApp.kt` | `AppGraph`: one OkHttp client, `Settings`, `LocalLibrary`, an app scope; `api()` builds an `ApiClient` from the saved pairing (A-003) |
 | `api` | `ApiClient.kt`, `Models.kt` | Typed calls `info`, `books`, `book(id)`; `fileUrl` with `?token=` for the player and Coil. 401 → `NotPaired`; other errors → `ApiError` with the server's `detail`. Models ignore unknown keys |
 | `pairing` | `PairUrl.kt`, `Scanner.kt`, `PairScreen.kt` | Parse `http(s)://host:port/#token=…` (D-037); scan with CameraX + ZXing (A-008) or paste; check `GET /info` (`api_version` 1) before saving |
-| `settings` | `Settings.kt` | DataStore: pairing `{baseUrl, token, pcName}`, playback speed, last book, position per book (`chapter:ms`) |
+| `settings` | `Settings.kt` | DataStore: pairing `{baseUrl, token, pcName}`, playback speed, last book, position per book (`chapter:ms`), read-along text size and text/cover choice |
 | `library` | `LocalLibrary.kt`, `Versions.kt`, `LibraryScreen.kt`, `BookScreen.kt` | Books on the phone (A-004); chapter states and merging (A-009); the On this phone / On the PC tabs; the book screen (play/continue, download, delete, per-chapter state) |
 | `download` | `Downloader.kt`, `DownloadWorker.kt` | Range-resumable, size-checked, atomic chapter downloads in a WorkManager foreground worker (A-006) |
-| `player` | `PlaybackService.kt`, `PlayerConnection.kt`, `NowPlaying.kt`, `PlayerScreen.kt` | Media3 session + ExoPlayer (A-007); playlist = chapters (file or stream); position saving; player and mini player UI |
+| `player` | `PlaybackService.kt`, `PlayerConnection.kt`, `NowPlaying.kt`, `PlayerScreen.kt`, `ReadAlong.kt`, `SentenceSync.kt`, `SleepTimer.kt` | Media3 session + ExoPlayer (A-007); playlist = chapters (file or stream); position saving; the sleep timer and its `app.ebookaudio.SLEEP` session command (A-016); player screen with the read-along text or cover, sentence buttons, text size, keep-screen-on (A-015); mini player |
 | `convert` | `ConvertRules.kt`, `ConvertScreen.kt`, `UploadScreen.kt`, `ReviewScreen.kt`, `VoicePicker.kt` | The web page's conversion features (A-011): drafts and jobs lists polled every 2 s; upload with voice/speed/skip review/OCR or as a cleaned book (streamed, A-012); review with report, chapter text, chapter picks and the mixed-voice warning; voice samples in a separate short-lived player |
 | `ui` | `MainActivity.kt`, `SettingsScreen.kt`, `Theme.kt` (with `Format`) | Edge-to-edge activity, navigation with the Library / Convert bottom bar, "Open with"/Share intake (A-013), theme, settings with the HyperOS background-playback help |
 
@@ -61,7 +61,14 @@ DataStore "settings"               pairing, speed, last book, positions
 
 `book.json` uses the server's format (`desktop/docs/architecture.md`, `/api/v1/books/{id}`), so the same model
 decodes both. Each chapter keeps `size_bytes` and `updated_ms` from the download, which is how "update available"
-is detected (D-038, A-009). Sentences are stored but unused until M5 (sentence sync).
+is detected (D-038, A-009). Its sentences feed the read-along view (A-015); a streamed book's come from
+`GET /books/{id}`.
+
+DataStore also keeps the read-along text size (`text_size`, sp) and the text/cover choice (`show_text`).
+
+Sleep timer session interface (A-016): command `app.ebookaudio.SLEEP` with `sleep_mode` = `off` | `minutes` |
+`chapter` and `sleep_minutes` (1–1440); session extras `sleep_mode` and `sleep_left_ms` (real time left, whole
+seconds; absent when off). Only the app's own controller is offered the command.
 
 ## API used (`/api/v1`, see `desktop/docs/architecture.md`)
 

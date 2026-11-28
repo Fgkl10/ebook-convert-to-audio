@@ -96,3 +96,32 @@ def test_and01_android_fixtures_match_the_server(api, monkeypatch):  # noqa: F81
         diffs = _same_shape(fixture, body)
         assert not diffs, f"{name} changed shape (update the app's models, then the fixtures): {diffs}"
     assert TOKEN not in json.dumps(live) or auth.token() != TOKEN  # the scrub ran
+
+
+def _num(pattern, text):
+    m = re.search(pattern, text)
+    assert m, pattern
+    return float(m.group(1).replace("_", ""))
+
+
+def test_and11_web_reader_and_app_share_the_reading_rules():
+    """M5: the web reader and the app agree on the sentence buttons and the text size range (A-015)."""
+    root = Path(__file__).resolve().parent.parent
+    js = (root / "desktop" / "web" / "app.js").read_text(encoding="utf-8")
+    html = (root / "desktop" / "web" / "index.html").read_text(encoding="utf-8")
+    src = root / "android" / "app" / "src" / "main" / "java" / "app" / "ebookaudio"
+    sync = (src / "player" / "SentenceSync.kt").read_text(encoding="utf-8")
+    settings = (src / "settings" / "Settings.kt").read_text(encoding="utf-8")
+
+    assert _num(r"const RESTART_MS = ([\d_]+)", js) == _num(r"const val RESTART_MS = ([\d_]+)L", sync)
+    sizes = re.search(r"const TEXT_SIZE = \{([^}]*)\}", js)
+    assert sizes, "TEXT_SIZE in app.js"
+    for key, kotlin in (("min", "TEXT_SIZE_MIN"), ("max", "TEXT_SIZE_MAX"), ("step", "TEXT_SIZE_STEP"),
+                        ("def", "TEXT_SIZE_DEFAULT")):
+        assert _num(rf"\b{key}: (\d+)", sizes.group(1)) == _num(rf"const val {kotlin} = ([\d.]+)f", settings), key
+    # the sentence buttons start playback in both (seekMs plays when paused; the app calls play())
+    assert "if (audio.paused) audio.play()" in js
+    assert "controller.seekTo(it); controller.play()" in (src / "player" / "PlayerScreen.kt").read_text(encoding="utf-8")
+    for button in ("prevs", "nexts", "smaller", "larger"):
+        assert f'id="{button}"' in html and f"$('#{button}').onclick" in js, button
+    assert "var(--text-size" in (root / "desktop" / "web" / "app.css").read_text(encoding="utf-8")

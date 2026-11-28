@@ -56,6 +56,46 @@ flowchart TD
   I[App reopened] --> J[Book screen shows Continue · ch N, m:ss] --> A
 ```
 
+## Read along (M5)
+
+```mermaid
+flowchart TD
+  A[Player screen opens] --> B{Text or cover? DataStore}
+  B -- cover --> C[Cover]
+  B -- text --> D{Sentences of the playing chapter}
+  D -- "in the phone's book.json" --> F
+  D -- "else GET /books/{id}" --> F[ReadAlong: paragraphs by p]
+  D -- "neither (offline, not paired)" --> C
+  F --> G["Every 100 ms: position → SentenceSync.at (binary search over start_ms)"]
+  G --> H[Highlight; scroll it a third of the way down<br/>unless scrolled by hand in the last 4 s]
+  H --> G
+  F -- tap a sentence --> I[seekTo start_ms, play]
+  J["‹ Sentence / Sentence ›"] --> K["SentenceSync.previousStart / nextStart → seekTo, play"]
+  F -- "text shown and playing" --> L[Window FLAG_KEEP_SCREEN_ON]
+```
+
+## Sleep timer (M5)
+
+```mermaid
+sequenceDiagram
+  participant UI as Player screen
+  participant S as PlaybackService
+  participant P as ExoPlayer
+  UI->>S: custom command SLEEP (minutes N / chapter / off)
+  alt minutes
+    loop every 250 ms
+      S->>S: count down by real time spent playing
+      S->>P: volume fades over the last 10 s
+      S-->>UI: session extras (mode, time left in whole seconds)
+    end
+    S->>P: pause at 0; volume 1; timer off
+  else end of chapter
+    S->>P: pauseAtEndOfMediaItems = true
+    P-->>S: paused at the end of the item, or the book ended
+    S->>P: pauseAtEndOfMediaItems = false; timer off
+  end
+```
+
 ## Convert on the PC from the phone (M4b)
 
 ```mermaid

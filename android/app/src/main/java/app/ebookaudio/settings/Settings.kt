@@ -2,6 +2,7 @@ package app.ebookaudio.settings
 
 import android.content.Context
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -35,6 +36,8 @@ class Settings(private val context: Context) {
     private val pcName = stringPreferencesKey("pc_name")
     private val speed = floatPreferencesKey("speed")
     private val lastBook = stringPreferencesKey("last_book")
+    private val textSize = floatPreferencesKey("text_size")
+    private val showText = booleanPreferencesKey("show_text")
     private fun positionKey(bookId: String): Preferences.Key<String> = stringPreferencesKey("pos:$bookId")
 
     val pairing: Flow<Pairing?> = context.store.data.map { p ->
@@ -58,6 +61,15 @@ class Settings(private val context: Context) {
     val speedFlow: Flow<Float> = context.store.data.map { it[speed] ?: 1f }
     suspend fun setSpeed(value: Float) = context.store.edit { it[speed] = value }
 
+    /** Read-along text size in sp (A-015). */
+    val textSizeFlow: Flow<Float> = context.store.data.map { it[textSize] ?: TEXT_SIZE_DEFAULT }
+    suspend fun setTextSize(value: Float) =
+        context.store.edit { it[textSize] = value.coerceIn(TEXT_SIZE_MIN, TEXT_SIZE_MAX) }
+
+    /** The player shows the chapter text (true) or the cover (false). */
+    val showTextFlow: Flow<Boolean> = context.store.data.map { it[showText] ?: true }
+    suspend fun setShowText(value: Boolean) = context.store.edit { it[showText] = value }
+
     val lastBookFlow: Flow<String?> = context.store.data.map { it[lastBook] }
 
     fun positionFlow(bookId: String): Flow<Position?> =
@@ -71,4 +83,11 @@ class Settings(private val context: Context) {
     }
 
     suspend fun forget(bookId: String) = context.store.edit { it.remove(positionKey(bookId)) }
+
+    companion object {
+        const val TEXT_SIZE_DEFAULT = 18f
+        const val TEXT_SIZE_MIN = 12f
+        const val TEXT_SIZE_MAX = 32f
+        const val TEXT_SIZE_STEP = 2f
+    }
 }

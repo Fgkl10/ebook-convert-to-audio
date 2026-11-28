@@ -24,6 +24,9 @@ data class NowPlaying(
     val speed: Float,
     val hasPrevious: Boolean,
     val hasNext: Boolean,
+    /** Sleep timer: "off", "minutes" or "chapter", and the real time left (A-016). */
+    val sleepMode: String = "off",
+    val sleepLeftMs: Long? = null,
 )
 
 fun snapshot(c: MediaController?): NowPlaying? {
@@ -43,17 +46,19 @@ fun snapshot(c: MediaController?): NowPlaying? {
         speed = c.playbackParameters.speed,
         hasPrevious = c.hasPreviousMediaItem(),
         hasNext = c.hasNextMediaItem(),
+        sleepMode = c.sessionExtras.getString(PlaybackService.SLEEP_MODE) ?: "off",
+        sleepLeftMs = c.sessionExtras.getLong(PlaybackService.SLEEP_LEFT_MS, -1).takeIf { it >= 0 },
     )
 }
 
-/** The player's state, refreshed 4 times a second while the screen shows it. */
+/** The player's state, refreshed every [intervalMs] while the screen shows it. */
 @Composable
-fun rememberNowPlaying(controller: MediaController?): State<NowPlaying?> {
+fun rememberNowPlaying(controller: MediaController?, intervalMs: Long = 250): State<NowPlaying?> {
     val state = remember { mutableStateOf(snapshot(controller)) }
-    LaunchedEffect(controller) {
+    LaunchedEffect(controller, intervalMs) {
         while (true) {
             state.value = snapshot(controller)
-            delay(250)
+            delay(intervalMs)
         }
     }
     return state

@@ -230,6 +230,8 @@ flowchart TD
     I --> F
     D --> J["click span → currentTime = start_ms; play"]
     E --> K["on ended → loadChapter(i+1) and play"]
+    E --> N["‹ Sentence: restart i if > 1.5 s into it, else i-1<br/>Sentence ›: i+1 (none on the last)<br/>→ currentTime, play (D-039)"]
+    C --> O["A− / A+: --text-size 12–32 px,<br/>kept in localStorage (D-039)"]
     C --> L["click ⬇ in a chapter row<br/>(stopPropagation: no chapter switch)"]
     L --> M["GET /files/chNNN.m4a?download=1<br/>→ attachment 'Book - Ch 01 - Title.m4a'"]
 ```

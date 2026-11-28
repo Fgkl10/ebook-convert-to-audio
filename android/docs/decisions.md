@@ -180,3 +180,48 @@ Decision: The book screen's ⋮ menu has "Delete from PC" with a confirmation. T
 (409) is shown on the book screen.
 Why: Managing the library from the phone; the confirm guards against a mis-tap.
 Consequences: The web page and the phone differ here until the page gets the same button.
+
+## A-015 Read-along in the player screen, same rules as the web reader
+Status: Accepted · Milestone: M5
+Context: Each chapter carries `sentences: [{i, p, text, start_ms, end_ms}]` (D-012). The user wanted the text in the
+player, shown by default, with the cover one tap away, plus text size, previous/next sentence buttons and the screen
+kept on while reading.
+Decision:
+- The player screen shows the chapter text (`ReadAlong.kt`), paragraphs grouped by `p`. The sentence being read is
+  highlighted and scrolled to a third of the way down. Tapping a sentence plays from it. Scrolling by hand stops the
+  automatic scrolling while dragging or flinging, and for 4 s after.
+- The sentences come from the phone's `book.json`, else `GET /books/{id}`. If neither works (offline and not
+  downloaded, not paired) the cover shows; playback never depends on the text.
+- The lookup is `SentenceSync`: a binary search over `start_ms`, the same rule as `desktop/web/app.js`. "‹ Sentence"
+  restarts the current sentence when more than 1.5 s into it, else goes to the one before. "Sentence ›" does nothing
+  on the last sentence. Both start playback. The web reader has the same buttons with the same rule.
+- Text size 12–32 sp in steps of 2 (default 18) and the text/cover choice are kept in DataStore. The web reader uses
+  the same range in px, kept in `localStorage`.
+- The screen stays on (`FLAG_KEEP_SCREEN_ON` on the activity's window) only while the text is shown and playing.
+  Setting `View.keepScreenOn` from Compose didn't keep the screen on during the phone test (HyperOS).
+- The highlight follows a 100 ms poll of the controller on the player screen (250 ms elsewhere).
+Why: One set of rules for both readers, checked by AND-11, so the phone and the PC feel the same. Times are positions in
+the audio, so speed changes need no handling.
+Consequences: Streaming a book fetches its JSON once per chapter shown. Long chapters are one `LazyColumn` item per
+paragraph, so only the visible paragraphs are laid out.
+
+## A-016 Sleep timer in the playback service
+Status: Accepted · Milestone: M5
+Context: The user wanted to stop after a set time (presets, custom minutes) or at the end of the chapter, with the
+screen off.
+Decision:
+- The timer lives in `PlaybackService`, so it keeps running with the screen off and the app in the background. The UI
+  sets it with a custom session command (`app.ebookaudio.SLEEP`: mode off / minutes / chapter); the service publishes
+  the mode and the time left as session extras, which `NowPlaying` reads.
+- Minutes count real time spent playing (a pause, e.g. a call, doesn't use it up). The volume fades out over the last
+  10 s, then the player pauses, the volume goes back to 1 and the timer turns off.
+- "End of this chapter" uses ExoPlayer's `pauseAtEndOfMediaItems`. The timer clears when the player pauses at the end
+  of the item, or when the book ends on its last chapter. Its time left is the chapter's remaining audio at the
+  current speed.
+- Presets 15/30/45/60 minutes, "Other…" for 1–1440 minutes, "Turn off". The button is in the player's bottom row,
+  next to Speed (the user's choice), and shows the time left. The mini player shows it too.
+- The timer state is in memory only: it doesn't survive the service being stopped.
+- The countdown and fade are the pure `SleepTimer` class, unit-tested. The service glue is tested by hand.
+Why: A timer in the UI would stop when the screen is off. The fade avoids an abrupt cut while falling asleep.
+Consequences: `pauseAtEndOfMediaItems`, `DEFAULT_SESSION_COMMANDS` and `DEFAULT_PLAYER_COMMANDS` are Media3
+`@UnstableApi`, opted into in the service. No sleep timer on the web page (not asked for).
