@@ -196,6 +196,12 @@ Tests: `tests/test_api.py`, `tests/test_server.py`
 All paths are under `/api/v1` unless they start with `/`. The tests are in `tests/test_server.py` (the flow) and
 `tests/test_api.py` (one test per endpoint, plus the contract).
 
+Each test gets its own data folder and its own `Jobs` worker (the `api` fixture). At teardown the fixture cancels
+the test's unfinished conversions and waits until they stop. A leftover worker reads the patched `build.ROOT` when a
+job starts, so it would otherwise convert into the next test's folders. With the same book, it would delete the
+shared sentence-cache folder when it finished (D-035), under the next test's own conversion. That happened once in
+CI: `test_api11` failed with a `FileNotFoundError` on a `.npy.tmp`.
+
 | ID | Case | Steps / input | Expected | Status |
 |---|---|---|---|---|
 | API-01 | Exact route list | `GET /openapi.json` | Exactly the 20 (method, path) pairs of the v1 table (with `/qr` and the two cancel routes, D-037/D-038); version "1"; schemas `Draft`, `DraftDetail`, `Job`, `BookSummary`, `Book`, `Info`, `Address`, `ApproveRequest`, `Error`; `/docs` loads | Automated `test_api01_routes_are_exactly_v1` |
