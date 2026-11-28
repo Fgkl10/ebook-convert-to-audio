@@ -28,6 +28,12 @@ starts passing, pytest reports XPASS as a failure, and you remove the marker and
 | LAY-04 | OCR stays optional | In a fresh process: import `desktop.core.normalize`, clean a TXT | No `desktop.ocr`, `desktop.server`, `desktop.tts`, fastapi, torch or doctr module is loaded | Automated `test_lay04_cleaning_without_ocr_never_loads_it` |
 | LAY-05 | Installed commands | `pyproject.toml` `[project.scripts]` | Exactly `ebook-server`, `ebook-normalize`, `ebook-convert`, each pointing to an importable `main` | Automated `test_lay05_installed_commands_point_at_mains`; `pip install -e .` and `--help` of all three Manual (checked; the CUDA torch stayed) |
 
+## Docs diagrams (`tests/test_docs.py`)
+
+| ID | Case | Steps / input | Expected | Status |
+|---|---|---|---|---|
+| DOC-01 | Mermaid diagrams render on GitHub | Every ```` ```mermaid ```` block in the repository's `.md` files (component docs and the three READMEs) | No `;` in diagram text (it ends a statement: a sequence-diagram message is cut and the diagram fails), except in HTML entities such as `&lt;`; no second `:` in a state-diagram label | Automated `test_doc01_mermaid_text_has_no_statement_breakers`. Rendering itself: Manual, pass (2026-11-28: all 22 diagrams parsed and drawn with Mermaid 11.4.1 in headless Chrome; 6 failed before the fix) |
+
 ## Segmentation (`core/segment.py`)
 
 Tests: `tests/test_desktop.py`

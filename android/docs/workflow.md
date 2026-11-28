@@ -47,7 +47,7 @@ sequenceDiagram
 flowchart TD
   A[Play / Continue on the book screen] --> B[Playlist.items: per chapter,<br/>local file if downloaded, else stream URL with ?token=]
   B --> C[MediaController → PlaybackService<br/>setMediaItems at saved chapter + ms, speed]
-  C --> D["ExoPlayer plays; notification + lock screen controls"]
+  C --> D["ExoPlayer plays, notification + lock screen controls"]
   D --> E{Event}
   E -- play/pause, chapter change, every 5 s --> F[Save position chapter:ms in DataStore]
   E -- headphones unplugged --> G[Pause]
@@ -67,7 +67,7 @@ flowchart TD
   D -- "else GET /books/{id}" --> F[ReadAlong: paragraphs by p]
   D -- "neither (offline, not paired)" --> C
   F --> G["Every 100 ms: position → SentenceSync.at (binary search over start_ms)"]
-  G --> H[Highlight; scroll it a third of the way down<br/>unless scrolled by hand in the last 4 s]
+  G --> H[Highlight, scroll it a third of the way down<br/>unless scrolled by hand in the last 4 s]
   H --> G
   F -- tap a sentence --> I[seekTo start_ms, play]
   J["‹ Sentence / Sentence ›"] --> K["SentenceSync.previousStart / nextStart → seekTo, play"]
@@ -88,11 +88,11 @@ sequenceDiagram
       S->>P: volume fades over the last 10 s
       S-->>UI: session extras (mode, time left in whole seconds)
     end
-    S->>P: pause at 0; volume 1; timer off
+    S->>P: pause at 0, volume 1, timer off
   else end of chapter
     S->>P: pauseAtEndOfMediaItems = true
     P-->>S: paused at the end of the item, or the book ended
-    S->>P: pauseAtEndOfMediaItems = false; timer off
+    S->>P: pauseAtEndOfMediaItems = false, timer off
   end
 ```
 
@@ -114,7 +114,7 @@ flowchart TD
   G --> H["Review: report, chapter text, picks, Language ▸ Voice + sample<br/>(starts on the book's language, A-021), speed"]
   H -- "Approve (chapters, or null = all)" --> J["Job runs: Convert tab shows progress (polled every 2 s)"]
   H -- Discard --> X[Draft deleted]
-  J -- Cancel --> K["Job cancelled; finished chapters kept"]
+  J -- Cancel --> K["Job cancelled, finished chapters kept"]
   J -- done --> L["Listen: book screen (stream or download)"]
 ```
 
@@ -128,7 +128,7 @@ flowchart TD
   T["Push tag vX.Y.Z"] -- "create event" --> A
   A --> K{"ANDROID_KEYSTORE_BASE64 secret set?"}
   K -- no --> F["Fail: nothing published"]
-  K -- yes --> B["assembleRelease, signed with the release key;<br/>versionCode = commit count, versionName = tag"]
+  K -- yes --> B["assembleRelease, signed with the release key,<br/>versionCode = commit count, versionName = tag"]
   B --> V["apksigner: certificate is CN=Ebook Audio"]
   V --> AR["Artifact ebook-audio-….apk (90 days)"]
   V -- "tag only" --> R["GitHub Release with ebook-audio-X.Y.Z.apk"]

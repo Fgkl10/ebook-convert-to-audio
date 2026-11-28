@@ -88,7 +88,7 @@ flowchart LR
     NORM --> LANG
     BUILD --> LANG
     SCAN --> WORDS
-    REVIEW(["you: review .std.epub<br/>(CLI: in a reader / Sigil;<br/>web: review page)"])
+    REVIEW(["you: review .std.epub<br/>(CLI: in a reader / Sigil,<br/>web: review page)"])
     NORM --> REVIEW --> CLI
     SVC -- "Drafts clean worker" --> NORM
     NORM --> PARSE
