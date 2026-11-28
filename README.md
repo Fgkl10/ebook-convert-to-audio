@@ -239,8 +239,9 @@ The app uses **no Google services** (QR scanning uses ZXing), so it works on pho
 | Speech (voices) | ✓ | planned | planned |
 
 - **Android:** the app follows the phone's language. To use another language, open the app's **Settings →
-  Language**. This works on every Android version, including phones like Xiaomi's that hide the system's per-app
-  language screen.
+  Language**. This also works on phones like Xiaomi's that hide the system's per-app language screen. It has been
+  tested on Android 14; on Android 8–12 it is untested, and there the download notification may stay in the
+  phone's language.
 - **Web page:** follows the browser's language. Use the **EN / 简体 / 繁體** buttons at the top to switch. The browser
   remembers the choice.
 - Messages that come from the PC (error details, cleaning-report entries) are still in English.

@@ -954,5 +954,5 @@ in the repository is written in English.
 - The code is MIT-licensed (`LICENSE`, the user's choice). The README notes that some dependencies are AGPL-3.0
   (PyMuPDF, EbookLib) and that Kokoro-82M is Apache-2.0.
 **Why:** Chinese-speaking users can read the setup in their language. The license makes reuse terms clear.
-**Consequences:** A README change must be made in all three files in the same PR. The vendor steps are written from
+**Consequences:** CLAUDE.md's Language rule names this exception. A README change must be made in all three files in the same PR. The vendor steps are written from
 the vendors' documented settings; only Xiaomi HyperOS was tried on a real phone.

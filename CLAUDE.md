@@ -2,6 +2,7 @@
 
 ## Language
 - Write everything in this repository in English: code, comments, docs, commit messages, PR text.
+- Exception: translations are written in their language: `README.zh-CN.md`, `README.zh-TW.md`, `android/app/src/main/res/values-b+zh+*/` and `desktop/web/i18n/zh-*.json` (desktop D-041).
 
 ## Component documentation (required)
 Every component (a top-level source folder such as `desktop/`, and later `android/`) keeps its own
