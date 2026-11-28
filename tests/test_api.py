@@ -26,6 +26,8 @@ EXPECTED_ROUTES = {
     ("GET", "/api/v1/models/zh"),
     ("POST", "/api/v1/models/zh"),
     ("DELETE", "/api/v1/models/zh"),
+    ("GET", "/api/v1/settings/tts"),
+    ("PUT", "/api/v1/settings/tts"),
     ("POST", "/api/v1/drafts"),
     ("POST", "/api/v1/drafts/cleaned"),
     ("GET", "/api/v1/drafts"),

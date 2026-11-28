@@ -25,7 +25,8 @@ from ..tts.build import (LEFTOVER_SUFFIXES, ROOT, Cancelled, build_book, chapter
                          encode_m4a, make_book_id, remove_leftovers, select_chapters)
 from ..core.language import detect_language
 from ..tts import build
-from ..tts.backend import Backend, chosen, create
+from ..tts.backend import BACKENDS, Backend, chosen, create, save_setting
+from ..tts.backend import NAMES as BACKEND_NAMES
 from ..tts.models import ZH_REPO, ZH_VOICES, ZhModel
 
 CANCELLED_MESSAGE = "Cancelled: approve again to resume (finished chapters and sentences are kept)."
@@ -69,9 +70,39 @@ _DRAFT_DEFAULTS = {
 }
 
 
+CLI_TTS: str | None = None  # ebook-server --tts
+
+
+def configure_tts(cli: str | None) -> None:
+    """ebook-server --tts: checked at start, so a typo stops the server instead of the first conversion."""
+    global CLI_TTS
+    chosen(build.ROOT, cli)  # ValueError for an unknown name (also from EBOOK_AUDIO_TTS)
+    CLI_TTS = cli
+
+
 def tts() -> Backend:
     """The TTS backend in use (D-045)."""
     return jobs.backend()
+
+
+def tts_setting() -> dict:
+    current = tts()
+    return {"backend": current.id, "fixed_by": jobs.fixed_by,
+            "backends": [{"id": n, "name": BACKEND_NAMES.get(n, n)} for n in BACKENDS]}
+
+
+def set_tts(name: str) -> dict:
+    """The page's backend choice: saved in <data>/settings.json and used from now on. Refused when --tts or
+    EBOOK_AUDIO_TTS chose it, and while a conversion is queued or running."""
+    if name not in BACKENDS:
+        raise Invalid(f"Unknown TTS backend {name}: choose one of {', '.join(BACKENDS)}")
+    tts()  # fixed_by is known once the backend exists
+    if jobs.fixed_by:
+        raise Conflict(f"The TTS backend was set with {jobs.fixed_by} when the server started")
+    if name != jobs.tts.id:
+        jobs.switch_backend(name)
+    save_setting(build.ROOT, "tts", name)
+    return tts_setting()
 
 
 def check_options(voice: str | None, speed: float) -> None:
@@ -309,7 +340,9 @@ class Drafts:
         """Queue the cleaned book for conversion; voice and speed default to the ones chosen at upload.
         chapters: 1-based numbers to convert into the book's library entry (D-035); None converts them all."""
         draft = self.get(draft_id)
-        voice, speed = voice or draft["voice"] or None, speed or draft["speed"]
+        if not voice and draft["voice"] in tts().voice_ids():
+            voice = draft["voice"]  # the upload's voice, unless that backend or model is no longer in use
+        speed = speed or draft["speed"]
         check_options(voice, speed)
         if draft["status"] not in ("review", "done"):
             raise Conflict(f"Cannot convert a draft that is {draft['status']}")
@@ -389,7 +422,8 @@ class Jobs:
         self.queue: "queue.Queue[str]" = queue.Queue()
         self.lock = threading.Lock()
         self.model_lock = threading.Lock()
-        self.tts = None
+        self.tts: Backend | None = None  # backend(): made on first use
+        self.fixed_by: str | None = None  # "--tts" / "EBOOK_AUDIO_TTS" when one of them chose the backend
         threading.Thread(target=self._worker, daemon=True).start()
 
     def submit(self, path: Path, filename: str, voice: str, speed: float, draft_id: str | None = None,
@@ -430,8 +464,19 @@ class Jobs:
         (backend.chosen); its model loads with the first sentence and stays loaded (D-031)."""
         with self.model_lock:
             if self.tts is None:
-                self.tts = create(chosen(build.ROOT)[0])
+                name, self.fixed_by = chosen(build.ROOT, CLI_TTS)
+                self.tts = create(name)
             return self.tts
+
+    def switch_backend(self, name: str) -> None:
+        """Use another backend from now on; the old one's model is freed (D-045)."""
+        with self.lock:
+            if any(j["status"] in ("queued", "running") for j in self.jobs.values()):
+                raise Conflict("A conversion is queued or running: wait for it or cancel it first")
+        with self.model_lock:
+            old, self.tts = self.tts, create(name)
+        if old is not None and old.id != name:
+            old.unload()
 
     def cancel(self, job_id: str) -> dict:
         """Stop a conversion. Queued: it never starts. Running: it stops at the next sentence (build_book's cancel
@@ -632,7 +677,7 @@ def voice_sample(voice: str) -> Path:
         raise NotFound("No such voice")
     text = SAMPLE_TEXTS[backend.voice_language(voice) or "en"]
     digest = hashlib.sha1(text.encode()).hexdigest()[:8]
-    path = SAMPLES / f"{voice}-{digest}.m4a"
+    path = SAMPLES / (f"{voice}-{digest}.m4a" if backend.id == "kokoro" else f"{backend.id}-{voice}-{digest}.m4a")
     with _sample_lock:  # two first clicks must not make the same file at once
         if not path.exists():
             SAMPLES.mkdir(parents=True, exist_ok=True)

@@ -124,6 +124,25 @@ PICKERS.forEach(s => $(s).addEventListener('change', () => {
   catch (e) { /* not remembered */ }
 }));
 
+// The TTS backend (D-045): which speech engine converts. Fixed by --tts / EBOOK_AUDIO_TTS, the dropdown is
+// disabled and says so. A switch reloads the voice lists; Kokoro's v1.1-zh box shows only with Kokoro.
+async function ttsBackend(choice) {
+  const r = choice
+    ? await fetch(`${API}/settings/tts`, { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ backend: choice }) })
+    : await fetch(`${API}/settings/tts`);
+  const ok = r.ok, s = ok ? await r.json() : await (await fetch(`${API}/settings/tts`)).json();
+  const pick = $('#ttsbackend');
+  pick.innerHTML = s.backends.map(b => `<option value="${esc(b.id)}">${esc(b.name)}</option>`).join('');
+  pick.value = s.backend;
+  pick.disabled = !!s.fixed_by;
+  $('#ttsstate').classList.toggle('err', !ok);
+  $('#ttsstate').textContent = !ok ? await errText(r) : s.fixed_by ? t('tts.fixed', { by: s.fixed_by }) : '';
+  $('#zhbox').hidden = s.backend !== 'kokoro';
+  if (choice && ok) loadInfo();
+}
+$('#ttsbackend').onchange = () => ttsBackend($('#ttsbackend').value);
+
 // The optional Kokoro v1.1-zh model (D-044): install or remove it; while it downloads, the line shows how far it is.
 let zhTimer = null;
 async function zhModel(method = 'GET') {
@@ -537,4 +556,4 @@ $('#rate').onchange = () => audio.playbackRate = +$('#rate').value;
 $('#back').onclick = () => { audio.pause(); goTab('library'); $('#player').hidden = true; book = null; };
 
 showTab();
-loadStrings().then(() => { ocrForFile(); loadInfo(); zhModel(); refresh(); setInterval(refresh, 2000); });
+loadStrings().then(() => { ocrForFile(); loadInfo(); ttsBackend(); zhModel(); refresh(); setInterval(refresh, 2000); });

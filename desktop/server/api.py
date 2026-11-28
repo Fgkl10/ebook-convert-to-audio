@@ -65,6 +65,23 @@ class TtsModel(BaseModel):
     error: Optional[str]
 
 
+class TtsBackend(BaseModel):
+    id: str
+    name: str
+
+
+class TtsSetting(BaseModel):
+    backend: str = Field(description="The TTS backend in use (D-045)")
+    backends: list[TtsBackend] = Field(description="The backends this server can use")
+    fixed_by: Optional[str] = Field(description='"--tts" or "EBOOK_AUDIO_TTS" when one of them chose the backend at '
+                                                "server start: it can't be changed here then")
+
+
+class TtsChoice(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    backend: str
+
+
 class Report(BaseModel):
     source: str
     method: str
@@ -270,6 +287,19 @@ def remove_zh_model() -> dict:
     """Remove Kokoro v1.1-zh. Refused while a conversion uses one of its voices. Chinese goes back to v1.0's voices."""
     service.remove_zh_model()
     return service.zh_model.status()
+
+
+@router.get("/settings/tts", response_model=TtsSetting, tags=["server"])
+def tts_setting() -> dict:
+    """The TTS backend in use and the ones on offer (D-045)."""
+    return service.tts_setting()
+
+
+@router.put("/settings/tts", response_model=TtsSetting, responses=ERRORS, tags=["server"])
+def set_tts(choice: TtsChoice) -> dict:
+    """Use another TTS backend from now on (kept across restarts). 409 while a conversion is queued or running, or
+    when --tts / EBOOK_AUDIO_TTS chose it. Voices of the old backend give way to the new one's defaults."""
+    return service.set_tts(choice.backend)
 
 
 @router.get("/qr", response_model=Address, responses=ERRORS, tags=["server"])
