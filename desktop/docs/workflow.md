@@ -247,7 +247,7 @@ sequenceDiagram
     M->>M: create library/ if missing
     M->>M: clean_leftovers(): delete *.tmp.m4a and *.npy.tmp under library/ and cache/ (D-036)
     M->>M: auth.token(): read <data>/server-token, or make it (--new-token: make a new one) (D-037)
-    M->>M: phone_addresses(--advertise): the default (local) address first, then the others; print them
+    M->>M: phone_addresses(--advertise): the default (local) address first, then the others, for mDNS. The console shows only the page URL; the addresses and their QR codes are on the page
     M->>Z: register _ebookaudio._tcp.local. (every IPv4 address, port, path=/api/v1)
     Note over M,Z: on failure: print a hint and keep running without mDNS
     M->>V: run on 0.0.0.0:port (timeout_graceful_shutdown = 1 s)
