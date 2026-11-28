@@ -221,17 +221,45 @@ addEventListener('hashchange', showTab);
 // ---------------- voice samples: ▶ next to every Voice list plays ~5 s of that voice (D-031)
 const sampleAudio = new Audio();
 let sampleBtn = null;
-const resetSample = () => { if (sampleBtn) sampleBtn.textContent = '▶'; sampleBtn = null; };
+// A note after the button while the PC makes the sample: the first one of a session also loads the model (~20 s).
+const sampleNote = document.createElement('span');
+sampleNote.className = 'muted samplenote';
+const resetSample = () => {
+  if (sampleBtn) { sampleBtn.textContent = '▶'; sampleBtn.title = t('form.hear'); }
+  sampleBtn = null; sampleNote.remove();
+};
 sampleAudio.onended = resetSample;
 document.querySelectorAll('.hear').forEach(btn => btn.onclick = async () => {
   const playing = sampleBtn === btn;
-  sampleAudio.pause(); resetSample();
-  if (playing) return;  // a second click stops it
-  sampleBtn = btn; btn.textContent = '…';  // the first sample of a session also loads the model (~10 s)
+  sampleAudio.pause(); sampleAudio.removeAttribute('src'); resetSample();
+  if (playing) return;  // a second click stops it, also while it is being prepared
+  sampleBtn = btn; btn.textContent = '…'; btn.title = t('sample.cancel');
+  sampleNote.textContent = t('sample.preparing');
+  btn.after(sampleNote);
   sampleAudio.src = tok(`${API}/voices/${$(btn.dataset.for).value}/sample`);
-  try { await sampleAudio.play(); if (sampleBtn === btn) btn.textContent = '■'; }
-  catch (e) { resetSample(); alert(t('sample.error')); }
+  try {
+    await sampleAudio.play();
+    if (sampleBtn === btn) { btn.textContent = '■'; btn.title = t('sample.stop'); sampleNote.remove(); loadSamples(); }
+  } catch (e) {
+    if (sampleBtn !== btn || e.name === 'AbortError') return;  // cancelled, or another sample was asked for
+    resetSample(); alert(t('sample.error'));
+  }
 });
+
+// Voice samples kept on the PC, with a Delete button (in the Speech engine box).
+async function loadSamples() {
+  try {
+    const s = await getJSON('/voices/samples');
+    // one decimal, like the app's Settings: "0.0 KB" when there are none
+    const size = s.bytes < 1e6 ? `${(s.bytes / 1e3).toFixed(1)} KB` : `${(s.bytes / 1e6).toFixed(1)} MB`;
+    $('#samplesinfo').textContent = t('samples.saved', { size });
+    $('#samplesdel').disabled = !s.count;
+  } catch (e) { $('#samplesinfo').textContent = ''; }
+}
+$('#samplesdel').onclick = async () => {
+  const r = await fetch(`${API}/voices/samples`, { method: 'DELETE' });
+  if (r.ok) loadSamples();
+};
 const goTab = (tab) => { show('#home'); location.hash = tab; showTab(); };
 
 async function loadBooks() {
@@ -573,4 +601,6 @@ $('#rate').onchange = () => audio.playbackRate = +$('#rate').value;
 $('#back').onclick = () => { audio.pause(); goTab('library'); $('#player').hidden = true; book = null; };
 
 showTab();
-loadStrings().then(() => { ocrForFile(); loadInfo(); ttsBackend(); zhModel(); refresh(); setInterval(refresh, 2000); });
+loadStrings().then(() => {
+  ocrForFile(); loadInfo(); ttsBackend(); loadSamples(); zhModel(); refresh(); setInterval(refresh, 2000);
+});

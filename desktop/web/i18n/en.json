@@ -51,6 +51,11 @@
   "form.speed": "Speed",
   "form.hear": "Hear this voice",
   "sample.error": "Could not play the voice sample.",
+  "sample.preparing": "Preparing sample… the first one also starts the voice engine, which can take up to a minute",
+  "sample.cancel": "Cancel the sample",
+  "sample.stop": "Stop the sample",
+  "samples.saved": "Saved voice samples: {size}",
+  "samples.delete": "Delete saved samples",
 
   "clean.heading": "Clean a book",
   "ocr.label": "OCR (PDF only)",

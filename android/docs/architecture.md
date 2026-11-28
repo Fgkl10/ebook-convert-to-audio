@@ -72,6 +72,7 @@ filesDir/books/<book id>/          book id: [a-z0-9-]{1,80}
   ch000.m4a, ch001.m4a, …          chapter audio (AAC/M4A, as on the PC)
   ch000.m4a.part                   an unfinished download (never played, resumed with Range)
   cover.jpg|png                    optional
+filesDir/voice-samples/<voice>.m4a voice samples played on this phone (A-023); deleted from Settings → Storage
 DataStore "settings"               pairing, speed, last book, positions
 ```
 

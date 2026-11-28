@@ -72,6 +72,7 @@ keyword, then read only that entry.
 | D-044 | Optional Kokoro v1.1-zh for better Chinese voices | tts, server, web | Amends D-031, D-028 | here |
 | D-045 | TTS behind a backend interface; a setting picks the backend | tts, server, web | Amends D-031 | here |
 | D-046 | Voice names from measured pitch and pace | tts, server, web | android A-022 | here |
+| D-047 | Voice samples: "Preparing sample…", cancel, delete the saved ones | server, web | android A-023 | here |
 
 ---
 
@@ -655,3 +656,19 @@ over hand-written ones, and the format "translated name + id" in the interface l
 - The words are relative: a "deep" woman's voice is deep for a woman's voice of that model.
 - A new voice or model needs `python -m desktop.tts.voice_traits` (GPU, a few minutes); until then it shows without
   traits. A backend other than Kokoro brings its own traits or none.
+
+## D-047 Voice samples: "Preparing sample…", cancel, delete the saved ones
+Status: Accepted · Milestone: M8 (TTS backends, voice names)
+**Context:** A voice's first ▶ waits while the PC makes the sample, and the first one of a server run also loads the
+model (23 s, and 56–61 s on a busy PC). The page only showed "…". The user asked for the wait to be explained, for a
+way to cancel it, and for the saved samples to be deletable. Making all samples ahead of time was offered and turned
+down; loading the model at server start was offered as an option and not taken up.
+**Decision:**
+- Page: while a sample is being made, a note after ▶ says "Preparing sample… the first one also starts the voice
+  engine, which can take up to a minute"; clicking "…" cancels (the PC still finishes and keeps the sample).
+- `GET /voices/samples` → `{count, bytes}`, `DELETE /voices/samples` deletes `cache/voice-samples/*.m4a` (under the
+  sample lock, so it waits for a sample being made). The Speech engine box shows "Saved voice samples: 0.0 KB" and
+  **Delete saved samples**.
+- The phone keeps the samples it played (android A-023).
+**Why:** A visible reason for the wait, and the user decides what stays on disk.
+**Consequences:** Deleting makes the next ▶ of each voice wait again.

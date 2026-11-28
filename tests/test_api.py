@@ -23,6 +23,8 @@ EXPECTED_ROUTES = {
     ("GET", "/api/v1/info"),
     ("GET", "/api/v1/qr"),
     ("GET", "/api/v1/voices/{voice}/sample"),
+    ("GET", "/api/v1/voices/samples"),
+    ("DELETE", "/api/v1/voices/samples"),
     ("GET", "/api/v1/models/zh"),
     ("POST", "/api/v1/models/zh"),
     ("DELETE", "/api/v1/models/zh"),

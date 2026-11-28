@@ -51,6 +51,11 @@
   "form.speed": "速度",
   "form.hear": "試聽這個語音",
   "sample.error": "無法播放語音範例。",
+  "sample.preparing": "正在準備範例……第一次還要啟動語音引擎，可能需要一分鐘",
+  "sample.cancel": "取消範例",
+  "sample.stop": "停止範例",
+  "samples.saved": "已儲存的語音範例：{size}",
+  "samples.delete": "刪除已儲存的範例",
 
   "clean.heading": "清理一本書",
   "ocr.label": "OCR（僅限 PDF）",

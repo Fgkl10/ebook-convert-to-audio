@@ -686,6 +686,20 @@ def voice_sample(voice: str) -> Path:
     return path
 
 
+def saved_samples() -> dict:
+    """How many voice samples are kept, and their size."""
+    files = list(SAMPLES.glob("*.m4a")) if SAMPLES.is_dir() else []
+    return {"count": len(files), "bytes": sum(f.stat().st_size for f in files)}
+
+
+def delete_samples() -> dict:
+    """Delete the kept samples; the next ▶ makes them again. Waits for a sample being made."""
+    with _sample_lock:
+        for f in SAMPLES.glob("*.m4a") if SAMPLES.is_dir() else []:
+            f.unlink(missing_ok=True)
+    return saved_samples()
+
+
 # ---------------------------------------------------------------- optional Kokoro v1.1-zh (D-044)
 
 zh_model = ZhModel()

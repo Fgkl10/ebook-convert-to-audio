@@ -324,6 +324,23 @@ def qr(request: Request, address: str = Query(description="A host name, IPv4 or 
     return _address(host, "typed", port)
 
 
+class SavedSamples(BaseModel):
+    count: int = Field(description="Voice samples kept on the PC")
+    bytes: int
+
+
+@router.get("/voices/samples", response_model=SavedSamples, tags=["server"])
+def saved_samples() -> dict:
+    """The voice samples kept on the PC (each is made on its first ▶, then reused)."""
+    return service.saved_samples()
+
+
+@router.delete("/voices/samples", response_model=SavedSamples, tags=["server"])
+def delete_samples() -> dict:
+    """Delete the kept voice samples → what is left (nothing). The next ▶ of each voice makes it again."""
+    return service.delete_samples()
+
+
 @router.get("/voices/{voice}/sample", response_class=FileResponse, responses={404: {"model": Error}},
             tags=["server"])
 def voice_sample(voice: str) -> FileResponse:

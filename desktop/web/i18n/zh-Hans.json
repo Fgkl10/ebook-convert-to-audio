@@ -51,6 +51,11 @@
   "form.speed": "语速",
   "form.hear": "试听此声音",
   "sample.error": "无法播放声音样本。",
+  "sample.preparing": "正在准备样本……第一次还要启动语音引擎，可能需要一分钟",
+  "sample.cancel": "取消样本",
+  "sample.stop": "停止样本",
+  "samples.saved": "已保存的声音样本：{size}",
+  "samples.delete": "删除已保存的样本",
 
   "clean.heading": "清理一本书",
   "ocr.label": "OCR（仅限 PDF）",

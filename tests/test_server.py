@@ -221,6 +221,18 @@ def test_srv31_sample_does_not_change_a_conversions_voice(api):
     assert ("bm_george", service.SAMPLE_TEXTS["en"]) in tts.calls  # the sample asked for its own voice
 
 
+def test_srv35_saved_samples_can_be_deleted(api):
+    assert api.get(f"{V1}/voices/samples").json() == {"count": 0, "bytes": 0}
+    for voice in ("af_heart", "bm_george", "af_heart"):  # the second af_heart is reused
+        assert api.get(f"{V1}/voices/{voice}/sample").status_code == 200
+    kept = api.get(f"{V1}/voices/samples").json()
+    assert kept["count"] == 2 and kept["bytes"] > 0
+    assert api.delete(f"{V1}/voices/samples").json() == {"count": 0, "bytes": 0}
+    assert not list(service.SAMPLES.glob("*.m4a"))
+    assert api.get(f"{V1}/voices/af_heart/sample").status_code == 200  # made again
+    assert api.get(f"{V1}/voices/samples").json()["count"] == 1
+
+
 def test_srv10_language_refusal_is_a_draft_error(api):
     draft_id = _upload(api, "hu.txt", "\n\n".join([HU] * 8).encode())
     d = _wait(api, draft_id, "error")
