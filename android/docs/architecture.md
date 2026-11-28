@@ -115,5 +115,8 @@ them themselves.
 | Languages | English (default), `b+zh+Hans`, `b+zh+Hant`; `generateLocaleConfig` (A-017) |
 | JDK | 21 (Android Studio's `jbr` locally; Temurin 21 in CI); Java 17 bytecode |
 | Commands | `cd android; .\gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug` |
-| Output | `android/app/build/outputs/apk/debug/app-debug.apk` |
-| CI | the `android` job in `.github/workflows/ci.yml` |
+| Output | `android/app/build/outputs/apk/debug/app-debug.apk` (`assembleRelease` → `…/release/app-release.apk`) |
+| Version | `versionCode` = `git rev-list --count HEAD` (1 outside git); `versionName` = env `VERSION_NAME` (from the tag on GitHub) else the value in `build.gradle.kts` (A-020) |
+| Signing | One release key (A-020), for both debug and release builds when present: env `ANDROID_KEYSTORE_PATH` / `ANDROID_KEYSTORE_PASSWORD` / `ANDROID_KEY_ALIAS` / `ANDROID_KEY_PASSWORD` (GitHub Actions, from the secrets of the same names, the keystore as `ANDROID_KEYSTORE_BASE64`), else the git-ignored `android/keystore/release.properties` + `release.jks`. Without either: the standard debug key |
+| CI | the `android` job in `.github/workflows/ci.yml` (every PR and push: tests, lint, a debug APK with the runner's own debug key, not kept) |
+| Published APK | `.github/workflows/apk.yml`: a push to `master` touching `android/**` → signed release APK `ebook-audio-<count>-<sha>.apk` as the run's artifact (90 days); a `v*` tag (`create` event) → `ebook-audio-<version>.apk` artifact + GitHub Release. Fails if the key secret is missing; checks the certificate (`CN=Ebook Audio`) with `apksigner` |

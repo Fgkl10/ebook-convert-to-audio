@@ -111,6 +111,16 @@ against the next one).
 | AND-G07 | Battery steps on other makers' phones | Open Settings on a Samsung, Huawei/Honor, OPPO/OnePlus/realme, vivo and a Pixel | The steps match that phone's menus | Gap (only a Xiaomi phone is available; the steps follow the vendors' documented settings) |
 | AND-G08 | Server messages in Chinese | Use the app in Chinese; cause a PC error; review a cleaned book | Error details, draft/job messages and cleaning-report entries are English (A-017, desktop D-040) | Gap (known limitation) |
 
+## Building and publishing the APK (A-020)
+
+| ID | Case | Steps / input | Expected | Status |
+|---|---|---|---|---|
+| AND-M34 | Same key on the PC and on GitHub | Build `assembleDebug` and `assembleRelease` locally with `android/keystore/`; build `assembleRelease` with the key in environment variables (as CI) and `VERSION_NAME=9.9.9`; `apksigner verify --print-certs`; `aapt2 dump badging` | All three: certificate `CN=Ebook Audio`, SHA-256 `012e71…a1e5`; versionCode = commit count; versionName 0.5.0, and 9.9.9 from the variable | Manual, pass (2026-11-28) |
+| AND-M35 | APK artifact on a master push | Merge a change under `android/`; open Actions → APK | The run passes; the artifact `ebook-audio-<count>-<sha>.apk` downloads; same certificate as AND-M34 | Manual, not run yet |
+| AND-M36 | Release on a tag | Push tag `v0.5.0` | A GitHub Release `v0.5.0` with `ebook-audio-0.5.0.apk` | Manual, not run yet |
+| AND-M37 | Updates install over each other | On the phone: install the Release APK; then `adb install -r` a newer PC build | Both install without an uninstall; downloads and settings kept | Manual, not run yet |
+| AND-G09 | No key | Build in a clone without `android/keystore/` and without the variables | Builds with the standard debug key (seen in the `ci.yml` PR job) | Gap (`apk.yml`'s missing-secret failure not tested) |
+
 ## Known gaps
 
 - No instrumented (on-device) tests and no Compose UI tests in CI: screens are checked by hand (AND-M*).
