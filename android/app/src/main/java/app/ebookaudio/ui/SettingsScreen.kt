@@ -7,12 +7,6 @@ import android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.material3.RadioButton
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.semantics.Role
 import androidx.core.os.LocaleListCompat
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -94,26 +88,18 @@ fun SettingsScreen(onBack: () -> Unit, onPair: () -> Unit) {
             }
             Section(stringResource(R.string.language)) {
                 val current = remember { AppLanguage.fromTags(AppCompatDelegate.getApplicationLocales().toLanguageTags()) }
-                Column(Modifier.selectableGroup()) {
-                    for (lang in AppLanguage.entries) {
-                        Row(
-                            Modifier.fillMaxWidth().selectable(
-                                selected = lang == current,
-                                role = Role.RadioButton,
-                                onClick = {
-                                    // The activity is recreated in the new language; Settings stays open.
-                                    if (lang != current) {
-                                        AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(lang.tag))
-                                    }
-                                },
-                            ).padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            RadioButton(selected = lang == current, onClick = null)
-                            Text(languageName(lang), Modifier.padding(start = 12.dp))
+                DropdownField(
+                    label = null, value = languageName(current),
+                    items = AppLanguage.entries.map { it.name to languageName(it) },
+                    onPick = { name ->
+                        val lang = AppLanguage.valueOf(name)
+                        // The activity is recreated in the new language; Settings stays open.
+                        if (lang != current) {
+                            AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(lang.tag))
                         }
-                    }
-                }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
             Section(stringResource(R.string.bg_title)) {
                 val vendor = remember { BackgroundTips.vendorOf(Build.MANUFACTURER, Build.BRAND) }

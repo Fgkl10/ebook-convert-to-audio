@@ -457,8 +457,9 @@ languages (android A-017).
   `-placeholder`, `-aria`); `app.js` builds its dynamic text with `t(key, vars)`. Keys are written as literals, so a
   test can find every one.
 - The language is a saved choice (`localStorage` `ebookAudioLang`), else the browser's `navigator.languages`:
-  zh-TW / zh-HK / zh-MO / zh-Hant → Traditional, any other `zh` → Simplified, else English. The **EN / 简体 / 繁體**
-  buttons save the choice and reload the page, which redraws every list in the new language.
+  zh-TW / zh-HK / zh-MO / zh-Hant → Traditional, any other `zh` → Simplified, else English. A language dropdown at the
+  top (English / 简体中文 / 繁體中文, each in its own script; three buttons until after M7, changed at the user's request)
+  saves the choice and reloads the page, which redraws every list in the new language.
 - The page loads English plus the chosen language before its first render. A missing key falls back to English,
   then to the key itself.
 - The files are served by the existing `/static` mount (open to every device, like `app.js`); they are package data

@@ -155,8 +155,9 @@ steps were tried on a real phone. Unknown makers get the stock-Android steps.
 Status: Accepted · Milestone: M6a · Amends A-017
 Context: A-017 left the language to the system. On the test phone (HyperOS 2, Android 14) the user could not find
 the system's per-app language screen, and asked for a choice inside the app.
-Decision: Settings has a **Language** section: Phone's language / English / 简体中文 / 繁體中文. The language names are
-written in their own script and not translated, so each can be found whatever the current language. A tap calls
+Decision: Settings has a **Language** section with one dropdown (amended after M7 at the user's request, formerly a
+radio list; the same `ui/DropdownField` as the voice pickers): Phone's language / English / 简体中文 / 繁體中文. The language names are
+written in their own script and not translated, so each can be found whatever the current language. A pick calls
 `AppCompatDelegate.setApplicationLocales` (empty list = the phone's language), which recreates the activity in the
 new language. `AppLanguage.fromTags` maps the current locale list back to a choice, and treats zh-TW/HK/MO as
 Traditional because the system setting may store a region. To make this work on Android 8–12, `MainActivity`

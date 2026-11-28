@@ -46,12 +46,10 @@ async function loadStrings() {
   document.querySelectorAll('[data-i18n-title]').forEach(el => el.title = t(el.dataset.i18nTitle));
   document.querySelectorAll('[data-i18n-placeholder]').forEach(el => el.placeholder = t(el.dataset.i18nPlaceholder));
   document.querySelectorAll('[data-i18n-aria]').forEach(el => el.setAttribute('aria-label', t(el.dataset.i18nAria)));
-  document.querySelectorAll('#langs [data-lang]').forEach(b => {
-    b.classList.toggle('on', b.dataset.lang === LANG);
-    b.setAttribute('aria-pressed', b.dataset.lang === LANG);
-    // the choice is kept in this browser; a reload redraws every list in the new language
-    b.onclick = () => { try { localStorage.setItem('ebookAudioLang', b.dataset.lang); } catch (e) { /* this visit */ } location.reload(); };
-  });
+  const pick = $('#langs');
+  pick.value = LANG;
+  // the choice is kept in this browser; a reload redraws every list in the new language
+  pick.onchange = () => { try { localStorage.setItem('ebookAudioLang', pick.value); } catch (e) { /* this visit */ } location.reload(); };
 }
 
 const fmt = (ms) => {
