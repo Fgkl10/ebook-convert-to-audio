@@ -16,6 +16,52 @@ Why: reasons, alternatives rejected
 Consequences: trade-offs we accept
 ```
 
+## Index
+
+One row per entry; add a row when you add an entry. "Parts" names the subpackages the decision touches, so
+decisions about one part can be found without splitting this log. "Relation" shows how an entry changes another.
+
+| ID | Title | Parts | Relation |
+|---|---|---|---|
+| D-001 | Local TTS with Kokoro-82M | tts | |
+| D-002 | Synthesize one sentence at a time for exact timestamps | tts | |
+| D-003 | Gap ownership: end_ms equals the next start_ms | tts | |
+| D-004 | pysbd segmentation, 350-character cap | core | |
+| D-005 | Uniform `Book` model | core | |
+| D-006 | One m4a per chapter, AAC 64 kbps mono | tts | |
+| D-007 | Per-sentence disk cache for resumable builds | tts | |
+| D-008 | Write the manifest after every chapter | tts | |
+| D-009 | `book_id` = title slug + file hash | tts | |
+| D-010 | Single-worker in-memory job queue | server | |
+| D-011 | LAN discovery via mDNS plus a QR code | server | |
+| D-012 | Dependency-free single-file web UI | web | |
+| D-013 | CI with a lighter dependency set | tests, CI | |
+| D-014 | Synthetic EPUB fixtures built at test time | tests | |
+| D-015 | Lenient HTML parser for XHTML | core | |
+| D-016 | Skip EPUB front matter | core | |
+| D-017 | `--chapters` conversions go to their own folder | tts | Amended by D-035 |
+| D-018 | Refuse unsupported languages, judged from the text | core, tts | |
+| D-019 | Clean every book into a standard EPUB | core, server | Web part superseded by D-029 |
+| D-020 | Cut chapters only at confirmed headings | core | Refined by D-024, D-025 |
+| D-021 | Scanned PDFs read with docTR (optional) | ocr | Extended by D-030 |
+| D-022 | Quiz answers read right after each question | ocr | |
+| D-023 | OCR word fixes by rules and a word list | ocr | |
+| D-024 | A nested TOC's top level is the chapter list | core | Refines D-020 |
+| D-025 | Cut fewer rather than too many | core | Refines D-020, D-024 |
+| D-026 | Note-reference links stripped from running text | core | |
+| D-027 | Footnote paragraphs removed | core | Extends D-025, D-026 |
+| D-028 | Model caches live inside the project | tts, ocr | |
+| D-029 | Cleaning is its own step on the website | server, web | Supersedes the web part of D-019 |
+| D-030 | OCR mode, Clean and Convert pages | ocr, server, web | Extends D-021, D-029 |
+| D-031 | One TTS model for both voice languages; voice samples | tts, server | |
+| D-032 | Backend, JSON API v1 and web page as layers | server, web | Changes routes of D-029 to D-031 |
+| D-033 | Subpackages and one-way imports | all | |
+| D-034 | Per-chapter download with a readable name | server, web | |
+| D-035 | Choose chapters; add them to one library entry | tts, server, web | Amends D-017 |
+| D-036 | Safe to stop with Ctrl+C | tts, server | |
+| D-037 | Pairing a phone: token and address choice | server, web | |
+| D-038 | Cancel a conversion, chapter versions | tts, server, web | |
+
 ---
 
 ## D-001 Local TTS with Kokoro-82M

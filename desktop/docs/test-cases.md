@@ -1,7 +1,7 @@
 # Desktop component: test-case library
 
-The written test cases for `desktop/`. Each case is either **Automated** (a pytest name in
-`tests/test_desktop.py`) or **Manual**. Cases marked **Gap** describe behavior that is
+The written test cases for `desktop/`. Each case is either **Automated** (a pytest name; the
+test files are listed under each section heading) or **Manual**. Cases marked **Gap** describe behavior that is
 known to be unhandled or untested, and they are candidates for new tests or fixes.
 
 Run the automated cases with: `.venv\Scripts\python -m pytest tests/`
@@ -30,6 +30,8 @@ starts passing, pytest reports XPASS as a failure, and you remove the marker and
 
 ## Segmentation (`core/segment.py`)
 
+Tests: `tests/test_desktop.py`
+
 | ID | Case | Steps / input | Expected | Status |
 |---|---|---|---|---|
 | SEG-01 | Abbreviations and quotes | `split_paragraph('Mr. Smith went to Washington. "Is it far?" she asked. He said... no.')` | 3 sentences. "Mr." does not split, and the quote stays with "she asked." | Automated `test_abbreviations_and_quotes` |
@@ -41,6 +43,8 @@ starts passing, pytest reports XPASS as a failure, and you remove the marker and
 | SEG-07 | Empty and whitespace input | `split_text("")`, `split_text("\n \n")` | `[]` | Manual |
 
 ## Parsing (`core/parse.py`)
+
+Tests: `tests/test_parse_epub.py`
 
 | ID | Case | Steps / input | Expected | Status |
 |---|---|---|---|---|
@@ -66,6 +70,8 @@ starts passing, pytest reports XPASS as a failure, and you remove the marker and
 | PAR-16 | No XHTML parser warning | Load any XHTML-based EPUB | No `XMLParsedAsHTMLWarning`, and the extracted text is unchanged (checked on the `samples/` book: identical output for all chapters) (D-015) | Automated `test_par16_no_xml_parser_warning` |
 
 ## Cleaner (`core/normalize.py`)
+
+Tests: `tests/test_normalize.py`
 
 | ID | Case | Steps / input | Expected | Status |
 |---|---|---|---|---|
@@ -95,6 +101,8 @@ starts passing, pytest reports XPASS as a failure, and you remove the marker and
 | NORM-12 | Prologue missing from the TOC | Real chapter before the first TOC entry | **Gap (accepted):** removed as front matter, but shown in the report for review | Gap |
 
 ## Scanned PDF cleaner (`ocr/engine.py`, `ocr/scanned.py`, `ocr/words.py`)
+
+Tests: `tests/test_scanned.py`
 
 All automated cases use made-up OCR lines and generated images (`tests/scan_factory.py`) and a fake OCR engine, so CI needs no docTR.
 
@@ -128,6 +136,8 @@ All automated cases use made-up OCR lines and generated images (`tests/scan_fact
 
 ## Language check (`core/language.py`)
 
+Tests: `tests/test_language.py` (one case in `tests/test_server.py`)
+
 | ID | Case | Steps / input | Expected | Status |
 |---|---|---|---|---|
 | LANG-01 | English accepted | English prose; the `samples/` books Counselling (0.44), Smart Notes (0.40), Kokology PDF with noisy OCR (0.32) | Accepted | Automated `test_lang01_english_accepted`; real books Manual |
@@ -140,6 +150,8 @@ All automated cases use made-up OCR lines and generated images (`tests/scan_fact
 
 ## TTS (`tts/kokoro.py`)
 
+Tests: `tests/test_models_cache.py` (the other cases need the real model and stay manual)
+
 | ID | Case | Steps / input | Expected | Status |
 |---|---|---|---|---|
 | TTS-01 | Basic synthesis | `KokoroTTS().synth("Hello world.")` | Non-empty float32 mono array, plausible length (~1 s) | Manual (requires the model and GPU) |
@@ -150,6 +162,8 @@ All automated cases use made-up OCR lines and generated images (`tests/scan_fact
 | DEV-02 | Models load from the project offline | `HF_HUB_OFFLINE=1`, `KokoroTTS().synth(…)` and `ocr.make_engine()` | Both load from `models/` with no download, and nothing is written to `~/.cache` | Manual (checked after the move) |
 
 ## Build pipeline (`tts/build.py`, command `ebook-convert`)
+
+Tests: `tests/test_desktop.py` (one case in `tests/test_parse_epub.py`)
 
 | ID | Case | Steps / input | Expected | Status |
 |---|---|---|---|---|
@@ -176,6 +190,8 @@ All automated cases use made-up OCR lines and generated images (`tests/scan_fact
 | BLD-11 | Re-convert with fewer chapters | Rebuild the same file after the parser drops a chapter | **Gap:** stale `chNNN.m4a` files from the previous run remain in the folder (unreferenced) | Gap |
 
 ## Server API v1 (`server/api.py` + `server/service.py`, D-032)
+
+Tests: `tests/test_api.py`, `tests/test_server.py`
 
 All paths are under `/api/v1` unless they start with `/`. The tests are in `tests/test_server.py` (the flow) and
 `tests/test_api.py` (one test per endpoint, plus the contract).
@@ -257,6 +273,8 @@ Remote clients are TestClients with `client=("10.251.93.9", 5000)`; the adapters
 | AUTH-06 | Token over the network | Sniff the traffic of a paired phone on a plain Wi-Fi network | **Gap:** the server speaks plain HTTP, so the token can be read on an unencrypted network. ZeroTier encrypts its own traffic (D-037) | Gap |
 
 ## Web UI (`web/index.html`, `app.js`, `app.css`, served at `/static`)
+
+Tests: none automated here (the page's API use is covered by `tests/test_api.py`); every case below is manual.
 
 The rows marked "checked in Chrome" were clicked through in headless Chrome (driven over the DevTools protocol,
 using made-up files) against a live server with real Kokoro. That run is not part of CI. **Gap:** it hasn't been run
