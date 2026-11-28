@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The PC server speaks plain HTTP on whatever address the phone pairs with (a LAN or ZeroTier IP), so cleartext
+     can't be limited to a known domain (A-005). The pairing token guards the API; ZeroTier encrypts its traffic. -->
+<network-security-config xmlns:tools="http://schemas.android.com/tools">
+    <base-config cleartextTrafficPermitted="true" tools:ignore="InsecureBaseConfiguration" />
+</network-security-config>

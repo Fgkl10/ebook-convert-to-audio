@@ -17,3 +17,12 @@ samples/
 .scratch/
 server-token
 server-token.tmp
+
+# Android (android/)
+.gradle/
+.kotlin/
+local.properties
+.idea/
+*.iml
+*.apk
+captures/

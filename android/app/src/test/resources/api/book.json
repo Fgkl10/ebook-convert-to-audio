@@ -1,0 +1,127 @@
+{
+  "id": "story-63e1f08d",
+  "title": "story",
+  "author": "",
+  "cover": null,
+  "voice": "af_heart",
+  "speed": 1.0,
+  "complete": true,
+  "created": 1795829749.0,
+  "duration_ms": 13110,
+  "chapters": [
+    {
+      "index": 0,
+      "number": 1,
+      "title": "Chapter 1",
+      "audio": "ch000.m4a",
+      "duration_ms": 2420,
+      "size_bytes": 7403,
+      "updated_ms": 1795829749756,
+      "sentences": [
+        {
+          "i": 0,
+          "p": 0,
+          "text": "Chapter 1",
+          "start_ms": 300,
+          "end_ms": 990
+        },
+        {
+          "i": 1,
+          "p": 1,
+          "text": "It was a dark night.",
+          "start_ms": 990,
+          "end_ms": 1440
+        },
+        {
+          "i": 2,
+          "p": 1,
+          "text": "The wind howled loudly over the hills.",
+          "start_ms": 1440,
+          "end_ms": 2420
+        }
+      ],
+      "voice": "af_heart",
+      "speed": 1.0,
+      "text_sha1": "a442e33812fd12aae186b3d32a7b05f075bf2abf"
+    },
+    {
+      "index": 1,
+      "number": 2,
+      "title": "Chapter 2",
+      "audio": "ch001.m4a",
+      "duration_ms": 10690,
+      "size_bytes": 59642,
+      "updated_ms": 1795829749911,
+      "sentences": [
+        {
+          "i": 0,
+          "p": 0,
+          "text": "Chapter 2",
+          "start_ms": 300,
+          "end_ms": 990
+        },
+        {
+          "i": 1,
+          "p": 1,
+          "text": "Morning came at last.",
+          "start_ms": 990,
+          "end_ms": 1450
+        },
+        {
+          "i": 2,
+          "p": 1,
+          "text": "Everyone was relieved to see the sun.",
+          "start_ms": 1450,
+          "end_ms": 2420
+        },
+        {
+          "i": 3,
+          "p": 2,
+          "text": "The river ran quietly past the old mill while the morning light grew warmer.",
+          "start_ms": 2420,
+          "end_ms": 3430
+        },
+        {
+          "i": 4,
+          "p": 2,
+          "text": "The old miller got up early every day to look at the wheels, and he said that the water remembers everything that has ever fallen into it.",
+          "start_ms": 3430,
+          "end_ms": 5060
+        },
+        {
+          "i": 5,
+          "p": 2,
+          "text": "The river ran quietly past the old mill while the morning light grew warmer.",
+          "start_ms": 5060,
+          "end_ms": 6070
+        },
+        {
+          "i": 6,
+          "p": 2,
+          "text": "The old miller got up early every day to look at the wheels, and he said that the water remembers everything that has ever fallen into it.",
+          "start_ms": 6070,
+          "end_ms": 7700
+        },
+        {
+          "i": 7,
+          "p": 2,
+          "text": "The river ran quietly past the old mill while the morning light grew warmer.",
+          "start_ms": 7700,
+          "end_ms": 8710
+        },
+        {
+          "i": 8,
+          "p": 2,
+          "text": "The old miller got up early every day to look at the wheels, and he said that the water remembers everything that has ever fallen into it.",
+          "start_ms": 8710,
+          "end_ms": 10690
+        }
+      ],
+      "voice": "af_heart",
+      "speed": 1.0,
+      "text_sha1": "0f4c77b9bd6c6f4a98e2533bc451eda7bc3934b3"
+    }
+  ],
+  "chapter_selection": null,
+  "chapters_total": 2
+}

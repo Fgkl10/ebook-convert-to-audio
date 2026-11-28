@@ -33,3 +33,30 @@ jobs:
 
       - name: Run tests
         run: python -m pytest tests/ -v
+
+  # The Android app (android/, M4): unit tests, lint and a debug APK. The runner's Android SDK gets the missing
+  # platform from AGP on the first run.
+  android:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Unit tests, lint, debug APK
+        run: ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --console=plain
+
+      - name: Keep the reports when something fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-reports
+          path: android/app/build/reports/
