@@ -86,25 +86,11 @@ Sleep timer session interface (A-016): command `app.ebookaudio.SLEEP` with `slee
 `chapter` and `sleep_minutes` (1–1440); session extras `sleep_mode` and `sleep_left_ms` (real time left, whole
 seconds; absent when off). Only the app's own controller is offered the command.
 
-## API used (`/api/v1`, see `desktop/docs/architecture.md`)
+## API used (`/api/v1`)
 
-| Call | Used for |
-|---|---|
-| `GET /info` | Pairing check (`api_version`, PC name) |
-| `GET /books` | The On the PC tab |
-| `GET /books/{id}` | Book screen, downloads, version check |
-| `GET /books/{id}/files/{name}` | Audio and covers: download (with `Range`) and streaming |
-| `DELETE /books/{id}` | Delete from PC (A-014; 409 while converting) |
-| `GET /drafts`, `GET /jobs` | The Convert tab (polled every 2 s while visible) |
-| `POST /drafts` (multipart: file, voice, speed, auto, ocr) | Upload a book to clean |
-| `POST /drafts/cleaned` (multipart: file, voice, speed) | Upload an already-cleaned .std.epub; converts at once |
-| `GET /drafts/{id}`, `GET /drafts/{id}/chapters/{i}` | Review: report, picks, chapter text |
-| `POST /drafts/{id}/approve` (`{voice, speed, chapters}`; `null` = all) | Convert |
-| `POST /drafts/{id}/cancel`, `POST /jobs/{id}/cancel`, `DELETE /drafts/{id}` | Cancel, discard |
-| `GET /voices/{voice}/sample` | ▶ voice sample (token in the query) |
-
-Every request sends `Authorization: Bearer <token>`; media URLs carry `?token=` because ExoPlayer and Coil fetch
-them themselves.
+The routes and the calls this app makes (with what each is used for) are in
+[`desktop/docs/api.md`](../../desktop/docs/api.md#what-the-android-app-calls). The app's models mirror it, checked by
+AND-01 / AND-03 (A-010).
 
 ## Build
 

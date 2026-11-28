@@ -17,6 +17,17 @@ Each `<component>/docs/` folder contains:
 | `decisions.md` | Decision log: one entry per design decision with Context / Decision / Why / Consequences |
 | `test-cases.md` | Written test-case library: ID, area, preconditions, steps, expected result, and whether it is automated (link the test) or manual |
 
+Two more files where they apply:
+- `decisions-archive.md`: settled decisions that are unlikely to change, moved out of `decisions.md`. The index
+  table in `decisions.md` lists every entry and says which file holds it. New entries always go into
+  `decisions.md`.
+- `desktop/docs/api.md`: the one description of the HTTP API (routes, errors, pairing, and what each client calls).
+  Other docs link to it instead of copying it.
+
+Reading the docs:
+- Before reading a long doc, look at its index (the decision index, the `##` headings) or search it for the keyword,
+  then read only the relevant section instead of the whole file.
+
 Keep the docs in sync with the code:
 - When you add a component, create its `docs/` folder with all four files.
 - When a change alters a flow, a module boundary, a data format, or makes a design choice,
