@@ -1,0 +1,44 @@
+{
+  "api_version": 1,
+  "name": "my-pc",
+  "url": "http://192.0.2.10:8000",
+  "qr_svg": "<svg/>",
+  "urls": [
+    {
+      "address": "192.0.2.10",
+      "adapter": "Wi-Fi",
+      "url": "http://192.0.2.10:8000",
+      "pair_url": "http://192.0.2.10:8000/#token=TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+      "qr_svg": "<svg/>"
+    },
+    {
+      "address": "198.51.100.7",
+      "adapter": "ZeroTier Virtual Port",
+      "url": "http://198.51.100.7:8000",
+      "pair_url": "http://198.51.100.7:8000/#token=TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+      "qr_svg": "<svg/>"
+    }
+  ],
+  "voices": [
+    "af_heart",
+    "af_bella",
+    "af_nicole",
+    "af_sarah",
+    "af_sky",
+    "am_michael",
+    "am_fenrir",
+    "am_puck",
+    "am_adam",
+    "bf_emma",
+    "bf_isabella",
+    "bm_george",
+    "bm_fable",
+    "bm_lewis"
+  ],
+  "default_voice": "af_heart",
+  "ocr_modes": [
+    "auto",
+    "always",
+    "never"
+  ]
+}

@@ -76,7 +76,7 @@ flowchart LR
     LIB[("library/&lt;book_id&gt;/<br/>book.json, chNNN.m4a, cover")]
     UP[("drafts/&lt;id&gt;/<br/>upload, book.std.epub,<br/>report.json, draft.json")]
     UI["desktop/web: index.html + app.js + app.css<br/>web UI + player (display only)"]
-    PHONE["Phone / browser<br/>(Android app in M4+)"]
+    PHONE["Phone / browser<br/>(Android app, android/)"]
     MDNS["zeroconf<br/>_ebookaudio._tcp"]
 
     NORM -- "PDF read with OCR<br/>(lazy import)" --> SCAN --> OCRM
@@ -216,7 +216,8 @@ The web page and the Android app use the same API. All paths are under `/api/v1`
 `/openapi.json` (browsable at `/docs`). A breaking change goes into a new `/api/v2`; v1 keeps working. Uploads are
 multipart, every other body is JSON, and every error is `{"detail": "..."}` with 400 (invalid input), 404 (unknown
 id), 409 (wrong state) or 422 (a field of the wrong type, where `detail` is FastAPI's list). `test_api01` pins the exact
-route list.
+route list. `tests/test_android_contract.py` pins the shape of `/info`, `/books` and `/books/{id}` that the Android
+app decodes (android/docs A-010, AND-01): a field change there means updating the app's models and its fixtures.
 
 Every route needs pairing (D-037). From the PC's own page (loopback, with a local `Host` and `Origin`), nothing is
 needed. From any other device, the

@@ -1,12 +1,12 @@
 .venv/
 __pycache__/
 *.pyc
-library/
-cache/
-models/
+/library/
+/cache/
+/models/
 *.wav
-uploads/
-drafts/
+/uploads/
+/drafts/
 cache_install.log
 *.egg-info/
 build/
@@ -17,3 +17,12 @@ samples/
 .scratch/
 server-token
 server-token.tmp
+
+# Android (android/)
+.gradle/
+.kotlin/
+local.properties
+.idea/
+*.iml
+*.apk
+captures/

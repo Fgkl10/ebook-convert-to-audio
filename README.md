@@ -19,7 +19,7 @@ Convert ebooks (EPUB / PDF / TXT) into audiobooks on a Windows PC using a **loca
 | `desktop/tts/` | Kokoro speech, sentence timing, the converter |
 | `desktop/server/` | Backend and the JSON API under `/api/v1` |
 | `desktop/web/` | The web page (HTML/JS/CSS) |
-| `android/` | Kotlin app (Media3 player, sentence sync) — *coming in M4/M5* |
+| `android/` | Android app: pair with the PC, download books, play offline in the background (M4a); sentence sync in M5 |
 
 ## Setup (Windows)
 Requires Python 3.10–3.12, ffmpeg on PATH, NVIDIA GPU recommended.
@@ -63,6 +63,27 @@ isolation), connect both through a VPN such as **ZeroTier One**. Then open "Othe
 the ZeroTier address, or type any address and press **Show QR**. `ebook-server --advertise 10.x.x.x` (or
 `EBOOK_AUDIO_ADVERTISE`) makes another address the default.
 
+The phone must also get through the PC's firewall: allow inbound TCP on the server's port (8000 by default) for the
+network the phone uses (ZeroTier counts as a private network on Windows).
+
+### Android app
+Build it on the PC (JDK 21, e.g. Android Studio's `jbr`, and the Android SDK; Gradle downloads the rest):
+```powershell
+$env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"   # wherever Android Studio is installed
+cd android
+.\gradlew :app:assembleDebug        # -> app\build\outputs\apk\debug\app-debug.apk
+```
+Install it over USB. On Xiaomi HyperOS: Settings → My device → All specs → tap **OS version** 7 times; then
+Additional settings → Developer options → **USB debugging** and **Install via USB** (needs a Mi account). Connect the
+cable, allow debugging, then run `adb install -r app\build\outputs\apk\debug\app-debug.apk` and tap **Install** on
+the phone's prompt within 10 seconds.
+
+In the app, scan the QR code on the PC's page (see "Connecting a phone"). Books on the **On the PC** tab stream or
+download; downloaded books play offline. For playback with the screen off on HyperOS, set the app's battery saver to
+**No restrictions** and turn on **Autostart** (the app's Settings screen has a button to App info). The app uses no
+Google services. Details: `android/docs/`.
+
 ## Roadmap
 - M1 TTS proof · M2 converter CLI · M3 server + web UI
-- M4 Android player (Media3, background / lock screen) · M5 sentence sync · M6 polish
+- M4a Android player (pairing, downloads, background / lock screen) · M4b manage conversions from the phone
+- M5 sentence sync · M6 polish
