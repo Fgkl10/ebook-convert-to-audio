@@ -25,6 +25,12 @@ button.primary { background: var(--accent); color:#fff; border-color: var(--acce
 .cover { aspect-ratio: 2/3; width:100%; object-fit:cover; border-radius:8px; background:var(--line); display:block; }
 .book .t { font-weight:600; font-size:14px; margin-top:6px; line-height:1.3; }
 #qr svg { width: 110px; height: 110px; background:#fff; padding:6px; border-radius:8px; }
+.addrbox { margin-top: 6px; font-size: .95em; }
+.addrbox summary { cursor: pointer; }
+.addrbox .row { margin-top: 6px; gap: 6px; }
+.addr { padding: 3px 8px; }
+.addr.on { outline: 2px solid var(--accent); }
+#addrin { width: 230px; }
 #reader { display:none; }
 .chapters { max-height: 200px; overflow:auto; }
 .chapters div { padding:4px 8px; border-radius:6px; cursor:pointer; }

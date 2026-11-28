@@ -15,3 +15,5 @@ build/
 pytest-cache-files-*/
 samples/
 .scratch/
+server-token
+server-token.tmp

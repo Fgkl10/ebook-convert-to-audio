@@ -21,10 +21,11 @@ from typing import BinaryIO
 
 from ..core.normalize import OCR_MODES, normalize, write_std_epub
 from ..core.parse import load_book
-from ..tts.build import (LEFTOVER_SUFFIXES, ROOT, build_book, chapter_number, chapter_text_sha1, encode_m4a,
-                         make_book_id, remove_leftovers, select_chapters)
+from ..tts.build import (LEFTOVER_SUFFIXES, ROOT, Cancelled, build_book, chapter_number, chapter_text_sha1,
+                         encode_m4a, make_book_id, remove_leftovers, select_chapters)
 from ..tts.kokoro import DEFAULT_VOICE, VOICES
 
+CANCELLED_MESSAGE = "Cancelled: approve again to resume (finished chapters and sentences are kept)."
 LIBRARY = ROOT / "library"
 DRAFTS = ROOT / "drafts"
 SAMPLES = ROOT / "cache" / "voice-samples"
@@ -80,6 +81,7 @@ class Drafts:
     def __init__(self, root: Path) -> None:
         self.root = root
         self.drafts: dict[str, dict] = {}
+        self._book_info: dict[str, tuple] = {}  # draft id -> library_state() cache
         self.queue: "queue.Queue[str]" = queue.Queue()
         self.lock = threading.Lock()
         self._load()
@@ -189,26 +191,53 @@ class Drafts:
 
     def public(self) -> list[dict]:
         with self.lock:
-            return [dict(d) for d in sorted(self.drafts.values(), key=lambda d: d["created"], reverse=True)]
+            drafts = [dict(d) for d in sorted(self.drafts.values(), key=lambda d: d["created"], reverse=True)]
+        for d in drafts:  # for "converted 3 of 12" on the list
+            d["converted"] = self.library_state(d["id"])[0]
+        return drafts
 
     def detail(self, draft_id: str) -> dict:
         """The draft plus its cleaning report (None until cleaned)."""
         draft = self.get(draft_id)
         report = self.report(draft_id) if draft["status"] != "cleaning" and draft["chapters"] else None
-        converted, book_voice, book_speed = [], None, None
-        if report is not None:
-            book = _std_book(self, draft_id)
-            m = _library_manifest(make_book_id(book, self.root / draft_id / STD))
+        converted, book_voice, book_speed = self.library_state(draft_id) if report is not None else ([], None, None)
+        return {**draft, "report": report, "converted": converted, "book_voice": book_voice, "book_speed": book_speed}
+
+    def library_state(self, draft_id: str) -> tuple[list[int], str | None, float | None]:
+        """(chapters of this cleaned book already in its library book, that book's voice, its speed). A chapter edited
+        since it was converted doesn't count; books before D-035 have no hash, so theirs do.
+        Cached per draft by the cleaned file's and book.json's mtimes: the draft list asks every 2 s."""
+        draft = self.drafts.get(draft_id)
+        std = self.root / draft_id / STD
+        if not draft or not draft["chapters"] or draft["status"] == "cleaning" or not std.exists():
+            return [], None, None
+        std_key = std.stat().st_mtime_ns
+        cached = self._book_info.get(draft_id)
+        if cached is None or cached[0] != std_key:  # parse the cleaned book once per version
+            book = load_book(std)
+            cached = (std_key, make_book_id(book, std), [chapter_text_sha1(c.text) for c in book.chapters], None)
+        _, book_id, hashes, last = cached
+        manifest = LIBRARY / book_id / "book.json"
+        man_key = manifest.stat().st_mtime_ns if manifest.exists() else None
+        if last is None or last[0] != man_key:
+            m = _library_manifest(book_id) if man_key is not None else None
+            converted, voice, speed = [], None, None
             if m is not None:
-                book_voice, book_speed = m.get("voice"), m.get("speed")
+                voice, speed = m.get("voice"), m.get("speed")
                 for pos, c in enumerate(m.get("chapters", [])):
                     n = chapter_number(c, pos, m)
-                    # a chapter edited since it was converted counts as not converted; books before D-035 have no hash
-                    if 1 <= n <= len(book.chapters) and c.get("text_sha1") in (
-                            None, chapter_text_sha1(book.chapters[n - 1].text)):
+                    if 1 <= n <= len(hashes) and c.get("text_sha1") in (None, hashes[n - 1]):
                         converted.append(n)
-        return {**draft, "report": report, "converted": sorted(set(converted)),
-                "book_voice": book_voice, "book_speed": book_speed}
+            last = (man_key, (sorted(set(converted)), voice, speed))
+        self._book_info[draft_id] = (std_key, book_id, hashes, last)
+        return last[1]
+
+    def cancel(self, draft_id: str) -> dict:
+        """Stop this draft's conversion (queued or running); the draft goes back to review."""
+        draft = self.get(draft_id)
+        if draft["status"] not in ("queued", "converting") or not draft["job_id"]:
+            raise Conflict(f"Nothing to cancel: the draft is {draft['status']}")
+        return jobs.cancel(draft["job_id"])
 
     def report(self, draft_id: str) -> dict:
         try:
@@ -346,7 +375,7 @@ class Jobs:
             "id": uuid.uuid4().hex[:12], "file": filename, "voice": voice, "speed": speed,
             "status": "queued", "done": 0, "total": 0, "message": "Waiting", "book_id": book_id,
             "error": None, "created": time.time(), "draft_id": draft_id, "_path": str(path),
-            "_chapters": chapters,
+            "_chapters": chapters, "_cancel": threading.Event(),
         }
         with self.lock:
             self.jobs[job["id"]] = job
@@ -387,11 +416,35 @@ class Jobs:
         tts.voice, tts.speed = voice, speed  # only the conversion worker sets these; samples pass their own
         return tts
 
+    def cancel(self, job_id: str) -> dict:
+        """Stop a conversion. Queued: it never starts. Running: it stops at the next sentence (build_book's cancel
+        event). The server and the loaded model keep going; the draft goes back to review, and approving it again
+        resumes from the finished chapters and cached sentences (D-038)."""
+        with self.lock:
+            job = self.jobs.get(job_id)
+            if job is None:
+                raise NotFound("No such job")
+            if job["status"] == "queued":
+                job.update(status="cancelled", message="Cancelled before it started")
+            elif job["status"] == "running":
+                job["_cancel"].set()
+                job["message"] = "Cancelling…"
+            else:
+                raise Conflict(f"This conversion has already ended ({job['status']})")
+            queued = job["status"] == "cancelled"
+            public = self._public(job)
+        if queued and job["draft_id"]:
+            drafts.update(job["draft_id"], status="review", message=CANCELLED_MESSAGE)
+        return public
+
     def _worker(self) -> None:
         while True:
             job_id = self.queue.get()
             job = self.jobs[job_id]
-            job["status"] = "running"
+            with self.lock:
+                if job["status"] == "cancelled":  # cancelled while it waited in the queue
+                    continue
+                job["status"] = "running"
             draft_id = job["draft_id"]
             if draft_id:
                 drafts.update(draft_id, status="converting", message="Converting")
@@ -404,10 +457,14 @@ class Jobs:
                 job["message"] = "Loading TTS model"
                 tts = self._get_tts(job["voice"], job["speed"])
                 out = build_book(job["_path"], LIBRARY, job["voice"], job["speed"], progress, tts=tts,
-                                 chapters=job["_chapters"], merge=True)
+                                 chapters=job["_chapters"], merge=True, cancel=job["_cancel"])
                 job.update(status="done", book_id=out.name, message="Done")
                 if draft_id:
                     drafts.update(draft_id, status="done", book_id=out.name, message="Converted")
+            except Cancelled:
+                job.update(status="cancelled", message="Cancelled")
+                if draft_id:
+                    drafts.update(draft_id, status="review", message=CANCELLED_MESSAGE)
             except Exception as e:  # noqa: BLE001 - report any failure to the client
                 traceback.print_exc()
                 job.update(status="error", error=str(e), message="Failed")
@@ -471,9 +528,18 @@ def list_books() -> list[dict]:
 
 def read_book(book_id: str) -> dict:
     """The book's manifest (book.json): chapters, their audio files and sentence timestamps."""
-    m = _read_manifest(_book_dir(book_id))
+    d = _book_dir(book_id)
+    m = _read_manifest(d)
     for pos, c in enumerate(m.get("chapters", [])):
         c["number"] = chapter_number(c, pos, m)  # books before D-035 have none
+        if "size_bytes" not in c or "updated_ms" not in c:  # books before D-038: from the file itself
+            try:
+                st = (d / c["audio"]).stat()
+                c.setdefault("size_bytes", st.st_size)
+                c.setdefault("updated_ms", st.st_mtime_ns // 1_000_000)
+            except OSError:
+                c.setdefault("size_bytes", 0)
+                c.setdefault("updated_ms", 0)
     return m
 
 
@@ -532,7 +598,10 @@ def download_name(book_id: str, name: str) -> str:
 
 
 def delete_book(book_id: str) -> None:
-    shutil.rmtree(_book_dir(book_id))
+    d = _book_dir(book_id)
+    if book_id in jobs.busy_books():  # the worker is writing into the folder (D-038)
+        raise Conflict("This book is being converted: cancel the conversion first")
+    shutil.rmtree(d)
 
 
 # ---------------------------------------------------------------- voice samples

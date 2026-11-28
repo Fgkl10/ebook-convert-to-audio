@@ -21,6 +21,7 @@ STATIC = PROJECT / "desktop" / "web"
 # The whole v1 surface. Changing the API means changing this list on purpose (the Android app depends on it).
 EXPECTED_ROUTES = {
     ("GET", "/api/v1/info"),
+    ("GET", "/api/v1/qr"),
     ("GET", "/api/v1/voices/{voice}/sample"),
     ("POST", "/api/v1/drafts"),
     ("POST", "/api/v1/drafts/cleaned"),
@@ -30,9 +31,11 @@ EXPECTED_ROUTES = {
     ("GET", "/api/v1/drafts/{draft_id}/std.epub"),
     ("PUT", "/api/v1/drafts/{draft_id}/std.epub"),
     ("POST", "/api/v1/drafts/{draft_id}/approve"),
+    ("POST", "/api/v1/drafts/{draft_id}/cancel"),
     ("DELETE", "/api/v1/drafts/{draft_id}"),
     ("GET", "/api/v1/jobs"),
     ("GET", "/api/v1/jobs/{job_id}"),
+    ("POST", "/api/v1/jobs/{job_id}/cancel"),
     ("GET", "/api/v1/books"),
     ("GET", "/api/v1/books/{book_id}"),
     ("GET", "/api/v1/books/{book_id}/files/{name}"),
@@ -87,7 +90,7 @@ def test_api03_page_calls_only_existing_v1_routes():
     patterns = [re.compile("^" + re.sub(r"\{[^}]+\}", "[^/]+", p.removeprefix(V1)) + "$")
                 for _m, p in EXPECTED_ROUTES]
     for path in paths:
-        concrete = re.sub(r"\$\{[^}]+\}", "x", path)
+        concrete = re.sub(r"\$\{[^}]+\}", "x", path).split("?")[0]  # a query string is not part of the route
         assert any(p.match(concrete) for p in patterns), path
     html = (STATIC / "index.html").read_text(encoding="utf-8")
     assert "<script>" not in html and "<style>" not in html  # markup only; code and style are separate files
@@ -242,7 +245,7 @@ def test_api18_chapter_download_name(api, book):  # noqa: F811
     assert api.get(f"{V1}/books/{book.name}/files/missing.m4a", params={"download": 1}).status_code == 404
     assert api.get(f"{V1}/books/nope/files/ch000.m4a", params={"download": 1}).status_code == 404
     js = (STATIC / "app.js").read_text(encoding="utf-8")  # the reader's per-chapter button uses it
-    assert re.search(r"files/\$\{esc\(c\.audio\)\}\?download=1\" download", js)
+    assert re.search(r"files/\$\{esc\(c\.audio\)\}\?download=1`\)\}\" download", js)  # through tok() (D-037)
     assert "a.dl').forEach(a => a.onclick = e => e.stopPropagation())" in js  # downloading doesn't switch chapter
 
 
@@ -387,7 +390,7 @@ def test_api23_interrupted_chapter_write_is_cleaned_and_resumes(api, tmp_path, m
 def test_api24_server_start_cleans_and_exits_promptly(monkeypatch):
     from desktop.server import app as server_app
     seen = {}
-    monkeypatch.setattr(server_app, "advertise", lambda port: None)
+    monkeypatch.setattr(server_app, "advertise", lambda *args: None)
     monkeypatch.setattr(service, "clean_leftovers", lambda: seen.setdefault("cleaned", True) and [])
     monkeypatch.setattr("uvicorn.run", lambda app, **kw: seen.update(kw))
     monkeypatch.setattr("sys.argv", ["ebook-server", "--port", "8799"])
@@ -395,6 +398,87 @@ def test_api24_server_start_cleans_and_exits_promptly(monkeypatch):
     assert seen["cleaned"] and seen["port"] == 8799
     # the first Ctrl+C waits at most this long for open downloads before closing them
     assert seen["timeout_graceful_shutdown"] == server_app.SHUTDOWN_GRACE_S <= 2
+
+
+# ---------------------------------------------------------------- cancel, delete while converting (D-038)
+
+def _held_tts():
+    """A TTS that waits at every sentence until the gate opens; `started` is set at the first one."""
+    gate, started = threading.Event(), threading.Event()
+
+    class HeldTTS(type(service.jobs.tts)):
+        def synth(self, text, voice=None, speed=None):
+            started.set()
+            gate.wait(10)
+            return super().synth(text, voice, speed)
+
+    return HeldTTS(), gate, started
+
+
+def test_api25_cancel_running_and_queued_conversions(api):  # noqa: F811
+    tts, gate, started = _held_tts()
+    service.jobs.tts = tts
+    first = _upload(api, "story.txt", STORY.encode())
+    second = _upload(api, "other.txt", STORY.replace("dark night", "bright day").encode())
+    _wait(api, first, "review"), _wait(api, second, "review")
+    running = api.post(f"{V1}/drafts/{first}/approve", json={}).json()["job_id"]
+    assert started.wait(10)  # held at its first sentence
+    queued = api.post(f"{V1}/drafts/{second}/approve", json={}).json()["job_id"]
+    try:
+        r = api.post(f"{V1}/jobs/{queued}/cancel")
+        assert r.status_code == 200 and r.json()["status"] == "cancelled"
+        d = api.get(f"{V1}/drafts/{second}").json()
+        assert d["status"] == "review" and d["message"] == service.CANCELLED_MESSAGE
+        r = api.post(f"{V1}/drafts/{first}/cancel")  # the draft's own button
+        assert r.status_code == 200 and r.json()["id"] == running and r.json()["message"] == "Cancelling…"
+    finally:
+        gate.set()
+    d = _wait(api, first, "review")
+    assert d["message"] == service.CANCELLED_MESSAGE and d["error"] is None
+    assert api.get(f"{V1}/jobs/{running}").json()["status"] == "cancelled"
+    assert api.get(f"{V1}/jobs/{queued}").json()["done"] == 0  # never started
+    for path in (f"/jobs/{running}/cancel", f"/jobs/{queued}/cancel", f"/drafts/{first}/cancel"):
+        r = api.post(V1 + path)
+        assert r.status_code == 409 and isinstance(r.json()["detail"], str), path
+    assert api.post(f"{V1}/jobs/nope/cancel").status_code == 404
+    made_before = {text for _voice, text in tts.calls}
+    assert made_before  # the sentence that was being made when the cancel came is cached
+
+    resumed = type(tts).__mro__[1]()  # a plain RecordingTTS: the server keeps working, approving again resumes
+    service.jobs.tts = resumed
+    d = _approve(api, first)
+    assert d["status"] == "done" and d["converted"] == [1, 2]
+    assert not made_before & {text for _voice, text in resumed.calls}
+    assert api.get(f"{V1}/books").status_code == 200
+
+
+def test_api26_no_delete_while_converting(api):  # noqa: F811
+    draft_id = _upload(api, "story.txt", STORY.encode())
+    _wait(api, draft_id, "review")
+    book_id = _approve(api, draft_id, chapters=[1])["book_id"]
+    tts, gate, started = _held_tts()
+    service.jobs.tts = tts
+    api.post(f"{V1}/drafts/{draft_id}/approve", json={"chapters": [2]})
+    try:
+        r = api.delete(f"{V1}/books/{book_id}")
+        assert r.status_code == 409 and "cancel" in r.json()["detail"]
+        assert (service.LIBRARY / book_id / "book.json").exists()
+        api.post(f"{V1}/drafts/{draft_id}/cancel")
+    finally:
+        gate.set()
+    _wait(api, draft_id, "review")
+    assert api.delete(f"{V1}/books/{book_id}").json() == {"ok": True}
+
+
+def test_api27_draft_list_says_how_many_chapters_are_converted(api):  # noqa: F811
+    draft_id = _upload(api, "story.txt", STORY.encode())
+    _wait(api, draft_id, "review")
+    assert api.get(f"{V1}/drafts").json()[0]["converted"] == []
+    _approve(api, draft_id, chapters=[2])
+    [d] = api.get(f"{V1}/drafts").json()
+    assert d["converted"] == [2] and d["chapters"] == 2
+    js = (STATIC / "app.js").read_text(encoding="utf-8")
+    assert "converted ${d.converted.length} of ${d.chapters}" in js
 
 
 def test_api14_delete_book(api, book):  # noqa: F811

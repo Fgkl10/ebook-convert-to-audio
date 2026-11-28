@@ -13,8 +13,18 @@
       <div>
         <h1>Ebook Audio</h1>
         <div class="muted">Convert ebooks to audiobooks with Kokoro TTS. Phone app connects to: <b id="url">…</b></div>
+        <div class="err" id="unpaired" hidden>This device isn't paired: scan the QR code shown on the PC's page.</div>
+        <details class="addrbox">
+          <summary class="muted">Other addresses (pick the one your phone can reach, e.g. ZeroTier)</summary>
+          <div id="addrs" class="row"></div>
+          <form id="addrform" class="row">
+            <input id="addrin" placeholder="Type an address, e.g. 10.251.93.75" aria-label="Type an address" required>
+            <button>Show QR</button>
+          </form>
+          <div class="muted formmsg" id="addrmsg"></div>
+        </details>
       </div>
-      <div id="qr"></div>
+      <div id="qr" title="Scan with the phone to pair it"></div>
     </div>
 
     <nav class="tabs">

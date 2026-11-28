@@ -2,6 +2,22 @@
 // converts. The Android app uses the same API.
 const API = '/api/v1';
 const $ = (s) => document.querySelector(s);
+
+// Pairing (D-037): a phone opens the QR code's address, …/#token=…. The token is kept in this browser and sent
+// with every API call: a header on fetch, ?token= on URLs the browser loads itself (audio, images, downloads).
+// The PC's own browser needs no token.
+let TOKEN = '';
+try { TOKEN = localStorage.getItem('ebookAudioToken') || ''; } catch (e) { /* storage blocked: header-less */ }
+if (location.hash.startsWith('#token=')) {
+  TOKEN = decodeURIComponent(location.hash.slice('#token='.length));
+  try { localStorage.setItem('ebookAudioToken', TOKEN); } catch (e) { /* kept for this visit only */ }
+  history.replaceState(null, '', location.pathname + location.search);  // the token leaves the address bar
+}
+const tok = (url) => TOKEN ? `${url}${url.includes('?') ? '&' : '?'}token=${encodeURIComponent(TOKEN)}` : url;
+const plainFetch = window.fetch.bind(window);
+window.fetch = (url, opts = {}) => TOKEN && String(url).startsWith(API)
+  ? plainFetch(url, { ...opts, headers: { ...(opts.headers || {}), Authorization: `Bearer ${TOKEN}` } })
+  : plainFetch(url, opts);
 const fmt = (ms) => { const s = Math.round(ms/1000), h = Math.floor(s/3600), m = Math.floor(s%3600/60); return h ? `${h}h ${m}m` : `${m}m ${s%60}s`; };
 const esc = (t) => t.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
@@ -13,12 +29,49 @@ async function errText(r) {
 const getJSON = async (path) => (await fetch(API + path)).json();
 
 async function loadInfo() {
-  const info = await getJSON('/info');
-  $('#url').textContent = info.url;
-  if (info.qr_svg) $('#qr').innerHTML = info.qr_svg;
+  const r = await fetch(`${API}/info`);
+  if (r.status === 401) {  // another device without (or with an old) token
+    $('#url').textContent = 'not paired';
+    $('#unpaired').hidden = false;
+    return;
+  }
+  const info = await r.json();
+  addrs = info.urls;
   const opts = info.voices.map(v => `<option ${v===info.default_voice?'selected':''}>${v}</option>`).join('');
   ['#voice', '#rvvoice', '#stdvoice'].forEach(s => $(s).innerHTML = opts);
+  // The QR code starts on the default (local) address, or on the one picked last time in this browser.
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem('ebookAudioAddress') || '{}'); } catch (e) { /* none */ }
+  if (saved.typed && !await addTyped(saved.typed)) saved = {};
+  pickAddress(Math.max(0, addrs.findIndex(a => a.address === saved.address)));
 }
+
+// ---------------- the phone's address: the QR code can show any of the PC's addresses, or one typed by hand
+let addrs = [];  // [{address, adapter, url, pair_url, qr_svg}], the default first
+function pickAddress(i) {
+  const a = addrs[i];
+  $('#url').textContent = a.url;
+  $('#qr').innerHTML = a.qr_svg || '';
+  $('#addrs').innerHTML = addrs.map((x, k) => `<button type="button" class="addr${k === i ? ' on' : ''}" data-k="${k}"
+    aria-pressed="${k === i}">${esc(x.address)} <span class="muted">${k === 0 && x.adapter !== 'typed' ? 'default · ' : ''}${esc(x.adapter || 'other')}</span></button>`).join('');
+  document.querySelectorAll('#addrs .addr').forEach(b => b.onclick = () => pickAddress(+b.dataset.k));
+  try {
+    localStorage.setItem('ebookAudioAddress', JSON.stringify(
+      { address: a.address, typed: a.adapter === 'typed' ? a.typedAs : undefined }));
+  } catch (e) { /* not remembered */ }
+}
+async function addTyped(text) {
+  const r = await fetch(`${API}/qr?address=${encodeURIComponent(text)}`);
+  if (!r.ok) { formMsg('#addrmsg', await errText(r), true); return false; }
+  addrs = addrs.filter(a => a.adapter !== 'typed');  // one typed address at a time
+  addrs.push({ ...(await r.json()), typedAs: text });
+  return true;
+}
+$('#addrform').onsubmit = async (e) => {
+  e.preventDefault();
+  formMsg('#addrmsg', '');
+  if (await addTyped($('#addrin').value)) { pickAddress(addrs.length - 1); $('#addrin').value = ''; }
+};
 const show = (id) => ['#home', '#review', '#reader'].forEach(s => $(s).style.display = s === id ? 'block' : 'none');
 
 // ---------------- tabs: Clean | Convert | Library (kept in the URL hash, so a reload stays on the tab)
@@ -39,7 +92,7 @@ document.querySelectorAll('.hear').forEach(btn => btn.onclick = async () => {
   sampleAudio.pause(); resetSample();
   if (playing) return;  // a second click stops it
   sampleBtn = btn; btn.textContent = '…';  // the first sample of a session also loads the model (~10 s)
-  sampleAudio.src = `${API}/voices/${$(btn.dataset.for).value}/sample`;
+  sampleAudio.src = tok(`${API}/voices/${$(btn.dataset.for).value}/sample`);
   try { await sampleAudio.play(); if (sampleBtn === btn) btn.textContent = '■'; }
   catch (e) { resetSample(); alert('Could not play the voice sample.'); }
 });
@@ -49,7 +102,7 @@ async function loadBooks() {
   const books = await getJSON('/books');
   $('#books').innerHTML = books.length ? books.map(b => `
     <div class="book" data-id="${b.id}">
-      ${b.cover ? `<img class="cover" src="${API}/books/${b.id}/files/${b.cover}">` : `<div class="cover"></div>`}
+      ${b.cover ? `<img class="cover" src="${tok(`${API}/books/${b.id}/files/${b.cover}`)}">` : `<div class="cover"></div>`}
       <div class="t">${esc(b.title)}</div>
       <div class="muted">${esc(b.author||'')}<br>${fmt(b.duration_ms)} · ${b.chapters_total && b.chapters < b.chapters_total ? `${b.chapters} of ${b.chapters_total}` : b.chapters} ch${b.converting ? ' · converting…' : ''}</div>
     </div>`).join('') : '<div class="muted">No books yet.</div>';
@@ -68,19 +121,34 @@ function renderDrafts(drafts) {
   document.querySelectorAll('[data-review]').forEach(el => el.onclick = () => openReview(el.dataset.review));
   document.querySelectorAll('[data-open]').forEach(el => el.onclick = () => openBook(el.dataset.open));
   document.querySelectorAll('[data-discard]').forEach(el => el.onclick = () => discard(el.dataset.discard));
+  document.querySelectorAll('[data-cancel]').forEach(el => el.onclick = () => cancelConversion(`/drafts/${el.dataset.cancel}`));
+}
+
+// Stop a conversion (D-038): the server keeps running; finished chapters and sentences are kept for a resume.
+async function cancelConversion(path) {
+  if (!confirm('Cancel this conversion? Finished chapters stay in the library; approving again resumes ' +
+               'where it stopped.')) return;
+  const r = await fetch(`${API}${path}/cancel`, { method: 'POST' });
+  if (!r.ok) alert(await errText(r));
+  pollNow();
 }
 
 function draftList(target, drafts, empty) {
   $(target).innerHTML = drafts.length ? `<div class="card">${drafts.map(d => {
     const pct = d.total ? (100*d.done/d.total).toFixed(0) : 0;
     const info = d.chapters ? ` · ${d.chapters} ch${d.checks ? ` · <b>${d.checks} to check</b>` : ''}` : '';
+    // "converted 3 of 12" when only some chapters are in the library (D-035)
+    const some = d.converted && d.converted.length && d.converted.length < d.chapters
+      ? `converted ${d.converted.length} of ${d.chapters}` : '';
+    const label = some && d.status === 'done' ? some : (DRAFT_STATUS[d.status] || d.status) + (some ? ` · ${some}` : '');
     const btns = [
+      ['queued', 'converting'].includes(d.status) ? `<button data-cancel="${d.id}">Cancel</button>` : '',
       ['review', 'done'].includes(d.status) ? `<button data-review="${d.id}">Review</button>` : '',
       d.status === 'done' && d.book_id ? `<button data-open="${d.book_id}">Listen</button>` : '',
       ['review', 'done', 'error'].includes(d.status) ? `<button data-discard="${d.id}">Discard</button>` : '',
     ].join(' ');
     return `<div class="job"><div class="row" style="justify-content:space-between"><b>${esc(d.file)}</b>
-        <span class="muted">${DRAFT_STATUS[d.status] || d.status}${info}</span></div>
+        <span class="muted">${label}${info}</span></div>
       <div class="row" style="justify-content:space-between"><span class="muted ${d.error?'err':''}">${esc(d.error || d.message)}</span><span>${btns}</span></div>
       ${d.status==='cleaning' && d.total ? `<div class="bar"><div style="width:${pct}%"></div></div>` : ''}</div>`;
   }).join('')}</div>` : `<div class="muted">${empty}</div>`;
@@ -92,12 +160,14 @@ async function refresh() {
   try {
     const [jobs, drafts] = await Promise.all([getJSON('/jobs'), getJSON('/drafts')]);
     renderDrafts(drafts);
-    const active = jobs.filter(j => j.status !== 'done' || Date.now()/1000 - j.created < 600);
+    const active = jobs.filter(j => !['done', 'cancelled'].includes(j.status) || Date.now()/1000 - j.created < 600);
     $('#jobs').innerHTML = active.length ? `<div class="card">${active.map(j => {
       const pct = j.total ? (100*j.done/j.total).toFixed(1) : 0;
+      const stop = ['queued', 'running'].includes(j.status) ? `<button data-canceljob="${j.id}">Cancel</button>` : '';
       return `<div class="job"><div class="row" style="justify-content:space-between"><b>${esc(j.file)}</b><span class="muted">${j.status}${j.total?` · ${j.done}/${j.total} sentences · ${pct}%`:''}</span></div>
-        <div class="muted">${esc(j.error || j.message)}</div>${j.status==='running'?`<div class="bar"><div style="width:${pct}%"></div></div>`:''}</div>`;
+        <div class="row" style="justify-content:space-between"><span class="muted">${esc(j.error || j.message)}</span><span>${stop}</span></div>${j.status==='running'?`<div class="bar"><div style="width:${pct}%"></div></div>`:''}</div>`;
     }).join('')}</div>` : '<div class="muted">No conversions running.</div>';
+    document.querySelectorAll('[data-canceljob]').forEach(el => el.onclick = () => cancelConversion(`/jobs/${el.dataset.canceljob}`));
     const sig = jobs.map(j => j.status + j.done).join();
     if (sig !== lastJobsSig) { lastJobsSig = sig; loadBooks(); }
   } catch (e) { /* server restarting: try again on the next tick */ }
@@ -193,7 +263,7 @@ async function openReview(id) {
   $('#rvmethod').textContent = rep.method;
   // Chapters added to a book keep its voice unless the user picks another (D-035).
   $('#rvvoice').value = draft.book_voice || draft.voice; $('#rvspeed').value = draft.book_speed || draft.speed;
-  $('#rvdownload').href = `${API}/drafts/${id}/std.epub`;
+  $('#rvdownload').href = tok(`${API}/drafts/${id}/std.epub`);
   $('#rvchecks').innerHTML = rep.checks.length
     ? `<div class="card checks"><b>Check by hand (${rep.checks.length})</b>${list(rep.checks)}</div>` : '';
   // Ticked by default: chapters not converted yet; after an interrupted or failed run, only the ones it was doing.
@@ -287,7 +357,7 @@ async function openBook(id) {
   show('#reader'); $('#player').hidden = false;
   $('#rtitle').textContent = book.title; $('#rauthor').textContent = book.author || '';
   $('#chapters').innerHTML = book.chapters.map((c, i) => `<div data-i="${i}">${c.number}. ${esc(c.title)} <span class="muted">${fmt(c.duration_ms)}</span>`
-    + `<a class="dl" href="${API}/books/${esc(book.id)}/files/${esc(c.audio)}?download=1" download title="Download this chapter" aria-label="Download ${esc(c.title)}">⬇</a></div>`).join('');
+    + `<a class="dl" href="${tok(`${API}/books/${esc(book.id)}/files/${esc(c.audio)}?download=1`)}" download title="Download this chapter" aria-label="Download ${esc(c.title)}">⬇</a></div>`).join('');
   document.querySelectorAll('#chapters div').forEach(el => el.onclick = () => loadChapter(+el.dataset.i, 0, true));
   document.querySelectorAll('#chapters a.dl').forEach(a => a.onclick = e => e.stopPropagation());  // download only, no chapter switch
   loadChapter(0, 0, false);
@@ -303,7 +373,7 @@ function loadChapter(i, atMs, play) {
   spans = [...document.querySelectorAll('#text span')];
   spans.forEach(el => el.onclick = () => { audio.currentTime = ch.sentences[+el.dataset.i].start_ms / 1000; audio.play(); });
   starts = ch.sentences.map(s => s.start_ms); cur = -1;
-  audio.src = `${API}/books/${book.id}/files/${ch.audio}`;
+  audio.src = tok(`${API}/books/${book.id}/files/${ch.audio}`);
   audio.playbackRate = +$('#rate').value;
   audio.onloadedmetadata = () => { audio.currentTime = atMs / 1000; if (play) audio.play(); };
 }

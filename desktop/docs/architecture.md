@@ -42,8 +42,15 @@ flowchart LR
         SRV["app.py<br/>app, /static, mDNS<br/>(ebook-server)"]
         API["api.py<br/>/api/v1 routes + schemas"]
         SVC["service.py<br/>Drafts, Jobs, library,<br/>voice samples (no HTTP)"]
+        AUTH["auth.py<br/>pairing token (D-037)"]
+        NET["network.py<br/>PC addresses, QR codes"]
     end
     SRV --> API --> SVC
+    API -- "every /api/v1 route" --> AUTH
+    API -- "/info, /qr" --> NET
+    SRV --> NET
+    TOKEN[("server-token")]
+    AUTH --> TOKEN
 
     subgraph core ["desktop/core"]
         PARSE["parse.py<br/>load_book()"]
@@ -93,7 +100,7 @@ flowchart LR
     SVC -- "reads" --> LIB
     SRV -- "serves / and /static<br/>from desktop/web" --> UI
     UI -- "JSON /api/v1/*" --> API
-    PHONE -- "JSON /api/v1/*" --> API
+    PHONE -- "JSON /api/v1/* + token<br/>(from the QR code)" --> API
     SRV --> MDNS
     MDNS -. discovery .-> PHONE
 ```
@@ -110,11 +117,13 @@ flowchart LR
 | `ocr/words.py` | A yes/no English word check for the OCR fixes: the pronunciation dictionary shipped with Kokoro's G2P (misaki, ~216,000 entries) plus simple inflections ('berries', 'makes'), possessives and hyphenated compounds. Never suggests a replacement. Empty when misaki is not installed (CI), which turns the dictionary fixes off. | `load_lexicon() -> Lexicon`, `Lexicon.knows(word)` |
 | `core/language.py` | Refuses books whose text isn't in a language the voices speak (English today), judged from the share of English function words in text sampled across the book. Metadata is only a hint. Called by `normalize` and by `build_book` before TTS loads. Holds `SUPPORTED_LANGUAGES` (moved from the TTS module, so core imports nothing else, D-033). | `check_language(book)`, `english_score(book)`, `SUPPORTED_LANGUAGES` |
 | `tts/kokoro.py` | Wrapper around Kokoro-82M. One model on the GPU with one text pipeline per voice language (a/b) sharing it; `synth` is locked so a voice sample can run between two sentences of a conversion (D-031). One call per sentence, mono float32 at 24 kHz. Uses CUDA when available. | `KokoroTTS(voice, speed).synth(text, voice=None, speed=None)`, `VOICES`, `SAMPLE_RATE` |
-| `tts/build.py` | Orchestrates the pipeline: plan, synthesize (cached), stitch with silence gaps, compute timestamps, encode m4a with ffmpeg, write `book.json` after each chapter. `ROOT` is the data folder (`EBOOK_AUDIO_DATA` or the project). | `build_book(source, out_root, voice, speed, progress, tts) -> Path`, `encode_m4a`, `ROOT`, `main()` |
+| `tts/build.py` | Orchestrates the pipeline: plan, synthesize (cached), stitch with silence gaps, compute timestamps, encode m4a with ffmpeg, write `book.json` after each chapter. `ROOT` is the data folder (`EBOOK_AUDIO_DATA` or the project). Stops with `Cancelled` between sentences when its `cancel` event is set (D-038). | `build_book(source, out_root, voice, speed, progress, tts, chapters, merge, cancel) -> Path`, `Cancelled`, `encode_m4a`, `ROOT`, `main()` |
 | `server/service.py` | The backend, with no HTTP in it (D-032): drafts on disk with a clean worker (upload → `normalize` → review), a separate single-worker conversion queue for approved books (D-029), the library (list, manifest, file, delete) and cached voice samples. Every input check lives here, and refusals raise `Invalid` (400), `NotFound` (404) or `Conflict` (409). | `Drafts`, `Jobs`, `drafts`, `jobs`, `list_books()`, `read_book()`, `book_file()`, `delete_book()`, `voice_sample()`, `ServiceError` |
-| `server/api.py` | The JSON API v1 (`APIRouter(prefix="/api/v1")`): thin routes that call `service.py` and return Pydantic models, which are the written contract for the web page and the Android app. Uploads are multipart and every other body is JSON. Every error is `{"detail": ...}`. | `router`, `API_VERSION`, models `Draft`, `DraftDetail`, `Job`, `BookSummary`, `Book`, `Info`, `ApproveRequest`, `Error` |
-| `server/app.py` | The FastAPI `app`: includes the router, maps `ServiceError` to its status, serves `/` and `/static` (from `desktop/web/`), advertises mDNS (`path=/api/v1`) and prints the URLs at startup. No domain logic. | `app`, `advertise()`, `main()` |
-| `web/` | `index.html` (markup), `app.css`, `app.js`: plain files with no build step. They display data and call only `/api/v1`; they don't clean or convert anything (checked by `test_api03`). Single-page UI with three tabs (D-030): **Clean** (upload with OCR mode, clean or clean & convert, "Cleaning & review" list), **Convert** (upload a cleaned `.std.epub`, approved books, conversion progress), **Library**. Also: review page (check-by-hand list, chapters and their text with a checkbox each to choose what to convert, removed parts, approve / Sigil download and upload / discard), conversion progress, library grid, reader with sentence highlighting and tap-to-seek. | served at `/` |
+| `server/api.py` | The JSON API v1 (`APIRouter(prefix="/api/v1")`): thin routes that call `service.py` and return Pydantic models, which are the written contract for the web page and the Android app. Uploads are multipart and every other body is JSON. Every error is `{"detail": ...}`. Every route depends on `auth.require_pairing` (D-037). | `router`, `API_VERSION`, models `Draft`, `DraftDetail`, `Job`, `BookSummary`, `Book`, `Info`, `Address`, `ApproveRequest`, `Error` |
+| `server/auth.py` | The pairing token (D-037): made once in `<data>/server-token`, replaced with `--new-token`. Lets a request through from the PC itself (loopback) or with the token as `Authorization: Bearer` or `?token=`; otherwise 401. | `token(new=False)`, `require_pairing(request)`, `is_local(request)` |
+| `server/network.py` | The PC's addresses for the phone (D-037), with no HTTP. It lists IPv4 addresses with adapter names (`ifaddr`, no loopback or link-local) and picks the default (`--advertise`, else `EBOOK_AUDIO_ADVERTISE`, else the default-route address). It also checks a typed address and builds the `#token=` URL and its QR SVG. | `phone_addresses(override)`, `preferred_address()`, `parse_address(text, port)`, `pair_url()`, `qr_svg()` |
+| `server/app.py` | The FastAPI `app`: includes the router, maps `ServiceError` to its status, serves `/` and `/static` (from `desktop/web/`), advertises mDNS on every IPv4 address (`path=/api/v1`) and prints the URLs at startup. Options: `--port`, `--advertise <address>`, `--new-token`. No domain logic. | `app`, `advertise()`, `main()` |
+| `web/` | `index.html` (markup), `app.css`, `app.js`: plain files with no build step. They display data and call only `/api/v1`; they don't clean or convert anything (checked by `test_api03`). Single-page UI with three tabs (D-030): **Clean** (upload with OCR mode, clean or clean & convert, "Cleaning & review" list), **Convert** (upload a cleaned `.std.epub`, approved books, conversion progress), **Library**. Also: review page (check-by-hand list, chapters and their text with a checkbox each to choose what to convert, removed parts, approve / Sigil download and upload / discard), conversion progress, library grid, reader with sentence highlighting and tap-to-seek. Home: the QR code, a button for each PC address to switch it, and a field for a typed address (D-037). A token from `#token=` is kept and sent with every API call. Draft and job cards have **Cancel**, and draft cards show "converted N of M" (D-038). | served at `/` |
 
 ## On-disk layout
 
@@ -128,6 +137,8 @@ library/<book_id>/          book_id = <title-slug, max 40 chars>-<sha1(original 
     book.json               manifest (below)
     ch000.m4a, ch001.m4a…   AAC 64 kbps mono 24 kHz, +faststart
     cover.<ext>             optional
+server-token                the pairing token (D-037); gitignored. Delete it, or start with --new-token, to unpair
+                            every phone
 models/huggingface/         Kokoro-82M (HF_HOME), downloaded on first use (D-028)
 models/doctr/               docTR OCR models (DOCTR_CACHE_DIR), downloaded on first use
 cache/voice-samples/<voice>-<sha1(text)[:8]>.m4a  ~5 s sample per voice, made on first ▶ click and kept
@@ -165,6 +176,8 @@ drafts/<id>/                one per book uploaded through the server (D-029); re
       "title": "Chapter 1",
       "audio": "ch000.m4a",
       "duration_ms": 61728,
+      "size_bytes": 495310,
+      "updated_ms": 1795824078987,
       "voice": "af_heart",
       "speed": 1.0,
       "text_sha1": "5f1e…",
@@ -188,6 +201,9 @@ Invariants:
 - `chapters_total` is how many chapters with text the folder should hold: the whole cleaned book, or the selection
   for a CLI `-ch<spec>` test folder. `complete` is true when all of them are converted. The chapters listed so far are
   playable either way. "Converting" is not in the file; `GET /books` reports it from the job queue.
+- `size_bytes` and `updated_ms` (the `.m4a`'s size, and its mtime in epoch ms) are the chapter's version. A
+  re-converted chapter keeps its file name, so a phone compares these with its copy (D-038). `GET /books/{id}` fills
+  them in from the file for books written before D-038.
 - `chapter_selection` is `null` except in a CLI `--chapters` test folder, where it holds the spec (e.g. `"2-4"`).
 - Books written before D-035 have no `number`, `voice`/`speed` per chapter, `text_sha1` or `chapters_total`.
   `build.chapter_number()` takes the number from the audio name for a full book (exact even when an empty chapter
@@ -202,27 +218,36 @@ multipart, every other body is JSON, and every error is `{"detail": "..."}` with
 id), 409 (wrong state) or 422 (a field of the wrong type, where `detail` is FastAPI's list). `test_api01` pins the exact
 route list.
 
-Not under `/api/v1`: `GET /` (the web page), `/static/*` (its files), `/docs` and `/openapi.json`.
+Every route needs pairing (D-037). From the PC itself (loopback), nothing is needed. From any other device, the
+request must carry the token from the QR code, as `Authorization: Bearer <token>` or as `?token=<token>` (for
+`<audio src>`, `<img>` and download links). Without it the answer is 401
+`{"detail": "Pair this device: scan the QR code shown on the PC"}`.
+
+Not under `/api/v1`, and open to every device: `GET /` (the web page), `/static/*` (its files), `/docs` and
+`/openapi.json`.
 
 | Method & path | Purpose |
 |---|---|
-| `GET /info` | `{api_version: 1, name, url, qr_svg, voices, default_voice, ocr_modes}` |
+| `GET /info` | `{api_version: 1, name, url, qr_svg, urls, voices, default_voice, ocr_modes}`. `urls` lists every address of the PC, the default first, each as `{address, adapter, url, pair_url, qr_svg}` with `pair_url` = `<url>/#token=<token>`. `url` and `qr_svg` are the first entry's |
+| `GET /qr?address=` | An `Address` (adapter `"typed"`) for an address typed by hand: a host name, IPv4 or `[IPv6]`, with an optional `:port` (otherwise the server's port). 400 for anything else: a scheme, a path, spaces, or a port outside 1–65535 |
 | `GET /voices/{voice}/sample` | ~5 s m4a of the voice reading a fixed sentence (made once, then cached); 404 for an unknown voice |
 | `POST /drafts` | Upload and clean. Multipart `file`, `voice`, `speed` (0.5–2.0), `auto`, `ocr` (`auto`/`always`/`never`, PDF only) → `{draft_id}`. Waits for review, or converts at once with `auto=true` (replaces the old `/api/clean` and `/api/convert`) |
 | `POST /drafts/cleaned` | Multipart `file` (a cleaned `.std.epub`), `voice`, `speed` → `{draft_id, job_id}`. No cleaning; converted at once. 400 for anything without the `ebook-audio:normalized` marker |
-| `GET /drafts` | All drafts (`Draft`: status, message, OCR progress, chapters, checks, job and book ids) |
+| `GET /drafts` | All drafts (`Draft`: status, message, OCR progress, chapters, checks, job and book ids, `converted`) |
 | `GET /drafts/{id}` | One draft plus its `report` (null until cleaned), `converted` (1-based chapters already in the library book with this text) and the library book's `book_voice`/`book_speed` (null before the first conversion) |
 | `GET /drafts/{id}/chapters/{n}` | `{index, title, paragraphs}` of one cleaned chapter; 409 before cleaning |
 | `GET /drafts/{id}/std.epub` | Download the cleaned book (for Sigil); 409 before cleaning |
 | `PUT /drafts/{id}/std.epub` | Replace it with an edited `.std.epub` (multipart `file`) → `{chapters}`; 400 if unreadable |
 | `POST /drafts/{id}/approve` | JSON `{voice?, speed?, chapters?}` (or no body: the voice and speed of the last approval or the upload, every chapter) → `{job_id}`. `chapters` is a list of 1-based numbers, added to the book's one library entry (replacing those chapters, keeping the others; D-035). 400 for an empty, repeated or out-of-range list; 409 unless the draft is in review or done |
+| `POST /drafts/{id}/cancel` | Cancel the draft's queued or running conversion → its `Job`; the draft goes back to review (D-038). 409 if it isn't converting |
 | `DELETE /drafts/{id}` | Discard a draft and its files; 409 while cleaning or converting |
-| `GET /jobs` | All conversion jobs (`Job`: queued/running/done/error, `done`/`total` sentences, message, `draft_id`, `book_id`) |
+| `GET /jobs` | All conversion jobs (`Job`: queued/running/done/error/cancelled, `done`/`total` sentences, message, `draft_id`, `book_id`) |
 | `GET /jobs/{id}` | One job's progress |
+| `POST /jobs/{id}/cancel` | Stop a conversion → the `Job`. A queued job never starts; a running one stops at the next sentence. Finished chapters and cached sentences are kept, so approving the draft again resumes. 409 if the job has already ended (D-038) |
 | `GET /books` | Library summary (`BookSummary`: title, author, cover, chapters converted, `chapters_total`, duration, size, `complete` = all chapters converted, `converting` = a job for it is queued or running) |
-| `GET /books/{id}` | The full `book.json` (`Book`); every chapter has a `number`, filled in for older books |
+| `GET /books/{id}` | The full `book.json` (`Book`); every chapter has a `number`, `size_bytes` and `updated_ms`, filled in for older books |
 | `GET /books/{id}/files/{name}` | A chapter's audio or the cover, with HTTP Range (206). To download a book, fetch each chapter's `audio` file from the manifest; an interrupted download resumes with `Range: bytes=<have>-`. Without a query the file is served inline (no `Content-Disposition`), for `<audio>` and `<img>`. With `?download=1` it is sent as an attachment named `Book Title - Ch 01 - Chapter Title.m4a` (cover: `Book Title - cover.jpg`), with RFC 5987 `filename*` so non-ASCII titles survive (D-034) |
-| `DELETE /books/{id}` | Delete a book folder |
+| `DELETE /books/{id}` | Delete a book folder; 409 while a conversion of it is queued or running (D-038) |
 
 Book and draft IDs are validated against `^[a-z0-9\-]{1,80}$` (a draft id must also be a known draft), and file
 names reject `/`, `\`, and a leading `.` (path-traversal guard).
@@ -239,12 +264,17 @@ names reject `/`, `\`, and a leading `.` (path-traversal guard).
   `service.clean_leftovers()` deletes the `*.npy.tmp` and `*.tmp.m4a` left under `library/` and `cache/`, and
   `list_books()` never counts them. This assumes one server per data folder (a second server needs its own
   `EBOOK_AUDIO_DATA`).
+- Cancel (D-038): each job holds a `threading.Event`.
+  - For a queued job, `Jobs.cancel` sets the status to `cancelled` under the jobs lock. The worker checks the status
+    under the same lock before starting a job.
+  - For a running job, it sets the event, and `build_book` raises `Cancelled` at the next sentence.
+  - The model stays loaded.
 - Drafts are saved to `draft.json` on every change and reloaded at startup. Jobs live in memory only; a draft whose
   conversion was cut off by a restart goes back to review and resumes from the sentence cache when approved again.
 
 ## External dependencies
 Python 3.10–3.12, PyTorch (CUDA build recommended), `kokoro`, `ebooklib`, `beautifulsoup4`, `lxml`,
-`pymupdf`, `pysbd`, `fastapi`, `uvicorn`, `python-multipart`, `zeroconf`, `qrcode`, and
+`pymupdf`, `pysbd`, `fastapi`, `uvicorn`, `python-multipart`, `zeroconf`, `qrcode`, `ifaddr` (the PC's addresses), and
 **ffmpeg on PATH**.
 
 Optional, for scanned PDFs only: `python-doctr` from `requirements-ocr.txt`, which pins torch/torchvision to

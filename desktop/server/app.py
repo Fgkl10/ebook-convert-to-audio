@@ -15,7 +15,8 @@ from fastapi.staticfiles import StaticFiles
 
 from .. import PROJECT
 from . import service
-from .api import API_VERSION, PREFIX, lan_ip, router, service_error
+from . import auth, network
+from .api import API_VERSION, PREFIX, router, service_error
 
 STATIC = PROJECT / "desktop" / "web"
 SERVICE_TYPE = "_ebookaudio._tcp.local."
@@ -36,16 +37,24 @@ def index() -> HTMLResponse:
 
 # ---------------------------------------------------------------- mDNS
 
-def advertise(port: int):
+def _is_ipv4(text: str) -> bool:
+    try:
+        socket.inet_aton(text)
+        return text.count(".") == 3
+    except OSError:
+        return False
+
+
+def advertise(port: int, addresses: list[str]):
+    """mDNS on every address (ZeroTier carries multicast too). The QR code stays the reliable way in."""
     try:
         from zeroconf import ServiceInfo, Zeroconf
     except ImportError:
         return None
-    ip = lan_ip()
     host = socket.gethostname()
     zc = Zeroconf()
     svc = ServiceInfo(
-        SERVICE_TYPE, f"{host}.{SERVICE_TYPE}", addresses=[socket.inet_aton(ip)], port=port,
+        SERVICE_TYPE, f"{host}.{SERVICE_TYPE}", addresses=[socket.inet_aton(ip) for ip in addresses], port=port,
         properties={"path": PREFIX, "name": host}, server=f"{host}.local.",
     )
     try:
@@ -62,16 +71,36 @@ def main() -> None:
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8000)
+    ap.add_argument("--advertise", metavar="ADDRESS",
+                    help=f"the address the QR code uses by default (also ${network.ADVERTISE_ENV}); "
+                         "default: the local address. Any other address can be picked on the home page")
+    ap.add_argument("--new-token", action="store_true",
+                    help="make a new pairing token: every phone has to scan the QR code again")
     args = ap.parse_args()
-    app.state.port = args.port
+    if args.advertise:
+        try:
+            host, port = network.parse_address(args.advertise, args.port)  # refuse a typo before starting
+        except service.Invalid as e:
+            ap.error(f"--advertise: {e}")
+        if port != args.port:
+            ap.error("--advertise takes an address without a port; the server's port is --port")
+        args.advertise = host
+    app.state.port, app.state.advertise = args.port, args.advertise
     service.LIBRARY.mkdir(parents=True, exist_ok=True)
     removed = service.clean_leftovers()
     if removed:
         print(f"  Removed {len(removed)} half-written file(s) left by an interrupted run.")
+    auth.token(new=args.new_token)
+    if args.new_token:
+        print("  Made a new pairing token: scan the QR code again on every phone.")
 
-    adv = advertise(args.port)
+    addresses = network.phone_addresses(args.advertise)
+    adv = advertise(args.port, [a["address"] for a in addresses if _is_ipv4(a["address"])])
+    others = "".join(f"\n                {network.base_url(a['address'], args.port)}  ({a['adapter'] or 'other'})"
+                     for a in addresses[1:])
     print(f"\n  Ebook Audio Server\n  On this PC:   http://localhost:{args.port}\n"
-          f"  On the phone: http://{lan_ip()}:{args.port}\n  API docs:     http://localhost:{args.port}/docs\n"
+          f"  On the phone: {network.base_url(addresses[0]['address'], args.port)}  (scan the QR code on the page)"
+          f"{others}\n  API docs:     http://localhost:{args.port}/docs\n"
           f"  Data folder:  {service.LIBRARY.parent}\n")
     try:
         # On Ctrl+C uvicorn waits for open connections to close; a phone downloading a chapter could hold it for

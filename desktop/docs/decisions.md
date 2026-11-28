@@ -751,3 +751,88 @@ Status: Accepted · Milestone: M3
   - with a download open: exit after 1.5 s, code 0, with mDNS unregistered;
   - mid-conversion: exit after 1.1 s, sentences cached; after a restart the draft was in review and resumed.
 - A cut-off download makes uvicorn print a `CancelledError` traceback at Ctrl+C. It is noise, not a failure.
+
+## D-037 Pairing a phone: a token in the QR code, and a choice of the PC's addresses
+Status: Accepted · Milestone: M3 (wrap-up before M4)
+**Context:**
+- M4's Android app will be the second client of `/api/v1`. Until now anyone who could reach the port could list,
+  download and delete books.
+- The user's router has AP isolation, so the phone reaches the PC over **ZeroTier One**, not the local Wi-Fi.
+  The old `lan_ip()` picked the default-route address (the Wi-Fi, 192.168.24.154), and the QR code pointed there.
+- A PC can have several adapters: Wi-Fi, ZeroTier, other VPNs, Wi-Fi Direct.
+**Decision:**
+- **Token.** `server/auth.py` makes `<data>/server-token` (`secrets.token_urlsafe(24)`) at first start and reuses
+  it. `ebook-server --new-token` replaces it, which unpairs every phone. The file is gitignored.
+- A router-level dependency on `/api/v1` lets a request through when it comes from the PC itself (loopback, or
+  TestClient's `testclient`), or when it carries the token as `Authorization: Bearer <token>` or `?token=<token>`.
+  The query form is for URLs the browser loads by itself (`<audio src>`, `<img>`, download links), which can't
+  send headers. Anything else gets 401 "Pair this device: scan the QR code shown on the PC". The comparison uses
+  `secrets.compare_digest`.
+- `/`, `/static/*`, `/docs` and `/openapi.json` stay open: they are the page and the contract, with no data.
+  `/info` is protected because its QR codes hold the token.
+- **QR code** = `http://<address>:<port>/#token=<token>`. The page reads the token from the hash, keeps it in
+  `localStorage`, removes it from the address bar (`history.replaceState`), then sends the header on every `fetch`
+  and adds `?token=` to src/href URLs. The Android app reads the same QR code.
+- **Addresses.** `server/network.py` lists the PC's IPv4 addresses with their adapter names (`ifaddr`), skipping
+  loopback and link-local. The default stays the local (default-route) address, as before, unless
+  `ebook-server --advertise <address>` or `EBOOK_AUDIO_ADVERTISE` names another. `/info.urls` lists every address,
+  each with its own `pair_url` and QR SVG.
+- **Home page.** Every address is a button under "Other addresses"; a click switches the QR code and the address
+  text, without a request or a server restart. A field takes a typed address (host name, IPv4 or `[IPv6]`, optional
+  `:port`); **Show QR** calls `GET /api/v1/qr?address=` for its QR code, and a bad value shows the 400 message under
+  the field. The choice is remembered per browser.
+- mDNS now registers every IPv4 address, not only the default one.
+**Why:**
+- A token in the QR code costs the user nothing: scanning it is the pairing step the phone needs anyway.
+- Loopback needs no token: the PC's own browser is the owner, and the token file is readable on the PC anyway.
+- ZeroTier gets no automatic preference (the user's choice): adapter names vary, and the default-route address is
+  right for most setups. One click picks another address; the typed field covers addresses the PC doesn't list
+  (a port forward, a DNS name).
+**Consequences:**
+- After this change, a phone or a bookmark without the token gets 401 until it scans the new QR code once.
+- **Known limits:**
+  - The server speaks plain HTTP. ZeroTier encrypts its traffic, but on a plain Wi-Fi network the token can be
+    sniffed. The token guards against other devices on the network, not against someone watching it.
+  - Every process on the PC itself is trusted (loopback).
+  - `?token=` URLs appear in the server's access log if one is turned on (it is off: `log_level="warning"`).
+  - `GET /qr` doesn't check that the phone can reach the typed address.
+
+## D-038 Cancel a conversion, chapter versions, no delete while converting
+Status: Accepted · Milestone: M3 (wrap-up before M4)
+**Context:**
+- A conversion could only be stopped by stopping the server.
+- Since D-035 a re-converted chapter keeps its `chNNN.m4a` name. An offline copy on the phone (M4) can't tell from
+  the name that it is stale.
+- Deleting a book while its conversion ran was undefined (SRV-16): the worker could recreate the folder or fail.
+**Decision:**
+- **Cancel.** `build_book(..., cancel=threading.Event)` checks the event before each chapter and after each
+  sentence, and raises `build.Cancelled`. The checks sit between sentences, so ffmpeg is never cut off and no
+  `.tmp.m4a` is left.
+  - `Jobs.cancel(job_id)`: a **queued** job becomes `cancelled` at once, and the worker skips it when it comes off
+    the queue (both under the jobs lock). A **running** job gets its event set; the worker catches `Cancelled` and
+    sets `cancelled`. An ended job → `Conflict` (409).
+  - The draft goes back to review with "Cancelled: approve again to resume (finished chapters and sentences are
+    kept)". Finished chapters stay in `book.json` (D-035) and the sentence cache stays, so approving again resumes.
+    The server and the loaded model keep running.
+  - Routes: `POST /jobs/{id}/cancel` and `POST /drafts/{id}/cancel` (the draft's own job; simpler for the phone),
+    both returning the `Job`. `JobStatus` gains `cancelled`.
+  - The page has a **Cancel** button on the draft card and on the job card while queued or running, with a
+    confirmation.
+- **Chapter versions.** Each chapter in `book.json` gets `size_bytes` and `updated_ms` (the `.m4a`'s mtime in epoch
+  milliseconds), and `read_book()` fills both from the file for older books. The phone compares them with its copy.
+- **Delete while converting.** `delete_book()` raises `Conflict` ("cancel the conversion first") while the book is
+  in `jobs.busy_books()`. `DELETE /books/{id}` documents 409.
+- **"Converted N of M".** `GET /drafts` items now carry `converted` too (moved from `DraftDetail` to `Draft`). The
+  draft card shows "converted 1 of 2" when some chapters are in the library. `Drafts.library_state()` computes it,
+  cached per draft by the cleaned file's and `book.json`'s mtimes, because the page asks every 2 s.
+**Why:**
+- A cancel checked between sentences stops within one sentence (about 0.5 s live) and needs no process killing.
+- Milliseconds, not seconds: two runs in the same second (tests, a quick re-convert of a short chapter) would look
+  the same. Size and time together are cheap and need no hashing of the audio.
+**Consequences:**
+- A cancel that comes while the model loads or while the last chapter is being encoded takes effect only after that
+  step (a few seconds).
+- Cancelled jobs, like done ones, stay in `GET /jobs` until the server restarts (jobs live in memory).
+- Checked live (real Kokoro, scratch data folder): cancel in chapter 2 → stopped in 0.5 s, chapter 1 kept, no
+  leftovers, a second cancel → 409, the server kept serving; approving again finished the book. Delete while
+  converting → 409.
