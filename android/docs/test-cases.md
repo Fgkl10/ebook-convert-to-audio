@@ -116,9 +116,9 @@ against the next one).
 | ID | Case | Steps / input | Expected | Status |
 |---|---|---|---|---|
 | AND-M34 | Same key on the PC and on GitHub | Build `assembleDebug` and `assembleRelease` locally with `android/keystore/`; build `assembleRelease` with the key in environment variables (as CI) and `VERSION_NAME=9.9.9`; `apksigner verify --print-certs`; `aapt2 dump badging` | All three: certificate `CN=Ebook Audio`, SHA-256 `012e71…a1e5`; versionCode = commit count; versionName 0.5.0, and 9.9.9 from the variable | Manual, pass (2026-11-28) |
-| AND-M35 | APK artifact on a master push | Merge a change under `android/`; open Actions → APK | The run passes; the artifact `ebook-audio-<count>-<sha>.apk` downloads; same certificate as AND-M34 | Manual, not run yet |
-| AND-M36 | Release on a tag | Push tag `v0.5.0` | A GitHub Release `v0.5.0` with `ebook-audio-0.5.0.apk` | Manual, not run yet |
-| AND-M37 | Updates install over each other | On the phone: install the Release APK; then `adb install -r` a newer PC build | Both install without an uninstall; downloads and settings kept | Manual, not run yet |
+| AND-M35 | APK artifact on a master push | Merge a change under `android/`; open Actions → APK | The run passes; the artifact `ebook-audio-<count>-<sha>.apk` downloads; same certificate as AND-M34 | Manual, pass (2026-11-28: `ebook-audio-98-d9c3b05.apk`, `CN=Ebook Audio`, SHA-256 `012e71…a1e5`, versionCode 98) |
+| AND-M36 | Release on a tag | Push tag `v0.5.0` | A GitHub Release `v0.5.0` with `ebook-audio-0.5.0.apk` | Manual, pass (2026-11-28; the downloaded file's SHA-256 matched the release's digest) |
+| AND-M37 | Updates install over each other | On the phone: install the Release APK; then `adb install -r` a newer PC build | Both install without an uninstall; downloads and settings kept | Manual, pass (2026-11-28, K60E: v0.5.0 release, code 98, after a one-time uninstall of the old debug-key build; then a PC `assembleDebug`, code 100, installed over it with `-r`). HyperOS asks for a tap on the phone for each USB install |
 | AND-G09 | No key | Build in a clone without `android/keystore/` and without the variables | Builds with the standard debug key (seen in the `ci.yml` PR job) | Gap (`apk.yml`'s missing-secret failure not tested) |
 
 ## Known gaps
