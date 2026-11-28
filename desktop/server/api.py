@@ -17,7 +17,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from . import auth, network, service
 from ..core.normalize import OCR_MODES
-from ..tts.kokoro import DEFAULT_VOICE, all_voices, default_voice, voices
 
 API_VERSION = 1
 PREFIX = f"/api/v{API_VERSION}"
@@ -87,7 +86,7 @@ class Draft(BaseModel):
     done: int = Field(0, description="Progress while cleaning (scanned pages read)")
     total: int = 0
     auto: bool = Field(False, description="Converts right after cleaning, with no review stop")
-    voice: str = DEFAULT_VOICE
+    voice: str = ""
     speed: float = 1.0
     ocr: str = "auto"
     error: Optional[str] = None
@@ -242,9 +241,15 @@ def info(request: Request) -> dict:
             for a in network.phone_addresses(getattr(request.app.state, "advertise", None))]
     return {"api_version": API_VERSION, "name": socket.gethostname(), "url": urls[0]["url"],
             "qr_svg": urls[0]["qr_svg"], "urls": urls,
-            "voices": all_voices(), "default_voice": DEFAULT_VOICE, "ocr_modes": list(OCR_MODES),
-            "languages": [{"code": lang, "voices": vs, "default_voice": default_voice(lang)}
-                          for lang, vs in voices().items()]}
+            "ocr_modes": list(OCR_MODES), **_voices()}
+
+
+def _voices() -> dict:
+    """/info's voice fields, from the TTS backend in use (D-045)."""
+    tts = service.tts()
+    return {"voices": tts.voice_ids(), "default_voice": tts.default_voice("en"),
+            "languages": [{"code": lang, "voices": tts.voice_ids(lang), "default_voice": tts.default_voice(lang)}
+                          for lang in tts.languages()]}
 
 
 @router.get("/models/zh", response_model=TtsModel, tags=["server"])
@@ -285,7 +290,7 @@ def voice_sample(voice: str) -> FileResponse:
 # ---------------------------------------------------------------- drafts: clean and review
 
 @router.post("/drafts", response_model=DraftCreated, responses=ERRORS, tags=["drafts"])
-def create_draft(file: UploadFile = File(...), voice: str = Form(DEFAULT_VOICE), speed: float = Form(1.0),
+def create_draft(file: UploadFile = File(...), voice: Optional[str] = Form(None), speed: float = Form(1.0),
                  auto: bool = Form(False), ocr: str = Form("auto")) -> dict:
     """Upload an .epub, .pdf or .txt to clean. auto=true converts right after cleaning, with no review stop.
     ocr (PDF only): auto, always or never."""
@@ -294,7 +299,7 @@ def create_draft(file: UploadFile = File(...), voice: str = Form(DEFAULT_VOICE),
 
 
 @router.post("/drafts/cleaned", response_model=CleanedCreated, responses=ERRORS, tags=["drafts"])
-def create_cleaned(file: UploadFile = File(...), voice: str = Form(DEFAULT_VOICE),
+def create_cleaned(file: UploadFile = File(...), voice: Optional[str] = Form(None),
                    speed: float = Form(1.0)) -> dict:
     """Upload a book that is already cleaned (a .std.epub from the CLI or Sigil); it converts right away."""
     draft = service.drafts.create_cleaned(file.file, _upload_name(file), voice, speed)

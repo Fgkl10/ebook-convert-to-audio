@@ -368,7 +368,7 @@ def test_api23_interrupted_chapter_write_is_cleaned_and_resumes(api, tmp_path, m
 
     monkeypatch.setattr(build.subprocess, "run", ffmpeg_then_ctrl_c)
     with pytest.raises(KeyboardInterrupt):
-        build.build_book(src, service.LIBRARY, tts=FakeTTS(), merge=True)
+        build.build_book(src, service.LIBRARY, backend=FakeTTS(), merge=True)
     monkeypatch.setattr(build.subprocess, "run", real_run)
     [d] = [p for p in service.LIBRARY.iterdir()]
     assert sorted(f.name for f in d.iterdir()) == ["book.json", "ch000.m4a", "ch001.tmp.m4a"]
@@ -384,7 +384,7 @@ def test_api23_interrupted_chapter_write_is_cleaned_and_resumes(api, tmp_path, m
     assert not (d / "ch001.tmp.m4a").exists() and (d / "ch000.m4a").exists()
 
     resumed = CountingTTS()  # chapter 2 was fully synthesized before ffmpeg was cut off: all from the cache
-    build.build_book(src, service.LIBRARY, tts=resumed, merge=True)
+    build.build_book(src, service.LIBRARY, backend=resumed, merge=True)
     assert "Chapter 2" not in resumed.calls and "Chapter 3" in resumed.calls
     m = json.loads((d / "book.json").read_text(encoding="utf-8"))
     assert [c["number"] for c in m["chapters"]] == [1, 2, 3, 4] and m["complete"] is True

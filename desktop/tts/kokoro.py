@@ -1,4 +1,5 @@
-"""Thin wrapper around Kokoro-82M (https://huggingface.co/hexgrad/Kokoro-82M) and, when installed, Kokoro-82M-v1.1-zh."""
+"""The Kokoro backend (D-045): Kokoro-82M (https://huggingface.co/hexgrad/Kokoro-82M) and, when installed,
+Kokoro-82M-v1.1-zh (D-044). Nothing heavy at import: torch, kokoro and misaki load with the first sentence."""
 from __future__ import annotations
 
 import re
@@ -7,6 +8,7 @@ import threading
 import numpy as np
 
 from .. import MODELS
+from .backend import Backend, Voice
 from .models import V10_REPO, ZH_REPO, ZH_VOICES, repo_of, zh_installed
 
 SAMPLE_RATE = 24000
@@ -26,32 +28,6 @@ ZH_DEFAULT_V11 = "zf_001"
 DEFAULT_VOICE = DEFAULT_VOICES["en"]
 
 
-def voice_language(voice: str) -> str | None:
-    return {"a": "en", "b": "en", "z": "zh"}.get(voice[:1])
-
-
-def voices(lang: str | None = None) -> dict[str, list[str]] | list[str]:
-    """The voices on offer: v1.0's, except that Chinese uses v1.1-zh's once it is installed (D-044)."""
-    out = dict(V10_VOICES)
-    if zh_installed():
-        out["zh"] = list(ZH_VOICES)
-    return out[lang] if lang else out
-
-
-def all_voices() -> list[str]:
-    return [v for vs in voices().values() for v in vs]
-
-
-def default_voice(lang: str) -> str:
-    return ZH_DEFAULT_V11 if lang == "zh" and zh_installed() else DEFAULT_VOICES[lang]
-
-
-def voice_for(voice: str, lang: str) -> str:
-    """The voice to read a book in `lang` with: the chosen one when it speaks that language, else the language's
-    default voice (an English voice was picked at upload, and the book turned out Chinese; D-043)."""
-    return voice if voice_language(voice) == lang else default_voice(lang)
-
-
 _t2s = None
 
 
@@ -66,39 +42,78 @@ def to_simplified(text: str) -> str:
     return _t2s.convert(text)
 
 
-class KokoroTTS:
+_LANGUAGE = {"a": "en", "b": "en", "z": "zh"}
+_ACCENT = {"a": "us", "b": "gb"}
+
+
+def _voice(voice_id: str) -> Voice:
+    """Kokoro's ids say it all: language and accent (a = American, b = British, z = Mandarin), f/m, then a name
+    (af_heart, zf_xiaoxiao) or a number (v1.1-zh's zf_001)."""
+    tail = voice_id[3:]
+    return Voice(id=voice_id, language=_LANGUAGE[voice_id[0]], gender="female" if voice_id[1] == "f" else "male",
+                 accent=_ACCENT.get(voice_id[0]), name=None if tail.isdigit() else tail.capitalize(),
+                 number=int(tail) if tail.isdigit() else None)
+
+
+class KokoroBackend(Backend):
     """One Kokoro model on the GPU, with one text pipeline per voice language that shares it (D-031). Chinese voices
     of v1.1-zh load that second model on first use (D-044). synth() is locked, so a voice sample can be made between
     two sentences of a conversion."""
 
-    def __init__(self, voice: str = DEFAULT_VOICE, speed: float = 1.0, device: str | None = None):
-        import torch
+    id = "kokoro"
+    name = "Kokoro-82M"
+    sample_rate = SAMPLE_RATE
 
-        self.voice = voice
-        self.speed = speed
-        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+    def __init__(self, device: str | None = None):
+        self.device = device
         self.models: dict = {}
         self.pipelines: dict = {}
         self.lock = threading.Lock()
-        self._model(V10_REPO)
+
+    # ---- voices (no model needed)
+
+    def languages(self) -> list[str]:
+        return list(V10_VOICES)
+
+    def voices(self, lang: str | None = None) -> list[Voice]:
+        """v1.0's voices, except that Chinese uses v1.1-zh's once it is installed (D-044)."""
+        ids = dict(V10_VOICES)
+        if zh_installed():
+            ids["zh"] = list(ZH_VOICES)
+        return [_voice(v) for code, vs in ids.items() if lang in (None, code) for v in vs]
+
+    def default_voice(self, lang: str) -> str:
+        return ZH_DEFAULT_V11 if lang == "zh" and zh_installed() else DEFAULT_VOICES[lang]
+
+    def voice_language(self, voice_id: str) -> str | None:  # without the list: v1.1-zh's ids too when removed
+        return _LANGUAGE.get(voice_id[:1])
+
+    def cache_key(self, voice: str, speed: float, text: str) -> str:
+        return f"{voice}|{speed}|{text}"  # the key from before D-045, so existing caches stay valid
+
+    # ---- speech
+
+    def synth(self, text: str, voice: str, speed: float = 1.0) -> np.ndarray:
+        """Return mono float32 audio at SAMPLE_RATE for one sentence."""
+        with self.lock:
+            return self._synth(text, voice, speed)
+
+    def unload(self, repo: str | None = None) -> None:
+        """Forget one model (and its pipelines), e.g. after v1.1-zh is removed, or all of them."""
+        with self.lock:
+            for r in [r for r in self.models if repo in (None, r)]:
+                del self.models[r]
+            for key in [k for k in self.pipelines if repo is None or k[1] == repo]:
+                del self.pipelines[key]
 
     def _model(self, repo: str):
-        from kokoro import KModel
-
         if repo not in self.models:
+            import torch
+            from kokoro import KModel
+
+            self.device = self.device or ("cuda" if torch.cuda.is_available() else "cpu")
             self.models[repo] = KModel(repo_id=repo).to(self.device).eval()
         return self.models[repo]
-
-    @property
-    def model(self):
-        return self.models[V10_REPO]
-
-    def unload(self, repo: str) -> None:
-        """Forget a model (and its pipelines), e.g. after v1.1-zh is removed."""
-        with self.lock:
-            self.models.pop(repo, None)
-            for key in [k for k in self.pipelines if k[1] == repo]:
-                del self.pipelines[key]
 
     def _english_phonemes(self, text: str) -> str:
         """Latin words inside Chinese text ('eBay') are read in English, through a pipeline that only does G2P."""
@@ -124,14 +139,8 @@ class KokoroTTS:
             self.pipelines[(lang, repo)] = pipeline
         return self.pipelines[(lang, repo)]
 
-    def synth(self, text: str, voice: str | None = None, speed: float | None = None) -> np.ndarray:
-        """Return mono float32 audio at SAMPLE_RATE for one sentence (in this voice, or the current one)."""
-        voice, speed = voice or self.voice, speed or self.speed
-        with self.lock:
-            return self._synth(text, voice, speed)
-
     def _synth(self, text: str, voice: str, speed: float) -> np.ndarray:
-        if voice_language(voice) == "zh":
+        if self.voice_language(voice) == "zh":
             text = to_simplified(text)
         chunks = []
         # split_pattern=None: we already split into sentences; Kokoro still

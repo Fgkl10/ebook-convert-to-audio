@@ -165,7 +165,7 @@ def test_par16_no_xml_parser_warning(novel):
 
 def test_bld09_epub_build_writes_cover_and_toc_titles(novel, tmp_path, monkeypatch):
     monkeypatch.setattr(build, "ROOT", tmp_path)
-    out = build.build_book(novel, tmp_path / "lib", tts=FakeTTS())
+    out = build.build_book(novel, tmp_path / "lib", backend=FakeTTS())
     m = json.loads((out / "book.json").read_text(encoding="utf-8"))
     assert m["complete"] and m["title"] == "The Quiet Mill"
     assert m["cover"] == "cover.jpg" and (out / "cover.jpg").read_bytes() == JPG_BYTES
