@@ -111,7 +111,7 @@ flowchart TD
   C -- no --> F["POST /drafts (voice, speed, auto, ocr)"]
   F --> G["PC cleans it: draft 'cleaning'"]
   G -- "auto (skip review)" --> J
-  G --> H["Review: report, chapter text, picks, voice + sample, speed"]
+  G --> H["Review: report, chapter text, picks, Language ▸ Voice + sample<br/>(starts on the book's language, A-021), speed"]
   H -- "Approve (chapters, or null = all)" --> J["Job runs: Convert tab shows progress (polled every 2 s)"]
   H -- Discard --> X[Draft deleted]
   J -- Cancel --> K["Job cancelled; finished chapters kept"]

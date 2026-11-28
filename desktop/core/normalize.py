@@ -23,8 +23,8 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .language import check_language
-from .parse import (MIN_CHAPTER_CHARS, Book, Chapter, _FRONT_MATTER_GUIDE, _is_front_matter_title, body_blocks,
+from .language import LANGUAGE_NAMES, check_language, detect_language
+from .parse import (CJK, MIN_CHAPTER_CHARS, Book, Chapter, _FRONT_MATTER_GUIDE, _is_front_matter_title, body_blocks,
                     clean_body, load_book, parse_html)
 
 MARKER = "ebook-audio:normalized"
@@ -32,10 +32,13 @@ SOURCE_HASH = "ebook-audio:source-sha1"
 MAX_TITLE_CHARS = 120  # longer "titles" are sentences that leaked into the TOC
 MAX_JOIN = 3  # a heading may be split over this many consecutive lines ("THE SIX STEPS…" + "WRITING")
 MIN_CONTENTS_LINKS = 5  # a contents page has at least this many paragraphs linking into other files
-BACK_MATTER_TITLES = {"bibliography", "references", "index", "notes", "endnotes", "end notes", "footnotes"}
-_FIGURE_WORD = re.compile(r"(?:figure|fig\.?)", re.IGNORECASE)
+BACK_MATTER_TITLES = {"bibliography", "references", "index", "notes", "endnotes", "end notes", "footnotes",
+                      # Chinese, Simplified and Traditional (D-042)
+                      "参考文献", "參考文獻", "参考书目", "參考書目", "索引", "注释", "註釋", "注釋", "尾注", "尾註", "附注", "附註"}
+TITLE_PAGE_CHARS = 1500  # a "chapter" titled with the book's own title and shorter than this is a title page/colophon
+_FIGURE_WORD = re.compile(r"(?:figure|fig\.?|图|圖)", re.IGNORECASE)
 _FIGURE_NUMBER = re.compile(r"\d+(?:[.\-]\d+)*[a-z]?")
-_FIGURE_LABEL = re.compile(r"(?:figure|fig\.?)\s*\d+(?:[.\-]\d+)*[a-z]?[.:]?", re.IGNORECASE)
+_FIGURE_LABEL = re.compile(r"(?:figure|fig\.?|图|圖)\s*\d+(?:[.\-]\d+)*[a-z]?[.:：]?", re.IGNORECASE)
 
 
 def drop_figure_labels(text: str) -> tuple[str, int]:
@@ -73,6 +76,7 @@ class Block:
 class Report:
     source: str
     method: str = ""
+    language: str = ""  # "en" or "zh", detected from the text (D-042)
     chapters: list[tuple[str, int]] = field(default_factory=list)  # (title, characters)
     removed: list[tuple[str, str]] = field(default_factory=list)  # (reason, first 80 chars)
     unconfirmed: list[str] = field(default_factory=list)  # TOC entries with no matching heading
@@ -86,6 +90,8 @@ class Report:
 
     def render(self) -> str:
         out = [f"Normalized: {self.source}", f"Method: {self.method}"]
+        if self.language:
+            out.append(f"Language: {LANGUAGE_NAMES.get(self.language, self.language)}")
         if self.checks:  # first, so they aren't buried under the chapter list
             out += ["", f"Check by hand ({len(self.checks)}):"] + [f"  {c}" for c in self.checks]
         out += ["", f"Chapters ({len(self.chapters)}):"]
@@ -110,7 +116,8 @@ _GLUED_FOOTNOTE = re.compile(r"[^\s\d]\d{1,3}$")  # 'address.”12', '1997)11': 
 def _plausible_title(title: str) -> bool:
     """Reject TOC entries that are really sentences or footnote fragments (Calibre leaks them)."""
     letters = re.findall(r"[^\W\d_]", title)
-    return (len(title) <= MAX_TITLE_CHARS and len(letters) >= 3
+    # One Chinese character can be a whole title (序, 跋).
+    return (len(title) <= MAX_TITLE_CHARS and (len(letters) >= 3 or bool(re.search(f"[{CJK}]", title)))
             and not letters[0].islower()  # 'chapter and show how…', 'software': sentence fragments
             and not _GLUED_FOOTNOTE.search(title))
 
@@ -211,11 +218,17 @@ def _toc_entries(eb, blocks: list[Block], contents: set[str], file_start: dict[s
         name = posixpath.basename(name)
         return name in file_start and (not frag or anchors.get((name, frag)) == file_start[name])
 
+    def node_of(e):
+        return (e[0], e[1]) if isinstance(e, tuple) else (e, [])
+
     def walk(toc, depth: int):
+        # Chapters under a part title: when one of the siblings opens a file, they all are chapters. The first
+        # one often shares its file with the part title ('上篇' + '第一章' in one file, then '第二章' in the next).
+        chapters_level = depth > 0 and any(opens_file(getattr(node_of(e)[0], "href", None) or "") for e in toc)
         for e in toc:
-            node, kids = (e[0], e[1]) if isinstance(e, tuple) else (e, [])
+            node, kids = node_of(e)
             href = getattr(node, "href", None)
-            if href and (depth == 0 or opens_file(href)):
+            if href and (depth == 0 or chapters_level or opens_file(href)):
                 entries.append((node.title or "", href))
             walk(kids, depth + 1)
 
@@ -243,7 +256,8 @@ def _toc_entries(eb, blocks: list[Block], contents: set[str], file_start: dict[s
     return entries
 
 
-_LABEL = re.compile(r"^(?:(?:chapter|part|book) [^\W_]+|\d+) (?=\S)")  # 'chapter one ', 'part 2 ', '1 '
+# 'chapter one ', 'part 2 ', '1 ', and Chinese '第一章 ', '第3节 ' (D-042)
+_LABEL = re.compile(r"^(?:(?:chapter|part|book) [^\W_]+|\d+|第 ?[0-9〇零一二三四五六七八九十百千两兩]+ ?[章节節回卷部篇]) (?=\S)")
 
 
 def _unlabel(key: str) -> str:
@@ -453,6 +467,13 @@ def write_std_epub(book: Book, out: Path, source_hash: str) -> None:
     tmp.replace(out)
 
 
+def _is_title_page(ch: Chapter, book_title: str) -> bool:
+    """A short 'chapter' named after the book itself: the title page, or the colophon at the end (D-042).
+    The book title may carry a subtitle ('遊戲化實戰全書：遊戲化大師教你…'), so a prefix match counts."""
+    key, book_key = _key(ch.title), _key(book_title)
+    return bool(key) and len(ch.text) < TITLE_PAGE_CHARS and (key == book_key or book_key.startswith(key + " "))
+
+
 OCR_MODES = ("auto", "always", "never")
 
 
@@ -481,8 +502,11 @@ def normalize(source: str | Path, out: str | Path | None = None, ignore_language
         report.checks += scan.checks
     else:
         book = load_book(source)  # metadata, cover, front matter rules, and the fallback chapters
-    if not ignore_language:
-        check_language(book)  # refuse before the user spends time reviewing
+    # Refuse before the user spends time reviewing. Forced through, the book still gets the best guess.
+    lang = (detect_language(book) or "en") if ignore_language else check_language(book)
+    report.language = lang
+    if not (book.language or "").lower().startswith(lang):  # keep a matching tag as it is ('zh-TW')
+        book.language = lang
     if scanned:
         report.method = ("scanned PDF read with OCR (docTR), each two-page scan split at the gutter; chapters "
                          "cut at headings confirmed by the book's contents page (D-021, D-022)")
@@ -513,6 +537,8 @@ def normalize(source: str | Path, out: str | Path | None = None, ignore_language
             report.removed.append((f"front matter: {ch.title}", ch.text[:80]))
         elif not book.normalized and _key(ch.title) in BACK_MATTER_TITLES:
             report.removed.append((f"back matter: {ch.title}", ch.text[:80]))
+        elif not book.normalized and _is_title_page(ch, book.title):
+            report.removed.append((f"title page / colophon: {ch.title}", ch.text.replace("\n", " ")[:80]))
         else:
             if not book.normalized:
                 ch.text, n = drop_figure_labels(ch.text)

@@ -215,6 +215,9 @@
 
     <!-- voice picker -->
     <string name="voice">語音</string>
+    <string name="voice_language">語言</string>
+    <string name="voice_lang_en">英語</string>
+    <string name="voice_lang_zh">中文</string>
     <string name="stop_sample">停止試聽</string>
     <string name="hear_sample">試聽 %1$s</string>
 

@@ -76,8 +76,7 @@ async function loadInfo() {
   }
   const info = await r.json();
   addrs = info.urls;
-  const opts = info.voices.map(v => `<option ${v===info.default_voice?'selected':''}>${v}</option>`).join('');
-  ['#voice', '#rvvoice', '#stdvoice'].forEach(s => $(s).innerHTML = opts);
+  setVoiceLanguages(info.languages);
   // The QR code starts on the default (local) address, or on the one picked last time in this browser.
   let saved = {};
   try { saved = JSON.parse(localStorage.getItem('ebookAudioAddress') || '{}'); } catch (e) { /* none */ }
@@ -85,6 +84,69 @@ async function loadInfo() {
   // match the whole URL: a typed address can share its host with a listed one and differ only in the port
   pickAddress(Math.max(0, addrs.findIndex(a => a.url === saved.url)));
 }
+
+// ---------------- voices (D-043): every picker is Language ▸ Voice; the Voice list follows the Language.
+// The last voice picked for each language is kept in this browser, else the server's default for it.
+let VOICE_LANGS = [];  // [{code, voices, default_voice}]
+const PICKERS = ['#voice', '#stdvoice', '#rvvoice'];
+function savedVoices() {
+  try { return JSON.parse(localStorage.getItem('ebookAudioVoices') || '{}'); } catch (e) { return {}; }
+}
+const voiceLang = (voice) => VOICE_LANGS.find(l => l.voices.includes(voice))?.code;
+function preferredVoice(lang) {
+  const l = VOICE_LANGS.find(x => x.code === lang), saved = savedVoices()[lang];
+  return l && l.voices.includes(saved) ? saved : l?.default_voice;
+}
+// Show `lang` in the picker whose Voice list is `sel`, with `voice` chosen when it speaks that language.
+function setVoice(sel, lang, voice) {
+  const l = VOICE_LANGS.find(x => x.code === lang) || VOICE_LANGS[0];
+  if (!l) return;
+  $(sel + 'lang').value = l.code;
+  const pick = l.voices.includes(voice) ? voice : preferredVoice(l.code);
+  $(sel).innerHTML = l.voices.map(v => `<option${v === pick ? ' selected' : ''}>${v}</option>`).join('');
+}
+function setVoiceLanguages(langs) {
+  const keep = Object.fromEntries(PICKERS.map(s => [s, $(s).value]));  // a refresh after installing keeps choices
+  VOICE_LANGS = langs || [];
+  let start = 'en';
+  try { start = localStorage.getItem('ebookAudioVoiceLang') || (LANG.startsWith('zh') ? 'zh' : 'en'); } catch (e) { /* */ }
+  PICKERS.forEach(s => {
+    const name = { en: t('voice_lang.en'), zh: t('voice_lang.zh') };
+    $(s + 'lang').innerHTML = VOICE_LANGS.map(l => `<option value="${l.code}">${esc(name[l.code] || l.code)}</option>`).join('');
+    setVoice(s, voiceLang(keep[s]) || start, keep[s]);
+  });
+}
+document.querySelectorAll('.vlang').forEach(el => el.onchange = () => {
+  setVoice(el.dataset.for, el.value);
+  try { localStorage.setItem('ebookAudioVoiceLang', el.value); } catch (e) { /* this visit */ }
+  $(el.dataset.for).dispatchEvent(new Event('change'));
+});
+PICKERS.forEach(s => $(s).addEventListener('change', () => {
+  try { localStorage.setItem('ebookAudioVoices', JSON.stringify({ ...savedVoices(), [voiceLang($(s).value)]: $(s).value })); }
+  catch (e) { /* not remembered */ }
+}));
+
+// The optional Kokoro v1.1-zh model (D-044): install or remove it; while it downloads, the line shows how far it is.
+let zhTimer = null;
+async function zhModel(method = 'GET') {
+  const r = await fetch(`${API}/models/zh`, { method });
+  if (!r.ok) { $('#zhstate').textContent = await errText(r); $('#zhstate').classList.add('err'); return; }
+  const m = await r.json();
+  $('#zhstate').classList.toggle('err', !!m.error);
+  // Hugging Face's xet transfer writes the file only at the end, so a count is shown only when there is one.
+  const mb = { done: Math.round(m.done_bytes / 1e6), total: Math.round(m.total_bytes / 1e6) };
+  $('#zhstate').textContent = m.error || (m.installing
+    ? (m.done_bytes ? t('zh.downloading', mb) : t('zh.downloading_start', mb))
+    : m.installed ? t('zh.installed') : t('zh.not_installed'));
+  $('#zhinstall').hidden = m.installed || m.installing;
+  $('#zhremove').hidden = !m.installed;
+  clearTimeout(zhTimer);
+  if (m.installing) zhTimer = setTimeout(() => zhModel(), 1500);
+  else if (zhModel.last !== undefined && m.installed !== zhModel.last) loadInfo();  // the Chinese voice list changed
+  zhModel.last = m.installed;
+}
+$('#zhinstall').onclick = () => zhModel('POST');
+$('#zhremove').onclick = () => { if (confirm(t('zh.confirm_remove'))) zhModel('DELETE'); };
 
 // ---------------- the phone's address: the QR code can show any of the PC's addresses, or one typed by hand
 let addrs = [];  // [{address, adapter, url, pair_url, qr_svg}], the default first
@@ -299,8 +361,10 @@ async function openReview(id) {
   show('#review'); window.scrollTo(0, 0);
   $('#rvtitle').textContent = draft.file;
   $('#rvmethod').textContent = rep.method;
-  // Chapters added to a book keep its voice unless the user picks another (D-035).
-  $('#rvvoice').value = draft.book_voice || draft.voice; $('#rvspeed').value = draft.book_speed || draft.speed;
+  // Chapters added to a book keep its voice unless the user picks another (D-035). The Language starts on the book's
+  // own (D-043): a voice picked at upload in another language gives way to that language's voice.
+  setVoice('#rvvoice', rep.language || voiceLang(draft.voice) || 'en', draft.book_voice || draft.voice);
+  $('#rvspeed').value = draft.book_speed || draft.speed;
   $('#rvdownload').href = tok(`${API}/drafts/${id}/std.epub`);
   $('#rvchecks').innerHTML = rep.checks.length
     ? `<div class="card checks"><b>${t('review.checks', { n: rep.checks.length })}</b>${list(rep.checks)}</div>` : '';
@@ -406,7 +470,8 @@ function loadChapter(i, atMs, play) {
   $('#nowch').textContent = ch.title;
   const paras = [];
   for (const s of ch.sentences) (paras[s.p] ||= []).push(s);
-  $('#text').innerHTML = paras.filter(Boolean).map(p => `<p>${p.map(s => `<span data-i="${s.i}">${esc(s.text)}</span>`).join(' ')}</p>`).join('');
+  const gap = book.language === 'zh' ? '' : ' ';  // Chinese sentences follow each other with no space (D-042)
+  $('#text').innerHTML = paras.filter(Boolean).map(p => `<p>${p.map(s => `<span data-i="${s.i}">${esc(s.text)}</span>`).join(gap)}</p>`).join('');
   spans = [...document.querySelectorAll('#text span')];
   spans.forEach(el => el.onclick = () => { audio.currentTime = ch.sentences[+el.dataset.i].start_ms / 1000; audio.play(); });
   starts = ch.sentences.map(s => s.start_ms); cur = -1;
@@ -474,4 +539,4 @@ $('#rate').onchange = () => audio.playbackRate = +$('#rate').value;
 $('#back').onclick = () => { audio.pause(); goTab('library'); $('#player').hidden = true; book = null; };
 
 showTab();
-loadStrings().then(() => { ocrForFile(); loadInfo(); refresh(); setInterval(refresh, 2000); });
+loadStrings().then(() => { ocrForFile(); loadInfo(); zhModel(); refresh(); setInterval(refresh, 2000); });

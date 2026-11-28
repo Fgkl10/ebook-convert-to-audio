@@ -5,8 +5,9 @@
   "cover": null,
   "voice": "af_heart",
   "speed": 1.0,
+  "language": "en",
   "complete": true,
-  "created": 1795834538.0,
+  "created": 1795851564.0,
   "duration_ms": 13110,
   "chapters": [
     {
@@ -16,7 +17,7 @@
       "audio": "ch000.m4a",
       "duration_ms": 2420,
       "size_bytes": 7403,
-      "updated_ms": 1795834538739,
+      "updated_ms": 1795851564555,
       "sentences": [
         {
           "i": 0,
@@ -51,7 +52,7 @@
       "audio": "ch001.m4a",
       "duration_ms": 10690,
       "size_bytes": 59642,
-      "updated_ms": 1795834538903,
+      "updated_ms": 1795851564715,
       "sentences": [
         {
           "i": 0,

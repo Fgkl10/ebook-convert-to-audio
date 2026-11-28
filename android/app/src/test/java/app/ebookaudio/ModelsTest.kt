@@ -4,6 +4,7 @@ import app.ebookaudio.api.Book
 import app.ebookaudio.api.BookSummary
 import app.ebookaudio.api.Info
 import app.ebookaudio.api.JSON
+import app.ebookaudio.api.VoiceLanguage
 import app.ebookaudio.pairing.PairUrl
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -25,6 +26,10 @@ class ModelsTest {
         val info = JSON.decodeFromString<Info>(fixture("info.json"))
         assertEquals(1, info.apiVersion)
         assertTrue("af_heart" in info.voices)
+        // voices by language (desktop D-043): English and Chinese, each with its default among its voices
+        assertEquals(listOf("en", "zh"), info.languages.map { it.code })
+        info.languages.forEach { assertTrue(it.defaultVoice in it.voices) }
+        assertTrue(info.languages.single { it.code == "zh" }.voices.all { it.startsWith("z") })
         // every address's pair_url is a link the scanner accepts
         val urls = JSON.parseToJsonElement(fixture("info.json")).jsonObject["urls"]!!.jsonArray
         assertTrue(urls.isNotEmpty())
@@ -32,6 +37,13 @@ class ModelsTest {
             val pairing = PairUrl.parse(u.jsonObject["pair_url"]!!.jsonPrimitive.content)!!
             assertEquals(u.jsonObject["url"]!!.jsonPrimitive.content, pairing.baseUrl)
         }
+    }
+
+    @Test
+    fun infoFromAPcBeforeChineseVoices() {
+        // no "languages": the flat list is English
+        val info = JSON.decodeFromString<Info>("""{"api_version":1,"voices":["af_heart","bm_george"],"default_voice":"af_heart"}""")
+        assertEquals(listOf(VoiceLanguage("en", listOf("af_heart", "bm_george"), "af_heart")), info.languages)
     }
 
     @Test

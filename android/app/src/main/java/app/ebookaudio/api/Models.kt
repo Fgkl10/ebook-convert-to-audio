@@ -22,6 +22,20 @@ data class Info(
     val url: String = "",
     val voices: List<String> = emptyList(),
     @SerialName("default_voice") val defaultVoice: String = "",
+    /** The voices by the language they speak (desktop D-043); empty from a PC older than that. */
+    @SerialName("languages") val languageList: List<VoiceLanguage> = emptyList(),
+) {
+    /** By language; a PC before D-043 has English voices only. */
+    val languages: List<VoiceLanguage>
+        get() = languageList.ifEmpty { listOf(VoiceLanguage("en", voices, defaultVoice.ifBlank { voices.firstOrNull().orEmpty() })) }
+}
+
+@Serializable
+data class VoiceLanguage(
+    /** "en" or "zh". */
+    val code: String,
+    val voices: List<String> = emptyList(),
+    @SerialName("default_voice") val defaultVoice: String = "",
 )
 
 @Serializable

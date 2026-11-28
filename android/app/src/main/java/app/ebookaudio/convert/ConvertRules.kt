@@ -3,6 +3,7 @@ package app.ebookaudio.convert
 import app.ebookaudio.api.Draft
 import app.ebookaudio.api.DraftDetail
 import app.ebookaudio.api.Job
+import app.ebookaudio.api.VoiceLanguage
 
 /**
  * A draft's status line: [status] (a draft status, or null to show only the partial count) and, when only some
@@ -86,6 +87,23 @@ object ConvertRules {
         if (voice == bookVoice && speed == d.bookSpeed) return null
         return MixedVoice(bookVoice, d.bookSpeed)
     }
+
+    /** The language a voice speaks, from the PC's list (desktop D-043); null for a voice it no longer offers. */
+    fun languageOf(languages: List<VoiceLanguage>, voice: String): String? =
+        languages.firstOrNull { voice in it.voices }?.code
+
+    /**
+     * The voice to show for [lang]: [voice] when it speaks that language, else the language's default (a voice
+     * picked at upload in another language than the book's gives way, like on the PC's page).
+     */
+    fun voiceFor(languages: List<VoiceLanguage>, voice: String, lang: String): String {
+        val l = languages.firstOrNull { it.code == lang } ?: languages.firstOrNull() ?: return voice
+        return if (voice in l.voices) voice else l.defaultVoice.ifBlank { l.voices.firstOrNull() ?: voice }
+    }
+
+    /** The Upload screen's first voice: the app's language decides, Chinese for a Chinese interface. */
+    fun startVoice(languages: List<VoiceLanguage>, appLanguage: String): String =
+        voiceFor(languages, "", if (appLanguage.startsWith("zh")) "zh" else "en")
 
     private val UPLOADABLE = Regex("""\.(epub|pdf|txt)$""", RegexOption.IGNORE_CASE)
 

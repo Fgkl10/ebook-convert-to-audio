@@ -1,5 +1,5 @@
 {
-  "id": "5e8b7867b777",
+  "id": "18c52ec05083",
   "file": "story.txt",
   "source": "story.txt",
   "status": "done",
@@ -11,10 +11,10 @@
   "speed": 1.0,
   "ocr": "auto",
   "error": null,
-  "created": 1795834538.4878643,
+  "created": 1795851564.3043203,
   "chapters": 2,
   "checks": 0,
-  "job_id": "8cd2366b345e",
+  "job_id": "0d5b4ccfff2f",
   "book_id": "story-63e1f08d",
   "source_sha1": "63e1f08d09f9a7ad48f0e9afe5de949b59601495",
   "last_chapters": null,
@@ -25,6 +25,7 @@
   "report": {
     "source": "story.txt",
     "method": ".txt repackaged with the current parser (no cleaning yet)",
+    "language": "en",
     "chapters": [
       [
         "Chapter 1",

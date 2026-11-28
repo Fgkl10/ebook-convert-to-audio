@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from . import auth, network, service
 from ..core.normalize import OCR_MODES
-from ..tts.kokoro import DEFAULT_VOICE, VOICES
+from ..tts.kokoro import DEFAULT_VOICE, all_voices, default_voice, voices
 
 API_VERSION = 1
 PREFIX = f"/api/v{API_VERSION}"
@@ -39,20 +39,37 @@ class Address(BaseModel):
     qr_svg: Optional[str] = Field(description="QR code of pair_url as SVG, or null")
 
 
+class VoiceLanguage(BaseModel):
+    code: Literal["en", "zh"]
+    voices: list[str]
+    default_voice: str
+
+
 class Info(BaseModel):
     api_version: int
     name: str = Field(description="The PC's host name")
     url: str = Field(description="The address the phone connects to by default (the local one, or --advertise)")
     qr_svg: Optional[str] = Field(description="QR code to pair a phone at url (holds the token), or null")
     urls: list[Address] = Field(description="Every address of the PC, the default first, each with its own QR code")
-    voices: list[str]
-    default_voice: str
+    voices: list[str] = Field(description="Every voice, all languages (apps before D-043 read only this)")
+    default_voice: str = Field(description="The English default voice")
+    languages: list[VoiceLanguage] = Field(description="The voices by the language they speak (D-043)")
     ocr_modes: list[str]
+
+
+class TtsModel(BaseModel):
+    id: Literal["kokoro-v1.1-zh"]
+    installed: bool
+    installing: bool
+    done_bytes: int = Field(description="Downloaded so far, while installing")
+    total_bytes: int
+    error: Optional[str]
 
 
 class Report(BaseModel):
     source: str
     method: str
+    language: str = Field("en", description="\"en\" or \"zh\", detected from the text (D-042)")
     chapters: list[tuple[str, int]] = Field(description="(title, characters) per chapter")
     removed: list[tuple[str, str]] = Field(description="(reason, first characters) per removed part")
     unconfirmed: list[str] = Field(description="Contents entries with no matching heading")
@@ -183,6 +200,7 @@ class Book(BaseModel):
     cover: Optional[str] = None
     voice: Optional[str] = None
     speed: Optional[float] = None
+    language: str = Field("en", description="\"en\" or \"zh\" (books before D-042 are English)")
     complete: bool = False
     created: float = 0
     duration_ms: int = 0
@@ -224,7 +242,29 @@ def info(request: Request) -> dict:
             for a in network.phone_addresses(getattr(request.app.state, "advertise", None))]
     return {"api_version": API_VERSION, "name": socket.gethostname(), "url": urls[0]["url"],
             "qr_svg": urls[0]["qr_svg"], "urls": urls,
-            "voices": VOICES, "default_voice": DEFAULT_VOICE, "ocr_modes": list(OCR_MODES)}
+            "voices": all_voices(), "default_voice": DEFAULT_VOICE, "ocr_modes": list(OCR_MODES),
+            "languages": [{"code": lang, "voices": vs, "default_voice": default_voice(lang)}
+                          for lang, vs in voices().items()]}
+
+
+@router.get("/models/zh", response_model=TtsModel, tags=["server"])
+def zh_model() -> dict:
+    """The optional Kokoro v1.1-zh model (better Chinese voices, D-044): installed, or how far its download is."""
+    return service.zh_model.status()
+
+
+@router.post("/models/zh", response_model=TtsModel, responses=ERRORS, tags=["server"])
+def install_zh_model() -> dict:
+    """Start downloading Kokoro v1.1-zh (~330 MB). Poll GET to follow it. Nothing happens when it is installed."""
+    service.install_zh_model()
+    return service.zh_model.status()
+
+
+@router.delete("/models/zh", response_model=TtsModel, responses=ERRORS, tags=["server"])
+def remove_zh_model() -> dict:
+    """Remove Kokoro v1.1-zh. Refused while a conversion uses one of its voices. Chinese goes back to v1.0's voices."""
+    service.remove_zh_model()
+    return service.zh_model.status()
 
 
 @router.get("/qr", response_model=Address, responses=ERRORS, tags=["server"])

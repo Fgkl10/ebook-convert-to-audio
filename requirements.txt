@@ -1,6 +1,8 @@
 # Install PyTorch with CUDA first:
 #   pip install torch --index-url https://download.pytorch.org/whl/cu124
 kokoro
+misaki[zh]      # Chinese pronunciation for Kokoro: jieba, pypinyin, cn2an (D-043)
+opencc-python-reimplemented  # Traditional -> Simplified, for pronunciation only (D-043)
 soundfile
 ebooklib
 beautifulsoup4

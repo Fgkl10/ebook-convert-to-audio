@@ -31,7 +31,7 @@ def test_lang02_non_english_refused(text):
 
 
 def test_lang02_message_mentions_metadata_and_voices():
-    with pytest.raises(ValueError, match=r"metadata says language 'hu'.*can only speak: en"):
+    with pytest.raises(ValueError, match=r"metadata says language 'hu'.*can only speak: English, Chinese"):
         check_language(book(HU * 6, language="hu"))
 
 

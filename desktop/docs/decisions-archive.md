@@ -112,7 +112,7 @@ when they are parsed with the lxml HTML parser (PAR-16).
 **Consequences:** Nothing changes in behavior. Other warnings still show. Silencing is local, so no global filter hides warnings from other code.
 
 ## D-016 Skip EPUB front matter by label, OPF guide, or exact title
-Status: Accepted · Milestone: M3
+Status: Accepted, amended by D-042 (Chinese front-matter titles) · Milestone: M3
 **Context:** The cover, title page, half title, copyright page and contents were read aloud as chapters
 (PAR-15). In the sample book the half title holds a 13-sentence marketing blurb.
 **Decision:** Skip a spine document if (a) a page-level element (`body`, `section`, `div`, `nav`,
@@ -287,7 +287,7 @@ heading. The Art of Game Design and Counselling for Toads are unchanged. A note 
 differently from body text loses only its first paragraph, and the rest stays as a fragment (NORM-11, a known gap).
 
 ## D-028 Model caches live inside the project
-Status: Accepted · Milestone: M3
+Status: Accepted, amended by D-044 (jieba's cache and Kokoro v1.1-zh live in `models/` too) · Milestone: M3
 **Context:** Kokoro-82M (313 MB, from Hugging Face) and the docTR OCR models (124 MB) downloaded into the user's
 `~/.cache`, outside the project. Everything the project uses should stay inside its folder.
 **Decision:** `desktop/__init__.py` sets `HF_HOME=<project>/models/huggingface` and `DOCTR_CACHE_DIR=<project>/models/doctr`

@@ -20,13 +20,17 @@ Status legend: Automated · Manual · Gap
 |---|---|---|---|---|
 | AND-01 | Fixtures match the server | Convert a made-up story with the fake TTS; compare `/info`, `/books`, `/books/{id}`, `/drafts`, `/drafts/{id}`, `/drafts/{id}/chapters/0`, `/jobs` with the fixtures | Same keys and types at every level; no real host, address, token or PC path in the fixtures | Automated `tests/test_android_contract.py::test_and01_android_fixtures_match_the_server` |
 | AND-06 | The Convert tab decodes the server's JSON | Decode `drafts.json`, `draft.json`, `draft_chapter.json`, `jobs.json` (made by AND-01) and a hand-written report | Drafts, report (chapter and removed pairs), chapter text and jobs decode | Automated `ConvertModelsTest` |
-| AND-03 | The app decodes the server's JSON | Decode the fixtures | `Info`, `BookSummary`, `Book` decode; every `pair_url` parses; chapter audio names, sizes, times; sentences end at the chapter's duration; unknown fields ignored | Automated `ModelsTest` (`info`, `books`, `book`, `ignoresFieldsItDoesNotKnow`) |
+| AND-03 | The app decodes the server's JSON | Decode the fixtures | `Info`, `BookSummary`, `Book` decode; every `pair_url` parses; `Info.languages` is en and zh, each default among its voices; chapter audio names, sizes, times; sentences end at the chapter's duration; unknown fields ignored | Automated `ModelsTest` (`info`, `books`, `book`, `ignoresFieldsItDoesNotKnow`) |
+| AND-03b | An older PC without `languages` | Decode an `/info` with only `voices` and `default_voice` | One English language made from the flat list (A-021) | Automated `ModelsTest.infoFromAPcBeforeChineseVoices` |
 
 ## Convert tab (M4b)
 
 | ID | Case | Steps / input | Expected | Status |
 |---|---|---|---|---|
 | AND-07 | The web page's rules | Status labels, buttons per status, visible jobs, default picks (fresh, partly converted, interrupted run), "New only", approve label and chapters (`null` = all), mixed-voice warning, uploadable names | Same results as `desktop/web/app.js`. Labels are values (`StatusLabel`, `ApproveLabel`, `MixedVoice`) that the screens localize (A-017) | Automated `ConvertRulesTest` |
+| AND-07b | Voices by language | `languageOf`, `voiceFor` (kept, English voice for a Chinese book, a voice the PC no longer offers, no list yet), `startVoice` for zh / en | As in A-021, the same as the web page (desktop D-043) | Automated `ConvertRulesTest.voicesByLanguage` |
+| AND-M38 | Language ▸ Voice on the phone | Add a book: switch Language to 中文, play a sample, upload a Chinese EPUB; Review it | The Voice list follows the Language; Review starts on 中文 with a Chinese voice; the book converts | Manual, pass (2026-11-28, K60E, versionCode 104, the 认知觉醒 sample, one chapter with `zf_001`) |
+| AND-M39 | Chinese read-along | Play a converted Chinese chapter with the text shown | No spaces between sentences; the highlight moves sentence by sentence; tapping a sentence plays from it | Manual, pass (2026-11-28, K60E, streamed) |
 | AND-08 | Requests | Multipart upload (fields, exact file bytes, progress), cleaned upload route, approve body with `"chapters": null` and with a list, cancel/discard/delete methods and paths, 409/401 errors, voice sample URL | As listed | Automated `ApiClientTest` |
 | AND-08b | Upload over a closed pooled connection | The server closes the connection after a 400; the next upload reuses it | Resent on a fresh connection; succeeds | Automated `ApiClientTest.uploadRetriesWhenThePooledConnectionWasClosed` |
 | AND-M12 | Upload, review, convert one chapter | Picker → .txt → sample ▶ → Upload & clean → Review → read a chapter → untick one → Convert 1 chapter → progress → Listen | Only the ticked chapter is converted | Manual, pass (2026-11-28) |
@@ -84,7 +88,7 @@ against the next one).
 
 | ID | Case | Steps / input | Expected | Status |
 |---|---|---|---|---|
-| AND-09 | Sentence lookup and buttons | Positions before, at and between sentence starts, past the end; 1,000 sentences; previous at 0.5 s / 1 s / 2 s into a sentence; next on the last sentence; paragraph grouping | Same rules as the web reader (A-015) | Automated `SentenceSyncTest` |
+| AND-09 | Sentence lookup and buttons | Positions before, at and between sentence starts, past the end; 1,000 sentences; previous at 0.5 s / 1 s / 2 s into a sentence; next on the last sentence; paragraph grouping; the gap between sentences (English: a space; Chinese: none, A-021) | Same rules as the web reader (A-015) | Automated `SentenceSyncTest` |
 | AND-10 | Sleep timer logic | Minutes count down, never below 0, expire; fade over the last 10 s; end of chapter uses the chapter's time left at the speed; invalid minutes refused | As listed (A-016) | Automated `SleepTimerTest` |
 | AND-11 | The web reader and the app share the reading rules | Read `app.js`, `index.html`, `app.css`, `SentenceSync.kt`, `Settings.kt`, `PlayerScreen.kt` | Same restart threshold and text size range; the web buttons exist and are wired; both clients start playback from a sentence button | Automated `tests/test_android_contract.py::test_and11_web_reader_and_app_share_the_reading_rules` |
 | AND-M22 | Read along while streaming | Play a book that isn't downloaded; open the player | Text shown; current sentence highlighted, a third of the way down; hand scroll holds the auto-scroll until 4 s after; tapping a sentence plays from it | Manual, pass (2026-11-28) |

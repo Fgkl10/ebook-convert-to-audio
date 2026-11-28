@@ -83,8 +83,9 @@ fun ReviewScreen(draftId: String, book: MediaController?, onBack: () -> Unit, on
             val d = a.draft(draftId)
             draft = d
             picked = ConvertRules.defaultPicks(d)
-            // chapters added to a book keep its voice unless the user picks another (D-035)
-            voice = d.bookVoice ?: d.voice
+            // chapters added to a book keep its voice unless the user picks another (D-035); the language starts on
+            // the book's own (D-043)
+            voice = ConvertRules.voiceFor(info?.languages.orEmpty(), d.bookVoice ?: d.voice, d.report?.language ?: "en")
             speed = d.bookSpeed ?: d.speed
         } catch (e: IOException) {
             error = res.errorText(e)
@@ -178,7 +179,7 @@ fun ReviewScreen(draftId: String, book: MediaController?, onBack: () -> Unit, on
             }
             item {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    info?.let { VoiceAndSpeed(it.voices, voice, speed, { v -> voice = v }, { s -> speed = s }, api, sample, book) }
+                    info?.let { VoiceAndSpeed(it.languages, voice, speed, { v -> voice = v }, { s -> speed = s }, api, sample, book) }
                     ConvertRules.mixedVoiceWarning(d, picked, voice, speed)?.let {
                         Text(mixedVoiceText(it), color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.bodySmall)
                     }

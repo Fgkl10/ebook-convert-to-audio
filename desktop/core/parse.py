@@ -32,6 +32,16 @@ class Book:
 
 MIN_CHAPTER_CHARS = 40  # skip cover pages, blank separators, etc.
 
+# CJK ideographs (and 〇). Chinese has no spaces between words, so a line break between two Chinese characters
+# (or their punctuation) is joined without one (D-042).
+CJK = "〇㐀-䶿一-鿿豈-﫿"
+_CJK_WRAP = re.compile(rf"(?<=[{CJK}，。、；：！？）」』”])\s*\n\s*(?=[{CJK}（「『“])")
+
+
+def unwrap(text: str) -> str:
+    """Join hard-wrapped lines into one paragraph: with a space, or with nothing between Chinese characters."""
+    return re.sub(r"\s*\n\s*", " ", _CJK_WRAP.sub("", text)).strip()
+
 
 def load_book(path: str | Path) -> Book:
     path = Path(path)
@@ -62,7 +72,10 @@ _FRONT_MATTER_TYPES = {"cover", "titlepage", "halftitlepage", "copyright-page", 
 _FRONT_MATTER_ROLES = {"doc-cover", "doc-toc"}
 _FRONT_MATTER_GUIDE = {"cover", "title-page", "copyright-page", "toc"}
 _FRONT_MATTER_TITLES = {"copyright", "copyright page", "contents", "table of contents", "title page", "half title",
-                        "half title page", "cover", "dedication", "dedication page"}
+                        "half title page", "cover", "dedication", "dedication page",
+                        # Chinese, Simplified and Traditional (D-042)
+                        "封面", "扉页", "扉頁", "书名页", "書名頁", "版权", "版權", "版权信息", "版權資訊", "版權信息", "版权页",
+                        "版權頁", "目录", "目錄", "题献", "題獻", "献词", "獻詞"}
 _PAGE_LEVEL_TAGS = ["body", "section", "div", "nav", "article"]
 
 
@@ -360,7 +373,10 @@ def _load_epub(path: Path) -> Book:
 # ---------------------------------------------------------------- TXT
 
 _CHAPTER_LINE = re.compile(
-    r"^\s*((chapter|part|book)\s+([0-9]+|[ivxlcdm]+|[a-z\-]+)\b.*|prologue|epilogue)\s*$",
+    r"^\s*((chapter|part|book)\s+([0-9]+|[ivxlcdm]+|[a-z\-]+)\b.*|prologue|epilogue"
+    # Chinese: 第一章 / 第12回 / 第三卷 ..., and the usual openers and closers (D-042)
+    r"|第\s*[0-9０-９〇零一二三四五六七八九十百千两兩]+\s*[章节節回卷部篇](?:[\s：:].*)?"
+    r"|(?:序|序言|序章|自序|前言|引言|楔子|尾声|尾聲|后记|後記|结语|結語)(?:\s.*)?)\s*$",
     re.IGNORECASE,
 )
 _TXT_PART_CHARS = 20000
@@ -368,15 +384,22 @@ _TXT_PART_CHARS = 20000
 
 def _load_txt(path: Path) -> Book:
     raw = path.read_bytes()
-    for enc in ("utf-8-sig", "utf-16", "cp1252", "latin-1"):
+    # UTF-16 only with its BOM (without one it "decodes" any even-length file). GB18030 comes before cp1252,
+    # which would also accept a Chinese GBK file, as mojibake.
+    bom16 = raw[:2] in (b"\xff\xfe", b"\xfe\xff")
+    for enc in ("utf-16",) if bom16 else ("utf-8-sig", "gb18030", "cp1252", "latin-1"):
         try:
             text = raw.decode(enc)
             break
         except UnicodeDecodeError:
             continue
     text = text.replace("\r\n", "\n")
-    # Paragraphs are separated by blank lines; single newlines are hard wraps.
-    paragraphs = [re.sub(r"\s*\n\s*", " ", p).strip() for p in re.split(r"\n\s*\n", text)]
+    # Paragraphs are separated by blank lines; single newlines are hard wraps. A file with no blank line at all
+    # (common for Chinese TXT books) has one paragraph per line.
+    if re.search(r"\n\s*\n", text):
+        paragraphs = [unwrap(p) for p in re.split(r"\n\s*\n", text)]
+    else:
+        paragraphs = [p.strip() for p in text.split("\n")]
     paragraphs = [p for p in paragraphs if p]
 
     book = Book(title=path.stem, author="")
@@ -418,7 +441,7 @@ def _pdf_page_paragraphs(page) -> list[str]:
             continue
         txt = block[4]
         txt = re.sub(r"-\n(?=[a-z])", "", txt)  # de-hyphenate line breaks
-        txt = re.sub(r"\s*\n\s*", " ", txt).strip()
+        txt = unwrap(txt)
         if not txt or re.fullmatch(r"\d+", txt):  # skip bare page numbers
             continue
         out.append(txt)

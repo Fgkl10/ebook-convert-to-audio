@@ -55,11 +55,12 @@ books over Wi-Fi (or a VPN) and plays them offline.
 | **Partial conversions** | Convert one chapter to try a voice, add more chapters later, cancel and resume. |
 | **Android player** | Offline playback, background and lock-screen controls, a sleep timer (minutes or end of chapter), variable speed, text size. |
 | **Works on any Android phone** | Android 8.0 or later. No Google Play services needed. |
+| **English and Chinese books** | English books are read by English voices, Chinese books (Simplified or Traditional) by Mandarin voices. The language is detected from the text. Optional: about 100 better Mandarin voices (Kokoro v1.1-zh). |
 | **English and Chinese interface** | The app and the web page are in English, Simplified Chinese and Traditional Chinese. |
 | **Open API** | Everything the web page does goes through a documented JSON API (`/api/v1`, OpenAPI at `/docs`). |
 
-> **Note:** the voices currently speak **English** only, so books in other languages are refused. Chinese voices are
-> planned (see [Roadmap](#roadmap)).
+> **Note:** books in other languages are refused. Scanned **Chinese** PDFs are not supported yet: the OCR reads
+> Latin script only.
 
 ## How it works
 
@@ -88,7 +89,7 @@ needs no forced alignment.
 | Python | 3.10, 3.11 or 3.12 |
 | ffmpeg | On `PATH` |
 | GPU | NVIDIA with CUDA recommended. CPU works but is much slower |
-| Disk | About 450 MB for the models (Kokoro ~313 MB, OCR ~120 MB), plus the audiobooks |
+| Disk | About 450 MB for the models (Kokoro ~313 MB, OCR ~120 MB), ~330 MB more for the optional Chinese voices, plus the audiobooks |
 | Phone | Any Android phone with Android 8.0 (API 26) or later |
 | Building the app (optional; [releases](https://github.com/Fgkl10/ebook-convert-to-audio/releases/latest) have the APK) | JDK 21 (for example Android Studio's bundled `jbr`) and the Android SDK |
 
@@ -110,6 +111,11 @@ py -3.10 -m venv .venv
 The models download on first use into `models/` inside the project. Set `HF_HOME` / `DOCTR_CACHE_DIR` to keep them
 somewhere else.
 
+**Better Chinese voices (optional).** Chinese books work out of the box with Kokoro's 8 built-in Mandarin voices.
+For clearly better ones, open the web page, expand **Better Chinese voices (Kokoro v1.1-zh)** at the top and click
+**Install** (~330 MB download; it also uses more GPU memory). The Chinese voice list then shows its 100 voices.
+**Remove** takes it away again.
+
 ## Quick start
 
 ```powershell
@@ -121,7 +127,8 @@ Open <http://localhost:8000> and follow the three tabs:
 
 1. **Clean**: upload a book. It is cleaned and split into chapters. Review the report and the chapter text, or tick
    "skip review".
-2. **Convert**: choose the voice (▶ plays a sample), the speed and the chapters, then **Approve & convert**. Progress is
+2. **Convert**: choose the language and the voice (▶ plays a sample), the speed and the chapters, then
+   **Approve & convert**. The review starts on the book's own language. Progress is
    shown live, and you can cancel and resume later.
 3. **Library**: play a book in the browser with the sentence highlighting, or open it on your phone.
 
@@ -133,7 +140,7 @@ You can clean and convert without the server:
 
 ```powershell
 ebook-normalize path\to\book.epub                   # writes book.std.epub + book.std.report.txt
-ebook-convert path\to\book.std.epub --voice af_heart
+ebook-convert path\to\book.std.epub --voice af_heart   # Chinese book: e.g. --voice zf_xiaoxiao
 ebook-convert path\to\book.std.epub --list-chapters # numbered chapter list
 ebook-convert path\to\book.std.epub --chapters 1    # one chapter (also 2-4 or 1,3,5-6)
 ```
@@ -249,7 +256,7 @@ The app uses **no Google services** (QR scanning uses ZXing), so it works on pho
 | Android app | ✓ | ✓ | ✓ |
 | Web page | ✓ | ✓ | ✓ |
 | Documentation (README) | ✓ | ✓ | ✓ |
-| Speech (voices) | ✓ | planned | planned |
+| Speech (voices) | ✓ | ✓ (Mandarin) | ✓ (Mandarin) |
 
 - **Android:** the app follows the phone's language. To use another language, open the app's **Settings →
   Language**. This also works on phones like Xiaomi's that hide the system's per-app language screen. It has been
@@ -257,6 +264,9 @@ The app uses **no Google services** (QR scanning uses ZXing), so it works on pho
   phone's language.
 - **Web page:** follows the browser's language. Use the **EN / 简体 / 繁體** buttons at the top to switch. The browser
   remembers the choice.
+- **Books:** English and Chinese, detected from the text. Traditional Chinese books are read in Mandarin, and the
+  text on screen stays Traditional. A voice in the wrong language for a book is swapped for that language's default
+  voice.
 - Messages that come from the PC (error details, cleaning-report entries) are still in English.
 
 ## Troubleshooting
@@ -265,7 +275,7 @@ The app uses **no Google services** (QR scanning uses ZXing), so it works on pho
 |---|---|
 | The phone says it can't reach the PC | Check the firewall rule for port 8000, check that both devices are on the same network, or use a VPN address (see [Connecting a phone](#connecting-a-phone)) |
 | "The PC refused this code" | The token changed (`--new-token`). Scan the QR code again |
-| A book is refused as "not English" | Only English voices exist so far. If the book really is English, use `--ignore-language` on the command line |
+| A book is refused as "not English or Chinese" | Only English and Chinese voices exist. If the book really is in one of them, use `--ignore-language` on the command line |
 | Playback stops with the screen off | See [Background playback](#background-playback) |
 | A scanned PDF has no text | Install `requirements-ocr.txt` and choose OCR **Always** |
 | Conversion is slow | Check that PyTorch sees the GPU: `python -c "import torch; print(torch.cuda.is_available())"` |
@@ -320,13 +330,14 @@ git push origin v0.5.0      # -> a GitHub Release with ebook-audio-0.5.0.apk
 - [x] M4a Android player (pairing, downloads, background playback) · M4b manage conversions from the phone
 - [x] M5 read-along on the phone, sleep timer, web reader controls
 - [x] M6a interface in Simplified and Traditional Chinese; support for all Android phones
-- [ ] Chinese voices: convert Chinese books (Simplified and Traditional)
+- [x] M7 Chinese voices: convert Chinese books (Simplified and Traditional), optional Kokoro v1.1-zh voices
+- [ ] Chinese scanned PDFs (OCR for Chinese)
 - [ ] Further polish
 
 ## License
 
 The source code is released under the [MIT License](LICENSE).
 
-Third-party components keep their own licenses. The Kokoro-82M model is Apache-2.0. Some Python dependencies are
+Third-party components keep their own licenses. The Kokoro-82M and Kokoro-82M-v1.1-zh models are Apache-2.0. Some Python dependencies are
 **AGPL-3.0**, notably [PyMuPDF](https://pymupdf.readthedocs.io/) and [EbookLib](https://github.com/aerkalov/ebooklib).
 If you redistribute a bundled build, check that those terms fit your use.

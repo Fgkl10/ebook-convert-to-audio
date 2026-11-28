@@ -34,6 +34,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaController
 import app.ebookaudio.R
 import app.ebookaudio.api.ApiClient
+import app.ebookaudio.api.VoiceLanguage
 
 /**
  * A short-lived player for voice samples: separate from the book's PlaybackService, so a sample never replaces the
@@ -75,10 +76,41 @@ fun rememberSamplePlayer(): SamplePlayer {
     return sample
 }
 
-/** Voice dropdown with a ▶ sample button, and a speed slider (0.5–2.0×, like the PC's page). */
+/** A read-only field that opens a dropdown of [items]. */
+@Composable
+private fun Picker(label: String, value: String, items: List<Pair<String, String>>, onPick: (String) -> Unit,
+                   modifier: Modifier = Modifier) {
+    var open by remember { mutableStateOf(false) }
+    Box(modifier) {
+        OutlinedTextField(
+            value = value, onValueChange = {}, readOnly = true, label = { Text(label) },
+            trailingIcon = { Icon(Icons.Filled.ArrowDropDown, null) },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        // a transparent layer over the field opens the menu (a read-only field eats the taps)
+        Box(Modifier.matchParentSize().clickable { open = true })
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            items.forEach { (key, text) ->
+                DropdownMenuItem(text = { Text(text) }, onClick = { onPick(key); open = false })
+            }
+        }
+    }
+}
+
+@Composable
+private fun languageName(code: String) = when (code) {
+    "en" -> stringResource(R.string.voice_lang_en)
+    "zh" -> stringResource(R.string.voice_lang_zh)
+    else -> code
+}
+
+/**
+ * Language and Voice dropdowns (the Voice list follows the Language, desktop D-043) with a ▶ sample button, and a
+ * speed slider (0.5–2.0×, like the PC's page).
+ */
 @Composable
 fun VoiceAndSpeed(
-    voices: List<String>,
+    languages: List<VoiceLanguage>,
     voice: String,
     speed: Double,
     onVoice: (String) -> Unit,
@@ -87,23 +119,16 @@ fun VoiceAndSpeed(
     sample: SamplePlayer,
     book: MediaController?,
 ) {
-    var open by remember { mutableStateOf(false) }
+    val lang = ConvertRules.languageOf(languages, voice) ?: languages.firstOrNull()?.code.orEmpty()
+    val voices = languages.firstOrNull { it.code == lang }?.voices.orEmpty()
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (languages.size > 1) {
+            Picker(stringResource(R.string.voice_language), languageName(lang),
+                languages.map { it.code to languageName(it.code) },
+                { code -> onVoice(ConvertRules.voiceFor(languages, voice, code)) }, Modifier.fillMaxWidth())
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.weight(1f)) {
-                OutlinedTextField(
-                    value = voice, onValueChange = {}, readOnly = true, label = { Text(stringResource(R.string.voice)) },
-                    trailingIcon = { Icon(Icons.Filled.ArrowDropDown, null) },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                // a transparent layer over the field opens the menu (a read-only field eats the taps)
-                Box(Modifier.matchParentSize().clickable { open = true })
-                DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-                    voices.forEach { v ->
-                        DropdownMenuItem(text = { Text(v) }, onClick = { onVoice(v); open = false })
-                    }
-                }
-            }
+            Picker(stringResource(R.string.voice), voice, voices.map { it to it }, onVoice, Modifier.weight(1f))
             IconButton(onClick = { api?.let { sample.toggle(it, voice, book) } }, enabled = api != null) {
                 if (sample.playing == voice) Icon(Icons.Filled.Stop, stringResource(R.string.stop_sample))
                 else Icon(Icons.Filled.PlayArrow, stringResource(R.string.hear_sample, voice))

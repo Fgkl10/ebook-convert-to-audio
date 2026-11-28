@@ -39,6 +39,22 @@ object SentenceSync {
         return sentences.getOrNull(i + 1)?.startMs
     }
 
+    /**
+     * What goes between two sentences of a paragraph: a space, or nothing in Chinese (desktop D-042), where a
+     * sentence ends with 。 or 」 and the next begins with a character. Judged from the text, so books downloaded before
+     * the language was recorded show right too.
+     */
+    fun gap(before: String, after: String): String =
+        if (isCjk(before.lastOrNull()) || isCjk(after.firstOrNull())) "" else " "
+
+    private fun isCjk(c: Char?): Boolean {
+        if (c == null) return false
+        val block = Character.UnicodeBlock.of(c)
+        return Character.UnicodeScript.of(c.code) == Character.UnicodeScript.HAN ||
+            block == Character.UnicodeBlock.CJK_SYMBOLS_AND_PUNCTUATION ||
+            block == Character.UnicodeBlock.HALFWIDTH_AND_FULLWIDTH_FORMS
+    }
+
     /** Sentences grouped into paragraphs, in order (a sentence's `p` is its paragraph number in the chapter). */
     fun paragraphs(sentences: List<Sentence>): List<List<Sentence>> {
         val out = mutableListOf<MutableList<Sentence>>()
