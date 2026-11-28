@@ -86,7 +86,7 @@ flowchart LR
 | 显卡 | 推荐支持 CUDA 的 NVIDIA 显卡；CPU 也能用，但慢很多 |
 | 磁盘 | 模型约 450 MB（Kokoro 约 313 MB，OCR 约 120 MB），另加有声书本身 |
 | 手机 | 任意 Android 8.0（API 26）及以上的手机 |
-| 编译应用 | JDK 21（例如 Android Studio 自带的 `jbr`）和 Android SDK |
+| 编译应用（可选；[发布页](https://github.com/Fgkl10/ebook-convert-to-audio/releases/latest)提供 APK） | JDK 21（例如 Android Studio 自带的 `jbr`）和 Android SDK |
 
 ## 安装（电脑）
 
@@ -160,13 +160,23 @@ ebook-convert path\to\book.std.epub --chapters 1    # 只转换一章（也可�
 
 ## Android 应用
 
-### 编译
+### 获取 APK
+
+从[最新版本](https://github.com/Fgkl10/ebook-convert-to-audio/releases/latest)下载 `ebook-audio-<版本>.apk`，无需自己编译。
+所有 APK 都使用本项目的密钥签名，所以新版本可以直接覆盖安装旧版本，下载的书和设置都会保留。
+
+上次发布之后 `master` 的最新构建在
+[Actions → APK](https://github.com/Fgkl10/ebook-convert-to-audio/actions/workflows/apk.yml)：打开最近一次运行，下载其中的构建产物（一个内含 APK 的 zip，需要登录 GitHub）。
+
+也可以自己编译：
 
 ```powershell
 $env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"   # Android Studio 的安装位置
 cd android
 .\gradlew :app:assembleDebug        # -> app\build\outputs\apk\debug\app-debug.apk
 ```
+
+没有使用本项目密钥编译的 APK 不能覆盖安装下载的 APK，反之亦然。这时 Android 会要求先卸载，应用内下载的书和设置都会被删除。
 
 ### 安装
 
@@ -274,6 +284,13 @@ cd android
 
 CI（GitHub Actions）会在每个拉取请求上运行这两项。开发流程是每个里程碑一个分支、一个拉取请求。
 凡是改变流程、模块边界、数据格式或设计决策的修改，都会在同一个拉取请求中更新组件文档（`desktop/docs/`、`android/docs/`）。
+
+**发布应用：** 每次推送到 `master` 且修改了 `android/` 时，都会构建一个已签名的 APK（工作流 `apk.yml`）。要发布正式版本，给提交打上标签并推送：
+
+```powershell
+git tag v0.5.0
+git push origin v0.5.0      # -> 生成附带 ebook-audio-0.5.0.apk 的 GitHub Release
+```
 
 ## 路线图
 

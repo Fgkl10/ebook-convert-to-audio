@@ -117,3 +117,20 @@ flowchart TD
   J -- Cancel --> K["Job cancelled; finished chapters kept"]
   J -- done --> L["Listen: book screen (stream or download)"]
 ```
+
+## Building and publishing the APK (A-020)
+
+```mermaid
+flowchart TD
+  PR["Pull request"] --> CI["ci.yml: unit tests, lint, debug APK (not kept)"]
+  CI -- merged --> M["Push to master"]
+  M -- "changes android/** or apk.yml" --> A["apk.yml"]
+  T["Push tag vX.Y.Z"] -- "create event" --> A
+  A --> K{"ANDROID_KEYSTORE_BASE64 secret set?"}
+  K -- no --> F["Fail: nothing published"]
+  K -- yes --> B["assembleRelease, signed with the release key;<br/>versionCode = commit count, versionName = tag"]
+  B --> V["apksigner: certificate is CN=Ebook Audio"]
+  V --> AR["Artifact ebook-audio-….apk (90 days)"]
+  V -- "tag only" --> R["GitHub Release with ebook-audio-X.Y.Z.apk"]
+  R --> P["Phone: download, install over the older version (same key, higher versionCode)"]
+```

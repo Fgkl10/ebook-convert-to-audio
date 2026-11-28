@@ -38,6 +38,7 @@ Consequences: trade-offs we accept
 | A-017 | English, Simplified and Traditional Chinese | all screens | desktop D-040 |
 | A-018 | Background-playback steps per phone maker | ui | generalizes A-007's HyperOS note |
 | A-019 | Language choice in Settings, through AppCompat | ui | amends A-017 |
+| A-020 | APK built and signed by GitHub Actions | build, CI | |
 
 ## A-001 Kotlin + Jetpack Compose, one `:app` module
 Status: Accepted · Milestone: M4a
@@ -285,3 +286,33 @@ version. On 13+ it writes through to the system's own setting, so the two never 
 Consequences: A new dependency, `androidx.appcompat:appcompat` 1.8.0. On Android 8–12 the choice reaches the
 activity only. The download notification there (built from the application context) and Media3's notification
 stay in the phone's language.
+
+## A-020 APK built and signed by GitHub Actions
+Status: Accepted · Milestone: after M6a
+Context: The APK was built on the PC only. The user wants to download it from GitHub. CI already built a debug
+APK, but each runner signs with a new random debug key, and Android installs an update only when the signing key
+matches. That APK could never update an installed app.
+Decision:
+- One release key (RSA 4096, alias `ebook-audio`, `CN=Ebook Audio`, PKCS12). It lives in GitHub Secrets
+  (`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`), with a
+  local copy in the git-ignored `android/keystore/` that the user also backs up outside the project.
+- `build.gradle.kts` takes the key from environment variables (CI) or `android/keystore/release.properties` (PC).
+  Both debug and release builds use it when present, so a PC build and a downloaded APK install over each other.
+  Without the key (other clones, PRs), builds fall back to the standard debug key.
+- `versionCode` is the commit count (`git rev-list --count HEAD`), the same number on the PC and on GitHub, so the
+  newer commit always wins. A run number would differ from the PC's and block installs as a downgrade.
+  `versionName` comes from the tag (`v0.5.0` → `0.5.0`), else the file's value.
+- `.github/workflows/apk.yml` (separate from `ci.yml`):
+  - a push to `master` that touches `android/**` gives a signed release APK as the run's artifact (90 days);
+  - a `v*` tag also gives a GitHub Release with `ebook-audio-<version>.apk`. Tags come through the `create`
+    event, because a `paths` filter would also apply to a tag push.
+  - The job fails if the key secret is missing and checks the certificate with `apksigner`.
+Why: Releases give a permanent public download link without a PC build. Artifacts give every master change without
+tagging. Secrets keep the key out of the repository, which is public.
+Consequences:
+- Losing the key means later APKs can't update the installed app; the user then has to uninstall, which deletes
+  the phone's downloads and settings.
+- Pull requests from forks get no signed APK (no secrets).
+- The first install with the new key needed one uninstall of the earlier build, which used the old local debug
+  key.
+- Release builds are not minified (`isMinifyEnabled = false`), as before.

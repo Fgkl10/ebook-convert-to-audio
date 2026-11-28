@@ -90,7 +90,7 @@ needs no forced alignment.
 | GPU | NVIDIA with CUDA recommended. CPU works but is much slower |
 | Disk | About 450 MB for the models (Kokoro ~313 MB, OCR ~120 MB), plus the audiobooks |
 | Phone | Any Android phone with Android 8.0 (API 26) or later |
-| Building the app | JDK 21 (for example Android Studio's bundled `jbr`) and the Android SDK |
+| Building the app (optional; [releases](https://github.com/Fgkl10/ebook-convert-to-audio/releases/latest) have the APK) | JDK 21 (for example Android Studio's bundled `jbr`) and the Android SDK |
 
 ## Installation (PC)
 
@@ -169,13 +169,26 @@ the VPN address (or type one and press **Show QR**), and scan again.
 
 ## Android app
 
-### Build
+### Get the APK
+
+Download `ebook-audio-<version>.apk` from the [latest release](https://github.com/Fgkl10/ebook-convert-to-audio/releases/latest).
+No build is needed. Every APK is signed with the project's key, so a newer one installs over an older one and keeps
+your downloads and settings.
+
+The newest build of `master`, from after the last release, is under
+[Actions → APK](https://github.com/Fgkl10/ebook-convert-to-audio/actions/workflows/apk.yml): open the latest run and
+download the artifact (a zip with the APK inside; it requires signing in to GitHub).
+
+Or build it yourself:
 
 ```powershell
 $env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"   # wherever Android Studio is installed
 cd android
 .\gradlew :app:assembleDebug        # -> app\build\outputs\apk\debug\app-debug.apk
 ```
+
+A build made without the project's key can't install over a downloaded APK, or the other way round. Android then
+asks you to uninstall first, which deletes the app's downloads and settings.
 
 ### Install
 
@@ -292,6 +305,14 @@ cd android
 CI (GitHub Actions) runs both on every pull request. Work happens in one branch and one pull request per milestone.
 A change to a flow, a module boundary, a data format or a design choice updates the component docs (`desktop/docs/`,
 `android/docs/`) in the same pull request.
+
+**Releasing the app:** each push to `master` that changes `android/` builds a signed APK (workflow `apk.yml`). To
+publish a release, tag the commit and push the tag:
+
+```powershell
+git tag v0.5.0
+git push origin v0.5.0      # -> a GitHub Release with ebook-audio-0.5.0.apk
+```
 
 ## Roadmap
 

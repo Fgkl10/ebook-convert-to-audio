@@ -26,3 +26,7 @@ local.properties
 *.iml
 *.apk
 captures/
+# The release signing key and its passwords (A-020): never commit; back it up outside git.
+android/keystore/
+*.jks
+*.keystore
