@@ -43,7 +43,8 @@ async function loadInfo() {
   let saved = {};
   try { saved = JSON.parse(localStorage.getItem('ebookAudioAddress') || '{}'); } catch (e) { /* none */ }
   if (saved.typed && !await addTyped(saved.typed)) saved = {};
-  pickAddress(Math.max(0, addrs.findIndex(a => a.address === saved.address)));
+  // match the whole URL: a typed address can share its host with a listed one and differ only in the port
+  pickAddress(Math.max(0, addrs.findIndex(a => a.url === saved.url)));
 }
 
 // ---------------- the phone's address: the QR code can show any of the PC's addresses, or one typed by hand
@@ -57,7 +58,7 @@ function pickAddress(i) {
   document.querySelectorAll('#addrs .addr').forEach(b => b.onclick = () => pickAddress(+b.dataset.k));
   try {
     localStorage.setItem('ebookAudioAddress', JSON.stringify(
-      { address: a.address, typed: a.adapter === 'typed' ? a.typedAs : undefined }));
+      { url: a.url, typed: a.adapter === 'typed' ? a.typedAs : undefined }));
   } catch (e) { /* not remembered */ }
 }
 async function addTyped(text) {

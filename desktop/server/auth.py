@@ -12,6 +12,7 @@ import ipaddress
 import os
 import secrets
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from fastapi import HTTPException, Request
 
@@ -43,15 +44,25 @@ def token(new: bool = False) -> str:
     return value
 
 
+LOCAL_NAMES = {"localhost", "127.0.0.1", "::1"}
+TEST_NAME = "testserver"  # the Host that Starlette's TestClient sends
+
+
 def is_local(request: Request) -> bool:
-    """A request from the PC itself. "testclient" is Starlette's TestClient, which stands in for the PC's browser."""
-    host = request.client.host if request.client else ""
-    if host in ("testclient", "localhost"):
-        return True
+    """A request from the PC's own page: a loopback client, *and* a Host and Origin that name this PC.
+    The client address alone isn't enough: any web page the PC's browser opens can make the browser send requests to
+    localhost (a cross-site POST), or point its own domain at 127.0.0.1 (DNS rebinding) and read /info's token.
+    Those carry a foreign Origin or Host. "testclient" is the TestClient, standing in for the PC's browser."""
+    client = request.client.host if request.client else ""
     try:
-        return ipaddress.ip_address(host).is_loopback
+        loopback = client == "testclient" or ipaddress.ip_address(client).is_loopback
     except ValueError:
+        loopback = client == "localhost"
+    names = LOCAL_NAMES | ({TEST_NAME} if client == "testclient" else set())
+    if not loopback or request.url.hostname not in names:
         return False
+    origin = request.headers.get("origin")
+    return origin is None or urlsplit(origin).hostname in names
 
 
 def supplied_token(request: Request) -> str:

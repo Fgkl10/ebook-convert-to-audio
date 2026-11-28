@@ -94,10 +94,26 @@ def test_auth01_other_devices_need_the_token(api):  # noqa: F811
 def test_auth02_the_pc_itself_and_the_page_need_none(api):  # noqa: F811
     assert api.get(f"{V1}/books").status_code == 200  # TestClient's own host stands for the PC's browser
     for host in ("127.0.0.1", "::1"):
-        assert remote(host=host).get(f"{V1}/books").status_code == 200, host
+        assert remote(host=host).get(f"{V1}/books", headers={"Host": "localhost:8000"}).status_code == 200, host
+    for host in ("localhost:8000", "127.0.0.1:8000", "[::1]:8000"):
+        assert remote(host="127.0.0.1").get(f"{V1}/books", headers={"Host": host}).status_code == 200, host
+    assert api.post(f"{V1}/jobs/nope/cancel", headers={"Origin": "http://localhost:8000"}).status_code == 404
     phone = remote()
     assert phone.get("/").status_code == 200 and phone.get("/static/app.js").status_code == 200
     assert phone.get("/openapi.json").status_code == 200  # the contract itself is public
+
+
+def test_auth05_other_sites_in_the_pcs_browser_are_not_the_pc(api):  # noqa: F811
+    """A web page open in the PC's browser reaches loopback too: by DNS rebinding (its own domain pointed at 127.0.0.1,
+    so the Host is foreign) or by a cross-site request (a foreign Origin). Neither gets the PC's free pass."""
+    pc = remote(host="127.0.0.1")
+    r = pc.get(f"{V1}/info", headers={"Host": "evil.example:8000"})
+    assert r.status_code == 401 and "token" not in r.text  # /info holds the token in its QR codes
+    assert pc.post(f"{V1}/jobs/nope/cancel", headers={"Host": "localhost:8000", "Origin": "http://evil.example"}
+                   ).status_code == 401
+    assert api.post(f"{V1}/jobs/nope/cancel", headers={"Origin": "null"}).status_code == 401  # a sandboxed page
+    token = auth.token()  # a paired phone's page is cross-origin to nothing: the token still works anywhere
+    assert pc.get(f"{V1}/books", headers={"Host": "evil.example", "Authorization": f"Bearer {token}"}).status_code == 200
 
 
 def test_auth03_token_is_kept_and_can_be_replaced(api):  # noqa: F811

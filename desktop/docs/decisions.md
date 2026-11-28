@@ -763,8 +763,12 @@ Status: Accepted · Milestone: M3 (wrap-up before M4)
 **Decision:**
 - **Token.** `server/auth.py` makes `<data>/server-token` (`secrets.token_urlsafe(24)`) at first start and reuses
   it. `ebook-server --new-token` replaces it, which unpairs every phone. The file is gitignored.
-- A router-level dependency on `/api/v1` lets a request through when it comes from the PC itself (loopback, or
-  TestClient's `testclient`), or when it carries the token as `Authorization: Bearer <token>` or `?token=<token>`.
+- A router-level dependency on `/api/v1` lets a request through in two cases:
+  - it comes from the PC's own page: a loopback client (or TestClient's `testclient`) **whose `Host` is
+    `localhost`, `127.0.0.1` or `[::1]` and whose `Origin`, if sent, is one of those too**. The client address
+    alone isn't enough: a web page open in the PC's browser can send cross-site requests to localhost (a foreign
+    `Origin`), or point its own domain at 127.0.0.1 by DNS rebinding and read `/info`'s token (a foreign `Host`);
+  - it carries the token as `Authorization: Bearer <token>` or `?token=<token>`.
   The query form is for URLs the browser loads by itself (`<audio src>`, `<img>`, download links), which can't
   send headers. Anything else gets 401 "Pair this device: scan the QR code shown on the PC". The comparison uses
   `secrets.compare_digest`.
@@ -780,7 +784,8 @@ Status: Accepted · Milestone: M3 (wrap-up before M4)
 - **Home page.** Every address is a button under "Other addresses"; a click switches the QR code and the address
   text, without a request or a server restart. A field takes a typed address (host name, IPv4 or `[IPv6]`, optional
   `:port`); **Show QR** calls `GET /api/v1/qr?address=` for its QR code, and a bad value shows the 400 message under
-  the field. The choice is remembered per browser.
+  the field. The choice is remembered per browser by its full URL (a typed address can share its host with a
+  listed one and differ only in the port).
 - mDNS now registers every IPv4 address, not only the default one.
 **Why:**
 - A token in the QR code costs the user nothing: scanning it is the pairing step the phone needs anyway.
@@ -793,7 +798,10 @@ Status: Accepted · Milestone: M3 (wrap-up before M4)
 - **Known limits:**
   - The server speaks plain HTTP. ZeroTier encrypts its traffic, but on a plain Wi-Fi network the token can be
     sniffed. The token guards against other devices on the network, not against someone watching it.
-  - Every process on the PC itself is trusted (loopback).
+  - Every program on the PC itself is trusted (loopback with a local `Host`); web pages in its browser are not
+    (`Host`/`Origin` check, AUTH-05).
+  - Opening the page on the PC by one of its network addresses (not `localhost`) counts as another device: it
+    needs the token like a phone.
   - `?token=` URLs appear in the server's access log if one is turned on (it is off: `log_level="warning"`).
   - `GET /qr` doesn't check that the phone can reach the typed address.
 

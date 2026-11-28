@@ -234,11 +234,11 @@ def test_bld20_chapter_size_and_time_change_when_reconverted(tmp_path, monkeypat
     for c in first.values():
         st = (out / c["audio"]).stat()
         assert c["size_bytes"] == st.st_size > 0 and c["updated_ms"] == st.st_mtime_ns // 1_000_000
-    # FakeTTS makes the same length in any voice, so the size alone can't tell; the millisecond time does
+    # FakeTTS makes the same length in any voice, so the size may not change; the millisecond time does
     build.build_book(src, tmp_path / "lib", tts=CountingTTS(voice="bf_emma"), chapters=[2], merge=True)
     again = {c["number"]: c for c in _manifest(out)["chapters"]}
     assert again[1] == first[1]  # untouched chapter: same version
-    assert again[2]["size_bytes"] == first[2]["size_bytes"] and again[2]["voice"] == "bf_emma"
+    assert again[2]["size_bytes"] == (out / "ch001.m4a").stat().st_size > 0 and again[2]["voice"] == "bf_emma"
     assert again[2]["updated_ms"] > first[2]["updated_ms"]
 
 
