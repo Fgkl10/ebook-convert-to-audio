@@ -147,9 +147,9 @@ ebook-convert path\to\book.std.epub --chapters 1    # one chapter (also 2-4 or 1
 
 | Command | Main options |
 |---|---|
-| `ebook-server` | `--port` (default 8000), `--advertise ADDRESS`, `--new-token` |
+| `ebook-server` | `--port` (default 8000), `--advertise ADDRESS`, `--new-token`, `--tts BACKEND` |
 | `ebook-normalize` | `--out`, `--ocr auto\|always\|never`, `--ignore-language` |
-| `ebook-convert` | `--voice`, `--speed`, `--chapters`, `--list-chapters`, `--out`, `--ignore-language` |
+| `ebook-convert` | `--voice`, `--speed`, `--chapters`, `--list-chapters`, `--out`, `--ignore-language`, `--tts BACKEND` |
 
 ## Configuration
 
@@ -157,6 +157,7 @@ ebook-convert path\to\book.std.epub --chapters 1    # one chapter (also 2-4 or 1
 |---|---|
 | `EBOOK_AUDIO_DATA=<folder>` | Keep `library/`, `cache/`, `drafts/` and the pairing token outside the project folder |
 | `EBOOK_AUDIO_ADVERTISE=<address>` / `--advertise` | The address the pairing QR code shows by default |
+| `EBOOK_AUDIO_TTS=<backend>` / `--tts` | The speech engine. Today only `kokoro` (Kokoro-82M). Without it, the engine picked in the page's **Speech engine** box is used |
 | `HF_HOME`, `DOCTR_CACHE_DIR` | Where the TTS and OCR models are stored |
 | `ebook-server --new-token` | Make a new pairing token. This unpairs every phone |
 
@@ -267,6 +268,9 @@ The app uses **no Google services** (QR scanning uses ZXing), so it works on pho
 - **Books:** English and Chinese, detected from the text. Traditional Chinese books are read in Mandarin, and the
   text on screen stays Traditional. A voice in the wrong language for a book is swapped for that language's default
   voice.
+- **Voice names:** the page and the app describe each voice in their own language, e.g. "Nicole · American woman,
+  deep, calm (af_nicole)". "Deep/bright" and "calm/lively" were measured from each voice's pitch and pace, compared
+  with the other voices of the same model, language and gender; voices in the middle get no word.
 - Messages that come from the PC (error details, cleaning-report entries) are still in English.
 
 ## Troubleshooting
@@ -331,6 +335,7 @@ git push origin v0.5.0      # -> a GitHub Release with ebook-audio-0.5.0.apk
 - [x] M5 read-along on the phone, sleep timer, web reader controls
 - [x] M6a interface in Simplified and Traditional Chinese; support for all Android phones
 - [x] M7 Chinese voices: convert Chinese books (Simplified and Traditional), optional Kokoro v1.1-zh voices
+- [x] M8 speech engines behind one interface (Kokoro the first), voice names from measured pitch and pace
 - [ ] Chinese scanned PDFs (OCR for Chinese)
 - [ ] Further polish
 

@@ -63,10 +63,15 @@ flowchart LR
 
     subgraph tts ["desktop/tts"]
         BUILD["build.py<br/>build_book()<br/>(ebook-convert)"]
-        TTS["kokoro.py<br/>KokoroTTS, voices by language"]
+        BACKEND["backend.py<br/>Backend interface, which backend<br/>(D-045)"]
+        TTS["kokoro.py<br/>KokoroBackend, voices by language"]
         MODELS["models.py<br/>optional Kokoro v1.1-zh<br/>(D-044)"]
+        TRAITS[("voice_traits.json<br/>measured pitch and pace<br/>(D-046)")]
     end
+    BACKEND -- "create()" --> TTS
     TTS --> MODELS
+    TTS --> TRAITS
+    SVC -- "/settings/tts" --> BACKEND
     SVC -- "/models/zh" --> MODELS
     CLI["ebook-convert CLI"] --> BUILD
     CACHE[("cache/&lt;book_id&gt;/<br/>*.npy")]
@@ -121,10 +126,12 @@ flowchart LR
 | `ocr/scanned.py` | Pure functions that turn OCR lines (`Line` of `Word`s with boxes) into chapters: page cleanup, paragraphs, word fixes (D-023), chapter cuts and quiz answer placement (D-022). Steps in `workflow.md` section 0b. Returns notes for the report. | `rebuild(pages, lex) -> ScanResult`, `paragraphs(pages, lex, fixes)`, `load_scanned_pdf(path, progress) -> (Book, ScanResult)` |
 | `ocr/words.py` | A yes/no English word check for the OCR fixes: the pronunciation dictionary shipped with Kokoro's G2P (misaki, ~216,000 entries) plus simple inflections ('berries', 'makes'), possessives and hyphenated compounds. Never suggests a replacement. Empty when misaki is not installed (CI), which turns the dictionary fixes off. | `load_lexicon() -> Lexicon`, `Lexicon.knows(word)` |
 | `core/language.py` | Tells a book's language from its text: Chinese when most letters are Chinese characters, English by the share of English function words (D-018, D-042). Refuses anything else. Metadata is only a hint. Called by `normalize` and by `build_book` before TTS loads. Holds `SUPPORTED_LANGUAGES` (moved from the TTS module, so core imports nothing else, D-033). | `check_language(book) -> "en" \| "zh"`, `detect_language(book)`, `english_score`, `chinese_share`, `SUPPORTED_LANGUAGES` |
-| `tts/kokoro.py` | Wrapper around Kokoro-82M. One model on the GPU with one text pipeline per voice language (a/b/z) sharing it; `synth` is locked so a voice sample can run between two sentences of a conversion (D-031). Voices are grouped by language (D-043). Chinese text goes through OpenCC `t2s` for pronunciation, and Latin words in it through an English G2P. With v1.1-zh installed, its voices use a second model, loaded on first use (D-044). One call per sentence, mono float32 at 24 kHz. Uses CUDA when available. | `KokoroTTS(voice, speed).synth(text, voice=None, speed=None)`, `voices(lang)`, `all_voices()`, `default_voice(lang)`, `voice_for(voice, lang)`, `voice_language(voice)`, `SAMPLE_RATE` |
+| `tts/backend.py` | The TTS backend interface (D-045): what every engine offers, the `Voice` record, the registry of backends (lazy, no model import) and which one to use (`--tts` > `EBOOK_AUDIO_TTS` > `settings.json` > `kokoro`). | `Backend` (`languages()`, `voices(lang)`, `default_voice(lang)`, `synth(text, voice, speed)`, `sample_rate`, `unload()`, `cache_key()`, `voice_ids()`, `voice_for(voice, lang)`, `voice_language(voice)`), `Voice`, `BACKENDS`, `create(name)`, `chosen(root, cli)`, `save_setting()` |
+| `tts/kokoro.py` | The Kokoro-82M backend. One model on the GPU with one text pipeline per voice language (a/b/z) sharing it; `synth` is locked so a voice sample can run between two sentences of a conversion (D-031). Voices are grouped by language (D-043) and described from their ids plus measured traits (D-046). Chinese text goes through OpenCC `t2s` for pronunciation, and Latin words in it through an English G2P. With v1.1-zh installed, its voices use a second model, loaded on first use (D-044). One call per sentence, mono float32 at 24 kHz. Uses CUDA when available. Its cache key is the pre-D-045 `voice\|speed\|text`. | `KokoroBackend(device=None)`, the `Backend` methods, `unload(repo=None)`, `V10_VOICES`, `SAMPLE_RATE` |
+| `tts/voice_traits.py` | Measures each Kokoro voice's pitch (median F0) and pace (syllables per second of speech) and turns them into relative words (D-046). Run by hand (`python -m desktop.tts.voice_traits`); the app only reads the committed `voice_traits.json`. Imports Kokoro only inside `main()`. | `load() -> {voice: [traits]}`, `pitch_hz`, `speech_seconds`, `traits(measured)`, `main()` |
 | `tts/models.py` | The optional Kokoro v1.1-zh (D-044): its voice list, whether it is installed, and a background install and remove. No torch import. | `ZhModel`, `zh_installed()`, `repo_of(voice)`, `ZH_VOICES` |
-| `tts/build.py` | Orchestrates the pipeline: plan, synthesize (cached), stitch with silence gaps, compute timestamps, encode m4a with ffmpeg, write `book.json` after each chapter. `ROOT` is the data folder (`EBOOK_AUDIO_DATA` or the project). Stops with `Cancelled` between sentences when its `cancel` event is set (D-038). | `build_book(source, out_root, voice, speed, progress, tts, chapters, merge, cancel) -> Path`, `Cancelled`, `encode_m4a`, `ROOT`, `main()` |
-| `server/service.py` | The backend, with no HTTP in it (D-032): drafts on disk with a clean worker (upload → `normalize` → review), a separate single-worker conversion queue for approved books (D-029), the library (list, manifest, file, delete) and cached voice samples. Every input check lives here, and refusals raise `Invalid` (400), `NotFound` (404) or `Conflict` (409). | `Drafts`, `Jobs`, `drafts`, `jobs`, `list_books()`, `read_book()`, `book_file()`, `delete_book()`, `voice_sample()`, `ServiceError` |
+| `tts/build.py` | Orchestrates the pipeline: plan, synthesize (cached), stitch with silence gaps, compute timestamps, encode m4a with ffmpeg, write `book.json` after each chapter. `ROOT` is the data folder (`EBOOK_AUDIO_DATA` or the project). Stops with `Cancelled` between sentences when its `cancel` event is set (D-038). | `build_book(source, out_root, voice=None, speed, progress, backend=None, chapters, ignore_language, merge, cancel) -> Path` (no backend: the chosen one, D-045), `CachedSynth(backend, voice, speed, dir)`, `Cancelled`, `encode_m4a`, `ROOT`, `main()` (`--tts`) |
+| `server/service.py` | The backend, with no HTTP in it (D-032): drafts on disk with a clean worker (upload → `normalize` → review), a separate single-worker conversion queue for approved books (D-029), the library (list, manifest, file, delete) and cached voice samples. Every input check lives here, and refusals raise `Invalid` (400), `NotFound` (404) or `Conflict` (409). | `Drafts`, `Jobs`, `drafts`, `jobs`, `list_books()`, `read_book()`, `book_file()`, `delete_book()`, `voice_sample()`, `tts()`, `tts_setting()`, `set_tts()`, `configure_tts()`, `ServiceError` |
 | `server/api.py` | The JSON API v1 (`APIRouter(prefix="/api/v1")`): thin routes that call `service.py` and return Pydantic models, which are the written contract for the web page and the Android app. Uploads are multipart and every other body is JSON. Every error is `{"detail": ...}`. Every route depends on `auth.require_pairing` (D-037). | `router`, `API_VERSION`, models `Draft`, `DraftDetail`, `Job`, `BookSummary`, `Book`, `Info`, `Address`, `ApproveRequest`, `Error` |
 | `server/auth.py` | The pairing token (D-037), kept in `<data>/server-token`. Lets a request through from the PC's own page or with the token (`Authorization: Bearer` or `?token=`); otherwise 401. The exact local-page rule is in D-037; the flow in `workflow.md` 4b. | `token(new=False)`, `require_pairing(request)`, `is_local(request)` |
 | `server/network.py` | The PC's addresses for the phone (D-037), with no HTTP. It lists IPv4 addresses with adapter names (`ifaddr`, no loopback or link-local) and picks the default (`--advertise`, else `EBOOK_AUDIO_ADVERTISE`, else the default-route address). It also checks a typed address and builds the `#token=` URL and its QR SVG. | `phone_addresses(override)`, `preferred_address()`, `parse_address(text, port)`, `pair_url()`, `qr_svg()` |
@@ -148,8 +155,11 @@ server-token                the pairing token (D-037); gitignored. Delete it, or
 models/huggingface/         Kokoro-82M (HF_HOME), downloaded on first use (D-028); Kokoro-82M-v1.1-zh when installed (D-044)
 models/jieba/               jieba's Chinese dictionary cache, made on the first Chinese sentence (D-043)
 models/doctr/               docTR OCR models (DOCTR_CACHE_DIR), downloaded on first use
+settings.json               {"tts": "<backend>"}: the engine picked on the page (D-045)
 cache/voice-samples/<voice>-<sha1(text)[:8]>.m4a  ~5 s sample per voice, made on first ▶ click and kept
-cache/<book_id>/<sha1>.npy  per-sentence audio, key = sha1("voice|speed|text"); after a run, the converted chapters'
+                            (another backend than Kokoro: <backend>-<voice>-…)
+cache/<book_id>/<sha1>.npy  per-sentence audio, key = sha1(backend.cache_key(voice, speed, text)): for Kokoro
+                            "voice|speed|text", for others "<backend>|voice|speed|text"; after a run, the converted chapters'
                             entries are deleted, and the whole folder once the book is complete (D-035)
 drafts/<id>/                one per book uploaded through the server (D-029); removed by Discard
     <name>.<ext>            the upload, under its own sanitized name (stem capped at 80 chars: Windows path limit)
@@ -228,9 +238,11 @@ The routes, error format, pairing rules and which calls the Android app makes ar
 - Two background daemon threads, each draining its own `queue.Queue`: the clean worker (`Drafts`) and the
   conversion worker (`Jobs`). Cleaning a new book never waits for a conversion; conversions run one at a time
   (one TTS model in memory). docTR is freed after OCR, so both fit on the GPU.
-- One `KokoroTTS` is loaded on first use (`Jobs.model()`, its own lock) and kept for every job and voice sample, in
+- One backend is made on first use (`Jobs.backend()`, its own lock) and kept for every job and voice sample, in
   every voice language. With Kokoro v1.1-zh installed, its model joins on the first sentence of one of its voices and
-  leaves when it is removed (D-044). Only the conversion worker sets its current voice; a sample passes its own.
+  leaves when it is removed (D-044). Every call passes its voice and speed, so nothing about a voice is shared state.
+  Switching the backend on the page (D-045) is refused while a conversion is queued or running, and frees the old
+  backend's model.
 - Ctrl+C (D-036): both workers are daemon threads and stop with the process, and every file is written to a temp
   name and renamed (`*.npy.tmp`, `*.tmp.m4a`, `book.tmp`, `draft.tmp`). What an interruption leaves behind is in `workflow.md` 4a. This assumes one server per data
   folder (a second server needs its own `EBOOK_AUDIO_DATA`).
