@@ -29,6 +29,10 @@ Consequences: trade-offs we accept
 | A-008 | No Google services: QR codes with CameraX + ZXing | pairing | |
 | A-009 | Chapter versions on the phone: keep what the PC dropped | library | uses D-038 |
 | A-010 | API fixtures made from the real server | tests | |
+| A-011 | Convert tab: the web page's rules as tested pure functions | convert | mirrors desktop/web/app.js |
+| A-012 | Uploads streamed from the ContentResolver, resendable | api | |
+| A-013 | "Open with" / Share for book files | ui | |
+| A-014 | Delete from PC on the phone | library | uses `DELETE /books/{id}` |
 
 ## A-001 Kotlin + Jetpack Compose, one `:app` module
 Status: Accepted · Milestone: M4a
@@ -132,4 +136,47 @@ shape (keys and types) of `/info`, `/books` and `/books/{id}` with the fixtures 
 `android/app/src/test/resources/api/`, which `ModelsTest` decodes. `UPDATE_ANDROID_FIXTURES=1` rewrites them. The
 fixtures use a made-up host name, documentation IPs and a placeholder token.
 Why: One check on each side of the contract, both in CI, without running the app against a server.
-Consequences: A deliberate API change means: update the Kotlin models, then regenerate the fixtures.
+Consequences: A deliberate API change means: update the Kotlin models, then regenerate the fixtures. M4b added the
+drafts, draft, chapter and jobs responses; a report's `source` (a path on the PC) is reduced to the file name.
+
+## A-011 Convert tab: the web page's rules as tested pure functions
+Status: Accepted · Milestone: M4b
+Context: The phone gets the web page's conversion features ("everything except Sigil"). The page has rules that are
+easy to get subtly different: which chapters are ticked when a review opens, the approve button's label, "converted
+N of M", the mixed-voice warning, which jobs to show, which buttons each status gets.
+Decision: `ConvertRules` copies those rules from `desktop/web/app.js` as pure functions, unit-tested in
+`ConvertRulesTest`; the screens only call them. The Convert tab polls `/drafts` and `/jobs` every 2 s while visible,
+like the page. Voice samples play in a short-lived ExoPlayer of their own and pause the book.
+Why: Both clients should behave the same, and the rules are where mistakes hide; Compose screens are not tested in CI.
+Consequences: A rule change on the web page needs the same change in `ConvertRules` (AND-07).
+
+## A-012 Uploads streamed from the ContentResolver, resendable
+Status: Accepted · Milestone: M4b
+Context: A book can be a large scanned PDF; the phone shouldn't load it into memory. On the phone, an upload failed
+with "unexpected end of stream": the server (uvicorn) closes idle keep-alive connections after 5 s, and an upload
+started after a dialog reused such a pooled connection.
+Decision: `UploadFile` opens a fresh `InputStream` from the ContentResolver for each write; the multipart body streams
+it and reports bytes sent. The body is not one-shot, so OkHttp resends it on a fresh connection when a pooled one
+turns out closed. Uploads use a 10-minute write/read timeout.
+Why: Memory stays flat for any file size; the resend makes the stale-connection case invisible to the user.
+Consequences: A retried upload reads the file twice. The upload runs in the screen's scope: leaving the Upload screen
+cancels it (the screen says so).
+
+## A-013 "Open with" / Share for book files
+Status: Accepted · Milestone: M4b
+Context: On the phone, books arrive in file managers, chat apps (WeChat, QQ) and browsers.
+Decision: `MainActivity` takes `ACTION_VIEW` (content: URIs) and `ACTION_SEND` (`EXTRA_STREAM`) for
+`application/epub+zip`, `application/pdf`, `text/plain` and `application/octet-stream` (chat apps often send EPUBs
+as that). The Uri goes to the Upload screen, through pairing first if needed. The file name (`DISPLAY_NAME`) decides
+whether it can be uploaded (.epub/.pdf/.txt); the server checks again.
+Why: Saves saving the file somewhere and finding it again in the picker.
+Consequences: The app also appears when sharing plain text without a file; then it just opens normally.
+
+## A-014 Delete from PC on the phone
+Status: Accepted · Milestone: M4b
+Context: The API can delete a library book (`DELETE /books/{id}`, 409 while converting), but the web page has no
+button for it. The user asked for it on the phone.
+Decision: The book screen's ⋮ menu has "Delete from PC" with a confirmation. The copy on the phone stays; a refusal
+(409) is shown on the book screen.
+Why: Managing the library from the phone; the confirm guards against a mis-tap.
+Consequences: The web page and the phone differ here until the page gets the same button.

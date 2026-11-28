@@ -1,8 +1,10 @@
 # Android component: architecture
 
 The Android app plays the books converted on the PC: it pairs with the PC server, lists the PC's library, downloads
-books into app-private storage, and plays them in the background with notification and lock-screen controls.
-M4a is the player; M4b adds managing conversions from the phone.
+books into app-private storage, and plays them in the background with notification and lock-screen controls (M4a).
+It also manages conversions on the PC like the web page does: upload a book (or an already-cleaned .std.epub),
+review the cleaning report and chapters, pick voice, speed and chapters, approve, follow progress, cancel, discard,
+and delete books on the PC (M4b). Only the Sigil round trip (download/replace the std.epub) stays on the PC.
 
 ## Overview
 
@@ -16,9 +18,12 @@ flowchart LR
     LIB["library/<br/>LocalLibrary, Versions"]
     DL["download/<br/>Downloads (WorkManager), Downloader"]
     PL["player/<br/>PlaybackService (Media3), PlayerConnection"]
+    CONV["convert/<br/>Convert, Upload, Review screens, ConvertRules"]
   end
+  OTHER["Other apps<br/>(Open with / Share)"] --> UI
   PC["PC: ebook-server<br/>/api/v1 (desktop/server)"]
-  UI --> PAIR & API & LIB & DL & PL & SET
+  UI --> PAIR & API & LIB & DL & PL & SET & CONV
+  CONV --> API
   PAIR --> API
   PAIR --> SET
   DL --> API
@@ -40,7 +45,8 @@ flowchart LR
 | `library` | `LocalLibrary.kt`, `Versions.kt`, `LibraryScreen.kt`, `BookScreen.kt` | Books on the phone (A-004); chapter states and merging (A-009); the On this phone / On the PC tabs; the book screen (play/continue, download, delete, per-chapter state) |
 | `download` | `Downloader.kt`, `DownloadWorker.kt` | Range-resumable, size-checked, atomic chapter downloads in a WorkManager foreground worker (A-006) |
 | `player` | `PlaybackService.kt`, `PlayerConnection.kt`, `NowPlaying.kt`, `PlayerScreen.kt` | Media3 session + ExoPlayer (A-007); playlist = chapters (file or stream); position saving; player and mini player UI |
-| `ui` | `MainActivity.kt`, `SettingsScreen.kt`, `Theme.kt`, `Format.kt` | Edge-to-edge activity, navigation, theme, settings with the HyperOS background-playback help |
+| `convert` | `ConvertRules.kt`, `ConvertScreen.kt`, `UploadScreen.kt`, `ReviewScreen.kt`, `VoicePicker.kt` | The web page's conversion features (A-011): drafts and jobs lists polled every 2 s; upload with voice/speed/skip review/OCR or as a cleaned book (streamed, A-012); review with report, chapter text, chapter picks and the mixed-voice warning; voice samples in a separate short-lived player |
+| `ui` | `MainActivity.kt`, `SettingsScreen.kt`, `Theme.kt` (with `Format`) | Edge-to-edge activity, navigation with the Library / Convert bottom bar, "Open with"/Share intake (A-013), theme, settings with the HyperOS background-playback help |
 
 ## Data on the phone
 
@@ -65,6 +71,14 @@ is detected (D-038, A-009). Sentences are stored but unused until M5 (sentence s
 | `GET /books` | The On the PC tab |
 | `GET /books/{id}` | Book screen, downloads, version check |
 | `GET /books/{id}/files/{name}` | Audio and covers: download (with `Range`) and streaming |
+| `DELETE /books/{id}` | Delete from PC (A-014; 409 while converting) |
+| `GET /drafts`, `GET /jobs` | The Convert tab (polled every 2 s while visible) |
+| `POST /drafts` (multipart: file, voice, speed, auto, ocr) | Upload a book to clean |
+| `POST /drafts/cleaned` (multipart: file, voice, speed) | Upload an already-cleaned .std.epub; converts at once |
+| `GET /drafts/{id}`, `GET /drafts/{id}/chapters/{i}` | Review: report, picks, chapter text |
+| `POST /drafts/{id}/approve` (`{voice, speed, chapters}`; `null` = all) | Convert |
+| `POST /drafts/{id}/cancel`, `POST /jobs/{id}/cancel`, `DELETE /drafts/{id}` | Cancel, discard |
+| `GET /voices/{voice}/sample` | ▶ voice sample (token in the query) |
 
 Every request sends `Authorization: Bearer <token>`; media URLs carry `?token=` because ExoPlayer and Coil fetch
 them themselves.

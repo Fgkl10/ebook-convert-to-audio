@@ -83,6 +83,11 @@ download; downloaded books play offline. For playback with the screen off on Hyp
 **No restrictions** and turn on **Autostart** (the app's Settings screen has a button to App info). The app uses no
 Google services. Details: `android/docs/`.
 
+The **Convert** tab does what the web page does: add a book (an .epub, .pdf or .txt, or an already-cleaned .std.epub),
+review the cleaning report and chapter text, pick voice (with a sample), speed and chapters, convert, follow the
+progress, cancel or discard. Books can also be sent to the app with **Open with** or **Share** from a file manager,
+WeChat or a browser. A book's ⋮ menu can delete it from the PC. Editing the cleaned book in Sigil stays on the PC.
+
 ## Roadmap
 - M1 TTS proof · M2 converter CLI · M3 server + web UI
 - M4a Android player (pairing, downloads, background / lock screen) · M4b manage conversions from the phone
