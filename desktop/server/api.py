@@ -3,6 +3,7 @@
 Routes are thin: they read the request, call desktop/server/service.py and return the models below, which are the written
 contract (served as /openapi.json and /docs). Errors are always JSON {"detail": "..."} with the status code.
 Uploads are multipart; every other body is JSON. A breaking change goes into a new /api/v2, never into v1.
+Every route needs the pairing token unless the request comes from the PC itself (D-037, server/auth.py).
 """
 from __future__ import annotations
 
@@ -10,30 +11,40 @@ import socket
 from pathlib import Path
 from typing import Literal, Optional
 
-from fastapi import APIRouter, File, Form, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from . import service
+from . import auth, network, service
 from ..core.normalize import OCR_MODES
 from ..tts.kokoro import DEFAULT_VOICE, VOICES
 
 API_VERSION = 1
 PREFIX = f"/api/v{API_VERSION}"
 
-router = APIRouter(prefix=PREFIX)
+router = APIRouter(prefix=PREFIX, dependencies=[Depends(auth.require_pairing)],
+                   responses={401: {"description": "Not paired: no or wrong token from another device"}})
 
 DraftStatus = Literal["cleaning", "review", "queued", "converting", "done", "error"]
-JobStatus = Literal["queued", "running", "done", "error"]
+JobStatus = Literal["queued", "running", "done", "error", "cancelled"]
 
 
 # ---------------------------------------------------------------- models
 
+class Address(BaseModel):
+    address: str = Field(description="An IPv4 address of the PC, a typed host name, or [IPv6]")
+    adapter: str = Field(description="The network adapter's name (e.g. \"ZeroTier Virtual Port\"), \"typed\", or \"\"")
+    url: str = Field(description="http://address:port")
+    pair_url: str = Field(description="url + /#token=… : what the QR code holds")
+    qr_svg: Optional[str] = Field(description="QR code of pair_url as SVG, or null")
+
+
 class Info(BaseModel):
     api_version: int
     name: str = Field(description="The PC's host name")
-    url: str = Field(description="The LAN address the phone connects to")
-    qr_svg: Optional[str] = Field(description="QR code of url as SVG, or null")
+    url: str = Field(description="The address the phone connects to by default (the local one, or --advertise)")
+    qr_svg: Optional[str] = Field(description="QR code to pair a phone at url (holds the token), or null")
+    urls: list[Address] = Field(description="Every address of the PC, the default first, each with its own QR code")
     voices: list[str]
     default_voice: str
     ocr_modes: list[str]
@@ -70,11 +81,11 @@ class Draft(BaseModel):
     book_id: Optional[str] = Field(None, description="The library book, set when a conversion is approved")
     source_sha1: str = ""
     last_chapters: Optional[list[int]] = Field(None, description="The chapters of the last approval (null = all)")
+    converted: list[int] = Field([], description="1-based chapters already in the library book with this text")
 
 
 class DraftDetail(Draft):
     report: Optional[Report] = Field(description="The cleaning report; null until cleaned")
-    converted: list[int] = Field([], description="1-based chapters already in the library book with this text")
     book_voice: Optional[str] = Field(None, description="The library book's voice (latest conversion), or null")
     book_speed: Optional[float] = None
 
@@ -156,6 +167,9 @@ class BookChapter(BaseModel):
     title: str
     audio: str = Field(description="File name of the chapter's .m4a under /files/")
     duration_ms: int
+    size_bytes: int = Field(description="Size of the .m4a; with updated_ms, tells a phone its copy is stale (D-038)")
+    updated_ms: int = Field(description="When the .m4a was written (epoch milliseconds). A re-converted chapter "
+                                        "keeps its file name, so compare this with the downloaded copy")
     sentences: list[Sentence]
 
 
@@ -194,33 +208,31 @@ def _upload_name(file: UploadFile) -> str:
     return Path((file.filename or "book").replace("\\", "/")).name
 
 
-def lan_ip() -> str:
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        s.connect(("10.255.255.255", 1))  # no packet is sent; just picks the LAN interface
-        return s.getsockname()[0]
-    except OSError:
-        return "127.0.0.1"
-    finally:
-        s.close()
+def _address(host: str, adapter: str, port: int) -> dict:
+    pair = network.pair_url(host, port, auth.token())
+    return {"address": host, "adapter": adapter, "url": network.base_url(host, port), "pair_url": pair,
+            "qr_svg": network.qr_svg(pair)}
 
 
 # ---------------------------------------------------------------- server
 
 @router.get("/info", response_model=Info, tags=["server"])
 def info(request: Request) -> dict:
-    url = f"http://{lan_ip()}:{request.app.state.port}"
-    qr_svg = None
-    try:
-        import qrcode
-        import qrcode.image.svg
-
-        img = qrcode.make(url, image_factory=qrcode.image.svg.SvgPathImage, box_size=8)
-        qr_svg = img.to_string(encoding="unicode")
-    except Exception:  # noqa: BLE001 - QR is optional
-        pass
-    return {"api_version": API_VERSION, "name": socket.gethostname(), "url": url, "qr_svg": qr_svg,
+    """Server facts for the page and the app. Holds the pairing token (in each QR code), so it needs pairing too."""
+    port = request.app.state.port
+    urls = [_address(a["address"], a["adapter"], port)
+            for a in network.phone_addresses(getattr(request.app.state, "advertise", None))]
+    return {"api_version": API_VERSION, "name": socket.gethostname(), "url": urls[0]["url"],
+            "qr_svg": urls[0]["qr_svg"], "urls": urls,
             "voices": VOICES, "default_voice": DEFAULT_VOICE, "ocr_modes": list(OCR_MODES)}
+
+
+@router.get("/qr", response_model=Address, responses=ERRORS, tags=["server"])
+def qr(request: Request, address: str = Query(description="A host name, IPv4 or [IPv6] address, optional :port")
+       ) -> dict:
+    """A pairing QR code for an address typed by hand (e.g. a ZeroTier or VPN address the PC doesn't list)."""
+    host, port = network.parse_address(address, request.app.state.port)
+    return _address(host, "typed", port)
 
 
 @router.get("/voices/{voice}/sample", response_class=FileResponse, responses={404: {"model": Error}},
@@ -285,6 +297,13 @@ def approve(draft_id: str, body: Optional[ApproveRequest] = None) -> dict:
     return {"job_id": service.drafts.approve(draft_id, body.voice, body.speed, body.chapters)["id"]}
 
 
+@router.post("/drafts/{draft_id}/cancel", response_model=Job, responses=ERRORS, tags=["drafts"])
+def cancel_draft(draft_id: str) -> dict:
+    """Stop the draft's queued or running conversion (same as POST /jobs/{job_id}/cancel with its job_id).
+    The draft goes back to review. 409 if it isn't converting."""
+    return service.drafts.cancel(draft_id)
+
+
 @router.delete("/drafts/{draft_id}", response_model=Ok, responses=ERRORS, tags=["drafts"])
 def delete_draft(draft_id: str) -> dict:
     """Discard the upload and its cleaned version (a converted book stays in the library)."""
@@ -303,6 +322,13 @@ def list_jobs() -> list[dict]:
 @router.get("/jobs/{job_id}", response_model=Job, responses={404: {"model": Error}}, tags=["jobs"])
 def get_job(job_id: str) -> dict:
     return service.jobs.get(job_id)
+
+
+@router.post("/jobs/{job_id}/cancel", response_model=Job, responses=ERRORS, tags=["jobs"])
+def cancel_job(job_id: str) -> dict:
+    """Stop a queued or running conversion. Finished chapters and cached sentences are kept, so approving the
+    draft again resumes. 409 if the job has already ended."""
+    return service.jobs.cancel(job_id)
 
 
 # ---------------------------------------------------------------- library
@@ -333,7 +359,9 @@ def get_file(book_id: str, name: str,
     return FileResponse(path)
 
 
-@router.delete("/books/{book_id}", response_model=Ok, responses={404: {"model": Error}}, tags=["library"])
+@router.delete("/books/{book_id}", response_model=Ok, responses={404: {"model": Error}, 409: {"model": Error}},
+               tags=["library"])
 def delete_book(book_id: str) -> dict:
+    """Delete a book folder. 409 while a conversion of the book is queued or running: cancel it first."""
     service.delete_book(book_id)
     return {"ok": True}

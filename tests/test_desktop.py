@@ -227,6 +227,45 @@ def test_bld19_interrupted_cache_write_leaves_no_half_entry(tmp_path, monkeypatc
     assert np.array_equal(np.load(entry), expected)
 
 
+def test_bld20_chapter_size_and_time_change_when_reconverted(tmp_path, monkeypatch):
+    src = _four(tmp_path, monkeypatch)
+    out = build.build_book(src, tmp_path / "lib", tts=FakeTTS(), chapters=[1, 2], merge=True)
+    first = {c["number"]: c for c in _manifest(out)["chapters"]}
+    for c in first.values():
+        st = (out / c["audio"]).stat()
+        assert c["size_bytes"] == st.st_size > 0 and c["updated_ms"] == st.st_mtime_ns // 1_000_000
+    # FakeTTS makes the same length in any voice, so the size may not change; the millisecond time does
+    build.build_book(src, tmp_path / "lib", tts=CountingTTS(voice="bf_emma"), chapters=[2], merge=True)
+    again = {c["number"]: c for c in _manifest(out)["chapters"]}
+    assert again[1] == first[1]  # untouched chapter: same version
+    assert again[2]["size_bytes"] == (out / "ch001.m4a").stat().st_size > 0 and again[2]["voice"] == "bf_emma"
+    assert again[2]["updated_ms"] > first[2]["updated_ms"]
+
+
+def test_bld21_cancel_stops_between_sentences_and_resumes(tmp_path, monkeypatch):
+    import threading
+    src = _four(tmp_path, monkeypatch)
+    lib, stop = tmp_path / "lib", threading.Event()
+
+    class StopAfter(CountingTTS):
+        def synth(self, text):
+            audio = super().synth(text)
+            if len(self.calls) == 5:  # in chapter 2: chapter 1 (3 sentences) is finished
+                stop.set()
+            return audio
+
+    with pytest.raises(build.Cancelled):
+        build.build_book(src, lib, tts=StopAfter(), merge=True, cancel=stop)
+    out = lib / build.make_book_id(build.load_book(src), src)
+    assert [c["number"] for c in _manifest(out)["chapters"]] == [1]
+    assert not list(out.glob("*.tmp.m4a"))  # stopped between sentences, never inside ffmpeg
+    assert len(list((tmp_path / "cache" / out.name).glob("*.npy"))) == 5
+    resumed = CountingTTS()
+    build.build_book(src, lib, tts=resumed, merge=True, cancel=threading.Event())
+    assert "Word 2 came first." not in resumed.calls and len(resumed.calls) == 12 - 5
+    assert _manifest(out)["complete"] is True
+
+
 def test_bld18_interrupted_selection_keeps_its_cache(tmp_path, monkeypatch):
     src = _four(tmp_path, monkeypatch)
     lib = tmp_path / "lib"

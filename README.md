@@ -53,6 +53,16 @@ The web page does everything through a JSON API, and the Android app uses the sa
 <http://localhost:8000/docs> for the interactive reference, or `desktop/docs/architecture.md` for the table.
 Set `EBOOK_AUDIO_DATA=<folder>` to keep `library/`, `cache/` and `drafts/` somewhere other than the project.
 
+### Connecting a phone
+Other devices need pairing: scan the QR code on the PC's page (`http://localhost:8000`) with the phone. The QR code
+holds the server's address and a token, kept in `server-token` in the data folder; without the token the API answers
+401. The PC's own browser needs no token. `ebook-server --new-token` makes a new token, which unpairs every phone.
+
+The QR code starts on the PC's local network address. If the phone can't reach it (for example a router with AP
+isolation), connect both through a VPN such as **ZeroTier One**. Then open "Other addresses" on the page and click
+the ZeroTier address, or type any address and press **Show QR**. `ebook-server --advertise 10.x.x.x` (or
+`EBOOK_AUDIO_ADVERTISE`) makes another address the default.
+
 ## Roadmap
 - M1 TTS proof · M2 converter CLI · M3 server + web UI
 - M4 Android player (Media3, background / lock screen) · M5 sentence sync · M6 polish

@@ -24,6 +24,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Callable
@@ -67,6 +68,10 @@ def parse_chapter_spec(spec: str, count: int) -> list[int]:
             raise ValueError(f"Chapters {part} out of range: this book has chapters 1-{count}")
         picked.update(range(lo - 1, hi))
     return sorted(picked)
+
+
+class Cancelled(Exception):
+    """A conversion stopped on request (build_book's cancel event); not an error."""
 
 
 def select_chapters(chapters: str | list[int] | None, count: int) -> list[int]:
@@ -230,6 +235,7 @@ def build_book(
     chapters: str | list[int] | None = None,
     ignore_language: bool = False,
     merge: bool = False,
+    cancel: threading.Event | None = None,
 ) -> Path:
     """Convert the book, or only the chosen chapters (see select_chapters).
 
@@ -237,6 +243,8 @@ def build_book(
     the whole book. merge=True (the server, D-035): the chosen chapters are added to <book_id>/, replacing the same
     chapters if they were converted before and keeping all the others.
     Chapters keep their number in the cleaned book: audio ch{number-1:03d}.m4a, "number" in book.json.
+    cancel: when set, the run stops at the next sentence with Cancelled (D-038). Finished chapters stay in book.json
+    and the sentences made so far stay cached, so the same call later resumes.
     """
     source = Path(source)
     out_root = Path(out_root)
@@ -306,7 +314,12 @@ def build_book(
         tmp.write_text(json.dumps(manifest, ensure_ascii=False, indent=1), encoding="utf-8")
         tmp.replace(manifest_path)
 
+    def check_cancel() -> None:
+        if cancel is not None and cancel.is_set():
+            raise Cancelled("Cancelled")
+
     for idx in todo:
+        check_cancel()
         chapter, paragraphs = book.chapters[idx], plans[idx]
         report(f"Chapter {idx + 1}/{len(plans)}: {chapter.title}")
 
@@ -315,10 +328,12 @@ def build_book(
             done += 1
             if done % 5 == 0:
                 report(f"Chapter {idx + 1}/{len(plans)}: {chapter.title}")
+            check_cancel()  # between sentences: the sentence just made is cached, ffmpeg is not running
 
         audio, sentences = assemble_chapter(paragraphs, synth, tick)
         audio_name = f"ch{idx:03d}.m4a"  # the chapter's index in the cleaned book, stable as chapters are added
         encode_m4a(audio, out_dir / audio_name)
+        written = (out_dir / audio_name).stat()
         manifest["chapters"] = [c for c in manifest["chapters"] if c["number"] != idx + 1]
         manifest["chapters"].append({
             "index": 0,  # set in write_manifest
@@ -326,6 +341,8 @@ def build_book(
             "title": chapter.title,
             "audio": audio_name,
             "duration_ms": round(len(audio) * 1000 / SAMPLE_RATE),
+            "size_bytes": written.st_size,  # with "updated_ms": a phone can tell its copy is stale (D-038)
+            "updated_ms": written.st_mtime_ns // 1_000_000,
             "voice": tts.voice,
             "speed": tts.speed,
             "text_sha1": chapter_text_sha1(chapter.text),

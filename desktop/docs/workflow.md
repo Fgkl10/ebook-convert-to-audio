@@ -155,6 +155,8 @@ stateDiagram-v2
     queued --> converting: Jobs worker takes it
     converting --> done: book in library/
     converting --> review: conversion failed (error shown)
+    queued --> review: Cancel (never starts, D-038)
+    converting --> review: Cancel (stops at the next sentence; finished chapters kept)
     done --> queued: convert again (another voice)
     review --> [*]: Discard
     done --> [*]: Discard
@@ -195,10 +197,19 @@ sequenceDiagram
     UI->>API: POST /api/v1/drafts/{id}/approve, JSON {"voice", "speed", "chapters"} (all optional; all ticked → chapters null)
     API->>Q: check chapters (400 if bad); book_id = make_book_id(std);<br/>submit(book.std.epub, draft_id, chapters, book_id) → draft status=queued, book_id, last_chapters; → {job_id}
     Q->>Q: draft status=converting; one shared model (D-031)
-    Q->>B: build_book(std, LIBRARY, ..., progress, tts, chapters, merge=True)
+    Q->>B: build_book(std, LIBRARY, ..., progress, tts, chapters, merge=True, cancel=job event)
     B-->>Q: progress(done, total, msg) / out_dir
     Q->>Q: job done, draft status=done + book_id (on error: draft back to review)
+    opt Cancel (draft or job card, D-038)
+        U->>UI: Cancel → confirm
+        UI->>API: POST /api/v1/drafts/{id}/cancel (or /jobs/{job_id}/cancel)
+        API->>Q: Jobs.cancel(): queued → cancelled now; running → set the event (409 if ended)
+        B-->>Q: raises Cancelled after the current sentence (finished chapters in book.json, sentences cached)
+        Q->>Q: job cancelled, draft back to review: "Cancelled: approve again to resume …"
+    end
 ```
+
+While a conversion of a book is queued or running, `DELETE /api/v1/books/{id}` answers 409 (D-038).
 
 There is no separate one-step convert route: `POST /api/v1/drafts` with `auto=true` cleans and converts with no review
 stop (D-032).
@@ -235,15 +246,40 @@ sequenceDiagram
     Note over M: importing service loads drafts: cleaning → error, queued/converting → review (resume on approve)
     M->>M: create library/ if missing
     M->>M: clean_leftovers(): delete *.tmp.m4a and *.npy.tmp under library/ and cache/ (D-036)
-    M->>Z: register _ebookaudio._tcp.local. (LAN IP, port, path=/api/v1)
+    M->>M: auth.token(): read <data>/server-token, or make it (--new-token: make a new one) (D-037)
+    M->>M: phone_addresses(--advertise): the default (local) address first, then the others; print them
+    M->>Z: register _ebookaudio._tcp.local. (every IPv4 address, port, path=/api/v1)
     Note over M,Z: on failure: print a hint and keep running without mDNS
     M->>V: run on 0.0.0.0:port (timeout_graceful_shutdown = 1 s)
-    P->>Z: browse _ebookaudio._tcp (M4+)
-    P->>V: GET /api/v1/info (check api_version), GET /api/v1/books …
-    Note over P,V: or scan the QR code from GET /api/v1/info shown in the web UI
+    P->>V: scan the QR code: http://<address>:<port>/#token=… (see 4b)
+    P->>V: GET /api/v1/info (check api_version), GET /api/v1/books … with Authorization: Bearer <token>
+    Note over P,Z: mDNS discovery (M4+) finds the address; the token still comes from the QR code
     Note over M,V: Ctrl+C: stop accepting; open requests (a chapter download) get 1 s, then are cut off;<br/>daemon worker threads stop with the process
     V-->>M: shutdown
     M->>Z: unregister + close
+```
+
+### 4b. Pairing a phone (D-037)
+
+```mermaid
+sequenceDiagram
+    actor U as User
+    participant W as Web page on the PC (loopback: no token needed)
+    participant API as /api/v1 (auth.require_pairing)
+    participant P as Phone (browser, or the app in M4)
+
+    W->>API: GET /info → urls: [{address, adapter, url, pair_url, qr_svg}], the default (local) address first
+    W->>W: show the QR code of the remembered or first address
+    opt the phone uses another network (e.g. ZeroTier)
+        U->>W: click "10.251.93.75 ZeroTier Virtual Port" → switch to its QR code (no request)
+        U->>W: or type an address → Show QR
+        W->>API: GET /qr?address=… → Address (400 for a bad address, shown under the field)
+    end
+    U->>P: scan the QR code: http://<address>:<port>/#token=<token>
+    P->>P: page keeps the token (localStorage) and removes it from the address bar
+    P->>API: fetch with Authorization: Bearer <token>; <audio>/<img>/download URLs with ?token=
+    API-->>P: 200 (a wrong or missing token: 401 "Pair this device: scan the QR code shown on the PC")
+    Note over API,P: ebook-server --new-token: every phone has to scan again
 ```
 
 ### 4a. What a Ctrl+C at any point leaves behind (D-036)

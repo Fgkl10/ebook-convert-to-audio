@@ -12,4 +12,5 @@ uvicorn[standard]
 python-multipart
 zeroconf
 qrcode
+ifaddr          # the PC's addresses for the QR code (D-037); also a zeroconf dependency
 pytest
