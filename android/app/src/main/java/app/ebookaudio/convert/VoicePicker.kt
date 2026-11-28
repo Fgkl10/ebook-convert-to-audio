@@ -1,20 +1,14 @@
 package app.ebookaudio.convert
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -35,6 +29,7 @@ import androidx.media3.session.MediaController
 import app.ebookaudio.R
 import app.ebookaudio.api.ApiClient
 import app.ebookaudio.api.VoiceLanguage
+import app.ebookaudio.ui.DropdownField
 
 /**
  * A short-lived player for voice samples: separate from the book's PlaybackService, so a sample never replaces the
@@ -76,27 +71,6 @@ fun rememberSamplePlayer(): SamplePlayer {
     return sample
 }
 
-/** A read-only field that opens a dropdown of [items]. */
-@Composable
-private fun Picker(label: String, value: String, items: List<Pair<String, String>>, onPick: (String) -> Unit,
-                   modifier: Modifier = Modifier) {
-    var open by remember { mutableStateOf(false) }
-    Box(modifier) {
-        OutlinedTextField(
-            value = value, onValueChange = {}, readOnly = true, label = { Text(label) },
-            trailingIcon = { Icon(Icons.Filled.ArrowDropDown, null) },
-            modifier = Modifier.fillMaxWidth(),
-        )
-        // a transparent layer over the field opens the menu (a read-only field eats the taps)
-        Box(Modifier.matchParentSize().clickable { open = true })
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            items.forEach { (key, text) ->
-                DropdownMenuItem(text = { Text(text) }, onClick = { onPick(key); open = false })
-            }
-        }
-    }
-}
-
 @Composable
 private fun languageName(code: String) = when (code) {
     "en" -> stringResource(R.string.voice_lang_en)
@@ -123,12 +97,12 @@ fun VoiceAndSpeed(
     val voices = languages.firstOrNull { it.code == lang }?.voices.orEmpty()
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (languages.size > 1) {
-            Picker(stringResource(R.string.voice_language), languageName(lang),
+            DropdownField(stringResource(R.string.voice_language), languageName(lang),
                 languages.map { it.code to languageName(it.code) },
                 { code -> onVoice(ConvertRules.voiceFor(languages, voice, code)) }, Modifier.fillMaxWidth())
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Picker(stringResource(R.string.voice), voice, voices.map { it to it }, onVoice, Modifier.weight(1f))
+            DropdownField(stringResource(R.string.voice), voice, voices.map { it to it }, onVoice, Modifier.weight(1f))
             IconButton(onClick = { api?.let { sample.toggle(it, voice, book) } }, enabled = api != null) {
                 if (sample.playing == voice) Icon(Icons.Filled.Stop, stringResource(R.string.stop_sample))
                 else Icon(Icons.Filled.PlayArrow, stringResource(R.string.hear_sample, voice))

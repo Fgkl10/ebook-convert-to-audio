@@ -54,9 +54,12 @@ def test_i18n04_language_choice_follows_the_browser():
     # zh-TW / zh-HK / zh-MO / zh-Hant → Traditional, any other zh → Simplified; a saved choice wins
     assert "/hant|-tw|-hk|-mo/.test(x) ? 'zh-Hant' : 'zh-Hans'" in js
     assert "localStorage.getItem('ebookAudioLang')" in js
+    # one dropdown with an option per language, each named in its own script
     html = (WEB / "index.html").read_text(encoding="utf-8")
+    assert '<select class="langs" id="langs"' in html
     for lang in LANGS:
-        assert f'data-lang="{lang}"' in html
+        assert f'<option value="{lang}" lang="{lang}">' in html
+    assert "$('#langs')" in js and "pick.onchange" in js
 
 
 from tests.test_server import api  # noqa: E402,F401 - api is a fixture

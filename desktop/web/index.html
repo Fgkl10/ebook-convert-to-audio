@@ -14,11 +14,12 @@
       <div>
         <div class="row" style="justify-content:space-between">
           <h1 data-i18n="app.name">Ebook Audio</h1>
-          <div class="langs" id="langs" role="group" data-i18n-aria="lang.label" aria-label="Language">
-            <button type="button" data-lang="en" lang="en">EN</button>
-            <button type="button" data-lang="zh-Hans" lang="zh-Hans">简体</button>
-            <button type="button" data-lang="zh-Hant" lang="zh-Hant">繁體</button>
-          </div>
+          <!-- each language in its own script, so it can be found whatever language the page is in -->
+          <select class="langs" id="langs" data-i18n-aria="lang.label" aria-label="Language">
+            <option value="en" lang="en">English</option>
+            <option value="zh-Hans" lang="zh-Hans">简体中文</option>
+            <option value="zh-Hant" lang="zh-Hant">繁體中文</option>
+          </select>
         </div>
         <div class="muted"><span data-i18n="app.tagline">Convert ebooks to audiobooks with Kokoro TTS. Phone app connects to:</span> <b id="url">…</b></div>
         <div class="err" id="unpaired" hidden data-i18n="app.unpaired">This device isn't paired: scan the QR code shown on the PC's page.</div>

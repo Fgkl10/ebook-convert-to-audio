@@ -262,7 +262,7 @@ The app uses **no Google services** (QR scanning uses ZXing), so it works on pho
   Language**. This also works on phones like Xiaomi's that hide the system's per-app language screen. It has been
   tested on Android 14; on Android 8–12 it is untested, and there the download notification may stay in the
   phone's language.
-- **Web page:** follows the browser's language. Use the **EN / 简体 / 繁體** buttons at the top to switch. The browser
+- **Web page:** follows the browser's language. Use the language dropdown at the top (English / 简体中文 / 繁體中文) to switch. The browser
   remembers the choice.
 - **Books:** English and Chinese, detected from the text. Traditional Chinese books are read in Mandarin, and the
   text on screen stays Traditional. A voice in the wrong language for a book is swapped for that language's default
