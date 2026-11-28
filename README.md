@@ -154,7 +154,7 @@ ebook-convert path\to\book.std.epub --chapters 1    # one chapter (also 2-4 or 1
 | `ebook-server --new-token` | Make a new pairing token. This unpairs every phone |
 
 The API reference is at <http://localhost:8000/docs> while the server runs. The full route table is in
-[`desktop/docs/architecture.md`](desktop/docs/architecture.md).
+[`desktop/docs/api.md`](desktop/docs/api.md).
 
 ## Connecting a phone
 

@@ -147,7 +147,7 @@ ebook-convert path\to\book.std.epub --chapters 1    # 只轉換一章（也可�
 | `ebook-server --new-token` | 產生新的配對權杖，所有手機都會解除配對 |
 
 伺服器執行時，API 文件在 <http://localhost:8000/docs>。完整的路由表請見
-[`desktop/docs/architecture.md`](desktop/docs/architecture.md)。
+[`desktop/docs/api.md`](desktop/docs/api.md)。
 
 ## 連接手機
 
