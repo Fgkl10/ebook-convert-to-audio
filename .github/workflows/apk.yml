@@ -75,7 +75,7 @@ jobs:
           grep -q "CN=Ebook Audio" "$RUNNER_TEMP/certs.txt"
           rm -f "$RUNNER_TEMP/release.jks"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ env.APK_NAME }}
           path: dist/${{ env.APK_NAME }}
