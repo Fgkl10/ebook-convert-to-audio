@@ -402,6 +402,37 @@ function tick() {
 }
 requestAnimationFrame(tick);
 
+// Sentence buttons, the same rules as the Android app (android/.../SentenceSync.kt): "previous" restarts the current
+// sentence when more than 1.5 s into it, else goes to the one before; "next" does nothing on the last sentence.
+const RESTART_MS = 1500;
+function seekMs(ms) { audio.currentTime = ms / 1000; if (audio.paused) audio.play(); }
+$('#prevs').onclick = () => {
+  if (!starts.length) return;
+  const t = audio.currentTime * 1000, i = sentenceAt(t);
+  seekMs(t - starts[i] > RESTART_MS || i === 0 ? starts[i] : starts[i - 1]);
+};
+$('#nexts').onclick = () => {
+  if (!starts.length) return;
+  const i = sentenceAt(audio.currentTime * 1000);
+  if (i + 1 < starts.length) seekMs(starts[i + 1]);
+};
+
+// Text size, remembered in this browser (12–32 px, steps of 2, like the app).
+const TEXT_SIZE = { min: 12, max: 32, step: 2, def: 18 };
+function textSize() {
+  try { return Math.min(TEXT_SIZE.max, Math.max(TEXT_SIZE.min, +localStorage.getItem('textSize') || TEXT_SIZE.def)); }
+  catch (e) { return TEXT_SIZE.def; }
+}
+function setTextSize(px) {
+  px = Math.min(TEXT_SIZE.max, Math.max(TEXT_SIZE.min, px));
+  try { localStorage.setItem('textSize', px); } catch (e) { /* private mode: not remembered */ }
+  $('#text').style.setProperty('--text-size', px + 'px');
+  $('#smaller').disabled = px <= TEXT_SIZE.min; $('#larger').disabled = px >= TEXT_SIZE.max;
+}
+$('#smaller').onclick = () => setTextSize(textSize() - TEXT_SIZE.step);
+$('#larger').onclick = () => setTextSize(textSize() + TEXT_SIZE.step);
+setTextSize(textSize());
+
 audio.onended = () => { if (chIdx + 1 < book.chapters.length) loadChapter(chIdx + 1, 0, true); };
 $('#rate').onchange = () => audio.playbackRate = +$('#rate').value;
 $('#back').onclick = () => { audio.pause(); goTab('library'); $('#player').hidden = true; book = null; };
