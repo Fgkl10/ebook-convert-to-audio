@@ -1,5 +1,7 @@
 package app.ebookaudio.player
 
+import android.view.WindowManager
+import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -55,7 +57,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -95,11 +96,12 @@ fun PlayerScreen(controller: MediaController?, onBack: () -> Unit) {
     val sentences = np?.let { rememberChapterSentences(it.bookId, it.chapter) }
 
     // keep the screen on while the text is shown and playing (A-015)
-    val view = LocalView.current
+    val window = LocalActivity.current?.window
     val keepOn = showText && !sentences.isNullOrEmpty() && np?.isPlaying == true
-    DisposableEffect(keepOn) {
-        view.keepScreenOn = keepOn
-        onDispose { view.keepScreenOn = false }
+    DisposableEffect(keepOn, window) {
+        if (keepOn) window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        else window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        onDispose { window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
     }
 
     Scaffold(
@@ -113,33 +115,6 @@ fun PlayerScreen(controller: MediaController?, onBack: () -> Unit) {
                         IconButton(onClick = { scope.launch { settings.setShowText(!showText) } }) {
                             if (showText) Icon(Icons.Filled.Image, "Show the cover")
                             else Icon(Icons.AutoMirrored.Filled.Subject, "Show the text")
-                        }
-                        Box {
-                            IconButton(onClick = { sleepMenu = true }) {
-                                Icon(Icons.Filled.Bedtime, "Sleep timer",
-                                    tint = if (np.sleepMode != "off") MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            DropdownMenu(expanded = sleepMenu, onDismissRequest = { sleepMenu = false }) {
-                                SleepTimer.PRESETS.forEach { m ->
-                                    DropdownMenuItem(text = { Text("$m minutes") }, onClick = {
-                                        sleepMenu = false
-                                        PlaybackService.setSleep(controller, m)
-                                    })
-                                }
-                                DropdownMenuItem(text = { Text("Other…") }, onClick = { sleepMenu = false; customSleep = true })
-                                DropdownMenuItem(text = { Text("End of this chapter") }, onClick = {
-                                    sleepMenu = false
-                                    PlaybackService.setSleep(controller, null)
-                                })
-                                if (np.sleepMode != "off") {
-                                    HorizontalDivider()
-                                    DropdownMenuItem(text = { Text("Turn off") }, onClick = {
-                                        sleepMenu = false
-                                        PlaybackService.setSleep(controller, null, off = true)
-                                    })
-                                }
-                            }
                         }
                         Box {
                             IconButton(onClick = { moreMenu = true }) { Icon(Icons.Filled.MoreVert, "More") }
@@ -179,7 +154,40 @@ fun PlayerScreen(controller: MediaController?, onBack: () -> Unit) {
                 }
             }
             Controls(np, controller, list, dragging, { dragging = it }, speedMenu, { speedMenu = it },
-                onSpeed = { s -> scope.launch { settings.setSpeed(s) } })
+                onSpeed = { s -> scope.launch { settings.setSpeed(s) } }) {
+                // the sleep timer, in the bottom row: "Sleep", or the time left while set
+                Box {
+                    TextButton(onClick = { sleepMenu = true }) {
+                        Icon(Icons.Filled.Bedtime, null, Modifier.size(18.dp).padding(end = 4.dp))
+                        Text(when (np.sleepMode) {
+                            "minutes" -> np.sleepLeftMs?.let { Format.clock(it) } ?: "Sleep"
+                            "chapter" -> "Ch. end"
+                            else -> "Sleep"
+                        }, color = if (np.sleepMode != "off") MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    DropdownMenu(expanded = sleepMenu, onDismissRequest = { sleepMenu = false }) {
+                        SleepTimer.PRESETS.forEach { m ->
+                            DropdownMenuItem(text = { Text("$m minutes") }, onClick = {
+                                sleepMenu = false
+                                PlaybackService.setSleep(controller, m)
+                            })
+                        }
+                        DropdownMenuItem(text = { Text("Other…") }, onClick = { sleepMenu = false; customSleep = true })
+                        DropdownMenuItem(text = { Text("End of this chapter") }, onClick = {
+                            sleepMenu = false
+                            PlaybackService.setSleep(controller, null)
+                        })
+                        if (np.sleepMode != "off") {
+                            HorizontalDivider()
+                            DropdownMenuItem(text = { Text("Turn off") }, onClick = {
+                                sleepMenu = false
+                                PlaybackService.setSleep(controller, null, off = true)
+                            })
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -214,6 +222,7 @@ private fun Controls(
     speedMenu: Boolean,
     onSpeedMenu: (Boolean) -> Unit,
     onSpeed: (Float) -> Unit,
+    sleepButton: @Composable () -> Unit,
 ) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally) {
@@ -230,7 +239,6 @@ private fun Controls(
         )
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(Format.clock(dragging?.toLong() ?: np.positionMs), style = MaterialTheme.typography.bodySmall)
-            sleepText(np)?.let { Text("☾ $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
             Text(Format.clock(np.durationMs), style = MaterialTheme.typography.bodySmall)
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -268,6 +276,7 @@ private fun Controls(
                     }
                 }
             }
+            sleepButton()
             TextButton(onClick = { next?.let { controller.seekTo(it); controller.play() } }, enabled = next != null) {
                 Text("Sentence ›")
             }
