@@ -26,7 +26,8 @@ class NotPaired : IOException("This phone isn't paired with the PC: scan the QR 
 /** Any other refusal, with the server's {"detail": "..."} message. */
 class ApiError(val code: Int, message: String) : IOException(message)
 
-/** A book file to upload, read once from [open] (a ContentResolver stream: never held in memory, A-012). */
+/** A book file to upload, streamed from [open] (a ContentResolver stream: never held in memory, A-012). Each call
+ * of [open] must return a fresh stream from the start: a retry reads the file again. */
 class UploadFile(val name: String, val size: Long, val open: () -> InputStream)
 
 /** Calls to one paired PC. Every request carries `Authorization: Bearer <token>`. */
@@ -113,11 +114,15 @@ class ApiClient(val baseUrl: String, private val token: String, http: OkHttpClie
         return call(Request.Builder().url(url(path)).post(body).build(), uploads)
     }
 
-    /** Streams the file into the request; reports bytes written. */
+    /**
+     * Streams the file into the request; reports bytes written. Not one-shot: each write reopens the file, so OkHttp
+     * can send it again on a fresh connection when a pooled one turns out closed (the server drops idle connections
+     * after 5 s, e.g. while a dialog was open).
+     */
     private class StreamBody(private val file: UploadFile, private val progress: (Long) -> Unit) : RequestBody() {
         override fun contentType(): MediaType = "application/octet-stream".toMediaType()
         override fun contentLength(): Long = if (file.size > 0) file.size else -1
-        override fun isOneShot(): Boolean = true
+        override fun isOneShot(): Boolean = false
         override fun writeTo(sink: BufferedSink) {
             file.open().source().use { source ->
                 var written = 0L

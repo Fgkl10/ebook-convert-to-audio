@@ -54,6 +54,27 @@ class ApiClientTest {
     }
 
     @Test
+    fun uploadRetriesWhenThePooledConnectionWasClosed() = runBlocking {
+        // The server closes the connection after answering (as uvicorn does with idle keep-alive connections); the
+        // next upload first tries that pooled connection and must be sent again on a fresh one (seen on the phone:
+        // "unexpected end of stream" after the "Clean it now?" dialog).
+        server.enqueue(MockResponse().setResponseCode(400).setBody("""{"detail": "Not a cleaned book (.std.epub)"}""")
+            .setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.DISCONNECT_AT_END))
+        ok("""{"draft_id": "d3"}""")
+        val file = UploadFile("novel.epub", 5) { "hello".byteInputStream() }
+        try {
+            api.uploadCleaned(file, "af_heart", 1.0); throw AssertionError("expected 400")
+        } catch (e: ApiError) {
+            assertEquals(400, e.code)
+        }
+        assertEquals("d3", api.upload(file, "af_heart", 1.0, auto = false, ocr = "auto").draftId)
+        server.takeRequest()
+        val second = server.takeRequest()
+        assertEquals("/api/v1/drafts", second.path)
+        assertTrue("hello" in second.body.readUtf8())
+    }
+
+    @Test
     fun cleanedUploadGoesToItsOwnRoute() = runBlocking {
         ok("""{"draft_id": "d2", "job_id": "j2"}""")
         val created = api.uploadCleaned(UploadFile("b.std.epub", 3) { "abc".byteInputStream() }, "af_heart", 1.0)
