@@ -1,8 +1,9 @@
 package app.ebookaudio.player
 
 import android.os.SystemClock
+import android.util.Log
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,9 +18,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
@@ -32,20 +35,26 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.ebookaudio.api.Sentence
 import app.ebookaudio.graph
-import java.io.IOException
+import kotlinx.coroutines.CancellationException
 
-/** The playing chapter's sentences: from the phone's copy, else from the PC; null while loading or unavailable. */
+/**
+ * The playing chapter's sentences: from the phone's copy, else from the PC. Null while loading; empty when there is
+ * no text (PC unreachable offline, not paired, an old book): then the player shows the cover.
+ */
 @Composable
 fun rememberChapterSentences(bookId: String, chapter: Int): List<Sentence>? {
     val graph = LocalContext.current.graph
     val state by produceState<List<Sentence>?>(null, bookId, chapter) {
-        value = graph.library.book(bookId)?.chapters?.firstOrNull { it.number == chapter }?.sentences
-            ?.takeIf { it.isNotEmpty() }
-            ?: try {
-                graph.api()?.book(bookId)?.chapters?.firstOrNull { it.number == chapter }?.sentences
-            } catch (e: IOException) {
-                null
-            }
+        value = try {
+            graph.library.book(bookId)?.chapters?.firstOrNull { it.number == chapter }?.sentences
+                ?.takeIf { it.isNotEmpty() }
+                ?: graph.api()?.book(bookId)?.chapters?.firstOrNull { it.number == chapter }?.sentences
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) { // network, 401, a changed format: read along is optional, playback goes on
+            Log.w("ReadAlong", "no text for $bookId chapter $chapter: $e")
+            null
+        }.orEmpty()
     }
     return state
 }
@@ -79,22 +88,32 @@ fun ReadAlong(
     val listState = rememberLazyListState()
     val layouts = remember(paragraphs) { mutableStateMapOf<Int, TextLayoutResult>() }
     var manualUntil by remember { mutableLongStateOf(0L) }
+    val autoScrolling = remember { mutableStateOf(false) }
     val highlight = MaterialTheme.colorScheme.primaryContainer
     val onHighlight = MaterialTheme.colorScheme.onPrimaryContainer
 
+    // a hand scroll (while dragging or flinging, and MANUAL_SCROLL_MS after) stops the automatic scrolling
     LaunchedEffect(listState) {
-        listState.interactionSource.interactions.collect {
-            if (it is DragInteraction.Start) manualUntil = SystemClock.uptimeMillis() + MANUAL_SCROLL_MS
+        snapshotFlow { listState.isScrollInProgress && !autoScrolling.value }.collect { byHand ->
+            if (byHand) manualUntil = Long.MAX_VALUE
+            else if (manualUntil == Long.MAX_VALUE) manualUntil = SystemClock.uptimeMillis() + MANUAL_SCROLL_MS
         }
     }
     LaunchedEffect(current, textSize) {
         val (p, start, _) = where[current ?: return@LaunchedEffect] ?: return@LaunchedEffect
         if (SystemClock.uptimeMillis() < manualUntil) return@LaunchedEffect
-        val third = listState.layoutInfo.viewportSize.height / 3
-        if (layouts[p] == null) listState.scrollToItem(p) // not laid out yet: bring it in first
-        val layout = layouts[p]
-        val lineTop = layout?.let { it.getLineTop(it.getLineForOffset(start)).toInt() } ?: 0
-        listState.animateScrollToItem(p, (lineTop - third).coerceAtLeast(0))
+        autoScrolling.value = true
+        try {
+            val third = listState.layoutInfo.viewportSize.height / 3
+            if (listState.layoutInfo.visibleItemsInfo.none { it.index == p }) listState.scrollToItem(p)
+            val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == p } ?: return@LaunchedEffect
+            val layout = layouts[p]
+            val lineTop = layout?.let { it.getLineTop(it.getLineForOffset(start)).toInt() } ?: 0
+            // the sentence's line goes a third of the way down the text area
+            listState.animateScrollBy((item.offset + lineTop - third).toFloat())
+        } finally {
+            autoScrolling.value = false
+        }
     }
 
     Box(modifier) {

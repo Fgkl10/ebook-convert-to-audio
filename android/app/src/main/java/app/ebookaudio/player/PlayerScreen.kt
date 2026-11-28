@@ -96,7 +96,7 @@ fun PlayerScreen(controller: MediaController?, onBack: () -> Unit) {
 
     // keep the screen on while the text is shown and playing (A-015)
     val view = LocalView.current
-    val keepOn = showText && np?.isPlaying == true
+    val keepOn = showText && !sentences.isNullOrEmpty() && np?.isPlaying == true
     DisposableEffect(keepOn) {
         view.keepScreenOn = keepOn
         onDispose { view.keepScreenOn = false }
@@ -252,7 +252,10 @@ private fun Controls(
             horizontalArrangement = Arrangement.SpaceBetween) {
             val prev = SentenceSync.previousStart(sentences, np.positionMs)
             val next = SentenceSync.nextStart(sentences, np.positionMs)
-            TextButton(onClick = { prev?.let(controller::seekTo) }, enabled = prev != null) { Text("‹ Sentence") }
+            // like the web reader: a sentence button also starts playback
+            TextButton(onClick = { prev?.let { controller.seekTo(it); controller.play() } }, enabled = prev != null) {
+                Text("‹ Sentence")
+            }
             Box {
                 TextButton(onClick = { onSpeedMenu(true) }) { Text("Speed ${speedText(np.speed)}") }
                 DropdownMenu(expanded = speedMenu, onDismissRequest = { onSpeedMenu(false) }) {
@@ -265,7 +268,9 @@ private fun Controls(
                     }
                 }
             }
-            TextButton(onClick = { next?.let(controller::seekTo) }, enabled = next != null) { Text("Sentence ›") }
+            TextButton(onClick = { next?.let { controller.seekTo(it); controller.play() } }, enabled = next != null) {
+                Text("Sentence ›")
+            }
         }
         if (np.buffering) Text("Loading…", style = MaterialTheme.typography.bodySmall)
     }

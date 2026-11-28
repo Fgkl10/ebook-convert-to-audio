@@ -114,9 +114,14 @@ def test_and11_web_reader_and_app_share_the_reading_rules():
     settings = (src / "settings" / "Settings.kt").read_text(encoding="utf-8")
 
     assert _num(r"const RESTART_MS = ([\d_]+)", js) == _num(r"const val RESTART_MS = ([\d_]+)L", sync)
+    sizes = re.search(r"const TEXT_SIZE = \{([^}]*)\}", js)
+    assert sizes, "TEXT_SIZE in app.js"
     for key, kotlin in (("min", "TEXT_SIZE_MIN"), ("max", "TEXT_SIZE_MAX"), ("step", "TEXT_SIZE_STEP"),
                         ("def", "TEXT_SIZE_DEFAULT")):
-        assert _num(rf"\b{key}: (\d+)", js) == _num(rf"const val {kotlin} = ([\d.]+)f", settings), key
+        assert _num(rf"\b{key}: (\d+)", sizes.group(1)) == _num(rf"const val {kotlin} = ([\d.]+)f", settings), key
+    # the sentence buttons start playback in both (seekMs plays when paused; the app calls play())
+    assert "if (audio.paused) audio.play()" in js
+    assert "controller.seekTo(it); controller.play()" in (src / "player" / "PlayerScreen.kt").read_text(encoding="utf-8")
     for button in ("prevs", "nexts", "smaller", "larger"):
         assert f'id="{button}"' in html and f"$('#{button}').onclick" in js, button
     assert "var(--text-size" in (root / "desktop" / "web" / "app.css").read_text(encoding="utf-8")

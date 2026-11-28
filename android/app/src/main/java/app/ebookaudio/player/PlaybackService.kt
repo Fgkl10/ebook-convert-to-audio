@@ -70,6 +70,11 @@ class PlaybackService : MediaSessionService() {
                 // "end of chapter" sleep timer: ExoPlayer paused at the end of the item
                 if (!playWhenReady && reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM) stopSleep()
             }
+
+            override fun onPlaybackStateChanged(state: Int) {
+                // the book's last chapter ended: playback is over, so is the timer
+                if (state == Player.STATE_ENDED && sleep.mode != SleepTimer.Mode.Off) stopSleep()
+            }
         })
         val open = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
