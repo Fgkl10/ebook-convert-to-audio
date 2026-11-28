@@ -94,7 +94,7 @@ against the next one).
 | AND-M26 | End of this chapter | Near the end of chapter 1 → End of this chapter | Stops at the end of chapter 1; chapter 2 doesn't start | Manual, pass (2026-11-28) |
 | AND-M27 | Timer state after leaving the player | Set a timer, pause, leave the player, come back | The sleep button and the mini player still show the time left | Manual, pass (2026-11-28) |
 | AND-M28 | Read along offline | Download the book; airplane mode; open the player | Text from the phone's copy | Manual, pass (2026-11-28) |
-| AND-G05 | End-of-chapter timer on the book's last chapter | Set "End of this chapter" in the last chapter | Playback ends; the timer clears (`STATE_ENDED`) | Gap (handled in code, not run on the phone) |
+| AND-M29 | End-of-chapter timer on the book's last chapter | Set "End of this chapter" in the last chapter | Playback ends; the timer clears (`STATE_ENDED`) | Manual, pass (2026-11-28) |
 | AND-G06 | Sleep timer after the service is stopped | Set a timer, then stop playback from the notification | The timer is gone (in memory only, A-016) | Gap (by design, not tested) |
 
 ## Known gaps
