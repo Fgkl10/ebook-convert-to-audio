@@ -1,12 +1,12 @@
 .venv/
 __pycache__/
 *.pyc
-library/
-cache/
-models/
+/library/
+/cache/
+/models/
 *.wav
-uploads/
-drafts/
+/uploads/
+/drafts/
 cache_install.log
 *.egg-info/
 build/
