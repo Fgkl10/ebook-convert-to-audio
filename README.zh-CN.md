@@ -272,8 +272,8 @@ cd android
 .\gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
 ```
 
-CI（GitHub Actions）会在每个拉取请求上运行这两项。开发流程是每个里程碑一个分支、一个拉取请求，组件文档在同一个拉取请求中更新
-（见 [`CLAUDE.md`](CLAUDE.md)）。
+CI（GitHub Actions）会在每个拉取请求上运行这两项。开发流程是每个里程碑一个分支、一个拉取请求。
+凡是改变流程、模块边界、数据格式或设计决策的修改，都会在同一个拉取请求中更新组件文档（`desktop/docs/`、`android/docs/`）。
 
 ## 路线图
 

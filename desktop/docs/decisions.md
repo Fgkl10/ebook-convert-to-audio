@@ -944,9 +944,10 @@ the project to present itself as working on any Android phone, not only Xiaomi H
 in the repository is written in English.
 **Decision:**
 - `README.md` (English) is the source. `README.zh-CN.md` and `README.zh-TW.md` are full translations with the same
-  sections and a language switcher at the top of each. They are the one deliberate exception to the English rule:
-  user-facing documents meant to be read in that language. Code, comments, component docs, commits and PRs stay
-  English.
+  sections and a language switcher at the top of each. Translations are the deliberate exception to the English
+  rule: these READMEs and the UI text files (`android/.../res/values-b+zh+*/strings.xml`,
+  `desktop/web/i18n/zh-*.json`, D-040, android A-017), all meant to be read in that language. Code, comments,
+  component docs, commits and PRs stay English.
 - The README states Android 8.0+ on any vendor. Vendor-specific install and background-playback steps are tables
   (Xiaomi, Huawei/Honor, Samsung, OPPO/OnePlus/realme, vivo/iQOO, stock Android), matching the app's Settings screen
   (android A-018).

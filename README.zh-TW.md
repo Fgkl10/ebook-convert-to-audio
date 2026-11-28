@@ -272,8 +272,8 @@ cd android
 .\gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
 ```
 
-CI（GitHub Actions）會在每個 Pull Request 上執行這兩項。開發流程是每個里程碑一個分支、一個 Pull Request，元件文件在同一個 Pull Request 中更新
-（請見 [`CLAUDE.md`](CLAUDE.md)）。
+CI（GitHub Actions）會在每個 Pull Request 上執行這兩項。開發流程是每個里程碑一個分支、一個 Pull Request。
+凡是改變流程、模組邊界、資料格式或設計決策的修改，都會在同一個 Pull Request 中更新元件文件（`desktop/docs/`、`android/docs/`）。
 
 ## 發展藍圖
 

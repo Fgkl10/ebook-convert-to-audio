@@ -287,8 +287,9 @@ cd android
 .\gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
 ```
 
-CI (GitHub Actions) runs both on every pull request. The workflow is one branch and one pull request per milestone,
-and the component docs are updated in the same pull request (see [`CLAUDE.md`](CLAUDE.md)).
+CI (GitHub Actions) runs both on every pull request. Work happens in one branch and one pull request per milestone.
+A change to a flow, a module boundary, a data format or a design choice updates the component docs (`desktop/docs/`,
+`android/docs/`) in the same pull request.
 
 ## Roadmap
 
