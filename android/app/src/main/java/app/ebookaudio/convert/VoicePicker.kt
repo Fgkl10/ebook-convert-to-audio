@@ -20,6 +20,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.MediaItem
@@ -71,6 +72,17 @@ fun rememberSamplePlayer(): SamplePlayer {
     return sample
 }
 
+/** The words of ConvertRules.voiceLabel, by key. */
+private val VOICE_WORDS = mapOf(
+    "label" to R.string.voice_label, "label_plain" to R.string.voice_label_plain, "join" to R.string.voice_join,
+    "us_female" to R.string.voice_us_female, "us_male" to R.string.voice_us_male,
+    "gb_female" to R.string.voice_gb_female, "gb_male" to R.string.voice_gb_male,
+    "female" to R.string.voice_female, "male" to R.string.voice_male,
+    "numbered_female" to R.string.voice_numbered_female, "numbered_male" to R.string.voice_numbered_male,
+    "low" to R.string.trait_low, "high" to R.string.trait_high, "slow" to R.string.trait_slow,
+    "fast" to R.string.trait_fast,
+)
+
 @Composable
 private fun languageName(code: String) = when (code) {
     "en" -> stringResource(R.string.voice_lang_en)
@@ -94,7 +106,14 @@ fun VoiceAndSpeed(
     book: MediaController?,
 ) {
     val lang = ConvertRules.languageOf(languages, voice) ?: languages.firstOrNull()?.code.orEmpty()
-    val voices = languages.firstOrNull { it.code == lang }?.voices.orEmpty()
+    val current = languages.firstOrNull { it.code == lang }
+    val voices = current?.voices.orEmpty()
+    val res = LocalResources.current
+    val labels = remember(current, res) {
+        val word = { key: String -> res.getString(VOICE_WORDS.getValue(key)) }
+        val byId = current?.details.orEmpty().associateBy { it.id }
+        voices.associateWith { id -> byId[id]?.let { ConvertRules.voiceLabel(it, word) } ?: id }
+    }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (languages.size > 1) {
             DropdownField(stringResource(R.string.voice_language), languageName(lang),
@@ -102,7 +121,8 @@ fun VoiceAndSpeed(
                 { code -> onVoice(ConvertRules.voiceFor(languages, voice, code)) }, Modifier.fillMaxWidth())
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            DropdownField(stringResource(R.string.voice), voice, voices.map { it to it }, onVoice, Modifier.weight(1f))
+            DropdownField(stringResource(R.string.voice), labels[voice] ?: voice, voices.map { it to labels.getValue(it) },
+                onVoice, Modifier.weight(1f))
             IconButton(onClick = { api?.let { sample.toggle(it, voice, book) } }, enabled = api != null) {
                 if (sample.playing == voice) Icon(Icons.Filled.Stop, stringResource(R.string.stop_sample))
                 else Icon(Icons.Filled.PlayArrow, stringResource(R.string.hear_sample, voice))

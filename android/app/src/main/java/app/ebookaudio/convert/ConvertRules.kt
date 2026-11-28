@@ -3,6 +3,7 @@ package app.ebookaudio.convert
 import app.ebookaudio.api.Draft
 import app.ebookaudio.api.DraftDetail
 import app.ebookaudio.api.Job
+import app.ebookaudio.api.VoiceDetail
 import app.ebookaudio.api.VoiceLanguage
 
 /**
@@ -104,6 +105,19 @@ object ConvertRules {
     /** The Upload screen's first voice: the app's language decides, Chinese for a Chinese interface. */
     fun startVoice(languages: List<VoiceLanguage>, appLanguage: String): String =
         voiceFor(languages, "", if (appLanguage.startsWith("zh")) "zh" else "en")
+
+    /**
+     * What to call a voice, like the PC's page (desktop D-046): "Nicole · American woman, deep, calm (af_nicole)".
+     * [word] gives the localized text for: us_female, us_male, gb_female, gb_male, female, male, low, high, slow,
+     * fast, join, and numbered_female / numbered_male / label / label_plain, which hold %1$s… placeholders filled
+     * here. A numbered voice's name already says woman or man.
+     */
+    fun voiceLabel(d: VoiceDetail, word: (String) -> String): String {
+        val name = d.name ?: word("numbered_${d.gender}").format("%03d".format(d.number ?: 0))
+        val who = if (d.name == null) null else word(if (d.accent != null) "${d.accent}_${d.gender}" else d.gender)
+        val desc = (listOfNotNull(who) + d.traits.map(word)).joinToString(word("join"))
+        return if (desc.isEmpty()) word("label_plain").format(name, d.id) else word("label").format(name, desc, d.id)
+    }
 
     private val UPLOADABLE = Regex("""\.(epub|pdf|txt)$""", RegexOption.IGNORE_CASE)
 

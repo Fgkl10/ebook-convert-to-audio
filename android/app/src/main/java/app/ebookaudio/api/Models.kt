@@ -36,6 +36,19 @@ data class VoiceLanguage(
     val code: String,
     val voices: List<String> = emptyList(),
     @SerialName("default_voice") val defaultVoice: String = "",
+    /** What to call each voice (desktop D-046); empty from a PC before it, then the ids are shown. */
+    @SerialName("voice_details") val details: List<VoiceDetail> = emptyList(),
+)
+
+/** A voice's gender, accent ("us"/"gb" for English), own name or number, and measured traits (low/high, slow/fast). */
+@Serializable
+data class VoiceDetail(
+    val id: String,
+    val gender: String = "",
+    val accent: String? = null,
+    val name: String? = null,
+    val number: Int? = null,
+    val traits: List<String> = emptyList(),
 )
 
 @Serializable

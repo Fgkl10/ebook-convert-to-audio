@@ -6,7 +6,7 @@ import pytest
 
 from desktop.core.language import SUPPORTED_LANGUAGES
 from desktop.server import service
-from desktop.tts import backend, build
+from desktop.tts import backend, build, voice_traits
 from desktop.tts.kokoro import KokoroBackend
 from tests.test_api import _approve
 from tests.test_server import STORY, V1, _upload, _wait, api  # noqa: F401 - api is a fixture
@@ -48,6 +48,49 @@ def test_tts12_kokoro_voices_from_their_ids(monkeypatch):
 def test_tts13_unknown_backend_refused(tmp_path):
     with pytest.raises(ValueError, match="choose one of kokoro"):
         backend.create("nope")
+
+
+# ---------------------------------------------------------------- voice names (D-046)
+
+def test_tts17_pitch_and_pace_measures():
+    sr = 24000
+    t = np.arange(int(1.5 * sr)) / sr
+    for f in (90, 180, 300):  # a voice-like tone: harmonics, a little vibrato, a pause
+        phase = 2 * np.pi * f * t + 0.3 * np.sin(2 * np.pi * 5 * t)
+        x = sum(np.sin(k * phase) / k for k in range(1, 6)).astype(np.float32)
+        x[int(0.6 * sr):int(0.8 * sr)] = 0
+        assert abs(voice_traits.pitch_hz(x, sr) - f) < 0.02 * f
+        assert abs(voice_traits.speech_seconds(x, sr) - 1.3) < 0.03  # the pause doesn't count
+    weak = (0.3 * np.sin(2 * np.pi * 110 * t) + np.sin(2 * np.pi * 220 * t) + 0.5 * np.sin(2 * np.pi * 330 * t))
+    assert abs(voice_traits.pitch_hz(weak.astype(np.float32), sr) - 110) < 3  # no octave error
+    assert voice_traits.syllables("老灯塔看守人。", "zh") == 6 and voice_traits.syllables("The old keeper.", "en") == 4
+
+
+def test_tts18_traits_are_relative_thirds():
+    m = {v: {"group": "g", "gender": "f", "pitch_hz": p, "rate": r}
+         for v, p, r in [("a", 100, 5), ("b", 150, 6), ("c", 200, 7), ("d", 250, 8), ("e", 300, 9), ("f", 350, 4)]}
+    m["x"] = {"group": "g", "gender": "m", "pitch_hz": 100, "rate": 6.5}  # alone in its pitch group: no pitch word
+    words = voice_traits.traits(m)
+    # pitch: women a-f in thirds (a, b low; e, f high). Pace: all 7 voices (f, a slow; d, e fast)
+    assert words == {"a": ["low", "slow"], "b": ["low"], "c": [], "d": ["fast"], "e": ["high", "fast"],
+                     "f": ["high", "slow"], "x": []}
+
+
+def test_tts19_every_kokoro_voice_is_measured(monkeypatch):
+    from desktop.tts import kokoro, models
+
+    data = voice_traits.load()
+    for v in [*kokoro.V10_VOICES["en"], *kokoro.V10_VOICES["zh"], *models.ZH_VOICES]:
+        assert v in data and set(data[v]) <= {"low", "high", "slow", "fast"}, v
+    assert KokoroBackend().voice("af_nicole").traits == ("low", "slow")
+
+
+def test_tts20_info_names_every_voice(api):  # noqa: F811
+    for lang in api.get(f"{V1}/info").json()["languages"]:
+        assert [d["id"] for d in lang["voice_details"]] == lang["voices"]
+    en = api.get(f"{V1}/info").json()["languages"][0]["voice_details"]
+    assert {"id": "af_nicole", "gender": "female", "accent": "us", "name": "Nicole", "number": None,
+            "traits": ["low", "slow"]} in en
 
 
 # ---------------------------------------------------------------- the setting (D-045)

@@ -218,6 +218,21 @@
     <string name="voice_language">語言</string>
     <string name="voice_lang_en">英語</string>
     <string name="voice_lang_zh">中文</string>
+    <string name="voice_label">%1$s · %2$s（%3$s）</string>
+    <string name="voice_label_plain">%1$s（%2$s）</string>
+    <string name="voice_join">，</string>
+    <string name="voice_us_female">美式英語女聲</string>
+    <string name="voice_us_male">美式英語男聲</string>
+    <string name="voice_gb_female">英式英語女聲</string>
+    <string name="voice_gb_male">英式英語男聲</string>
+    <string name="voice_female">女聲</string>
+    <string name="voice_male">男聲</string>
+    <string name="voice_numbered_female">女聲 %1$s</string>
+    <string name="voice_numbered_male">男聲 %1$s</string>
+    <string name="trait_low">低沉</string>
+    <string name="trait_high">明亮</string>
+    <string name="trait_slow">舒緩</string>
+    <string name="trait_fast">輕快</string>
     <string name="stop_sample">停止試聽</string>
     <string name="hear_sample">試聽 %1$s</string>
 

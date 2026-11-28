@@ -1,0 +1,1117 @@
+{
+ "af_heart": {
+  "group": "v1.0-en",
+  "gender": "f",
+  "pitch_hz": 200.0,
+  "rate": 6.12,
+  "traits": []
+ },
+ "af_bella": {
+  "group": "v1.0-en",
+  "gender": "f",
+  "pitch_hz": 200.8,
+  "rate": 6.22,
+  "traits": [
+   "high"
+  ]
+ },
+ "af_nicole": {
+  "group": "v1.0-en",
+  "gender": "f",
+  "pitch_hz": 153.8,
+  "rate": 5.85,
+  "traits": [
+   "low",
+   "slow"
+  ]
+ },
+ "af_sarah": {
+  "group": "v1.0-en",
+  "gender": "f",
+  "pitch_hz": 192.0,
+  "rate": 6.58,
+  "traits": [
+   "fast"
+  ]
+ },
+ "af_sky": {
+  "group": "v1.0-en",
+  "gender": "f",
+  "pitch_hz": 164.4,
+  "rate": 6.4,
+  "traits": [
+   "low"
+  ]
+ },
+ "am_michael": {
+  "group": "v1.0-en",
+  "gender": "m",
+  "pitch_hz": 118.2,
+  "rate": 5.99,
+  "traits": [
+   "low",
+   "slow"
+  ]
+ },
+ "am_fenrir": {
+  "group": "v1.0-en",
+  "gender": "m",
+  "pitch_hz": 143.7,
+  "rate": 6.5,
+  "traits": [
+   "high",
+   "fast"
+  ]
+ },
+ "am_puck": {
+  "group": "v1.0-en",
+  "gender": "m",
+  "pitch_hz": 118.2,
+  "rate": 6.5,
+  "traits": [
+   "fast"
+  ]
+ },
+ "am_adam": {
+  "group": "v1.0-en",
+  "gender": "m",
+  "pitch_hz": 120.0,
+  "rate": 6.4,
+  "traits": []
+ },
+ "bf_emma": {
+  "group": "v1.0-en",
+  "gender": "f",
+  "pitch_hz": 179.1,
+  "rate": 6.11,
+  "traits": []
+ },
+ "bf_isabella": {
+  "group": "v1.0-en",
+  "gender": "f",
+  "pitch_hz": 208.7,
+  "rate": 6.0,
+  "traits": [
+   "high",
+   "slow"
+  ]
+ },
+ "bm_george": {
+  "group": "v1.0-en",
+  "gender": "m",
+  "pitch_hz": 146.3,
+  "rate": 5.14,
+  "traits": [
+   "high",
+   "slow"
+  ]
+ },
+ "bm_fable": {
+  "group": "v1.0-en",
+  "gender": "m",
+  "pitch_hz": 125.0,
+  "rate": 6.63,
+  "traits": [
+   "fast"
+  ]
+ },
+ "bm_lewis": {
+  "group": "v1.0-en",
+  "gender": "m",
+  "pitch_hz": 98.8,
+  "rate": 6.19,
+  "traits": [
+   "low"
+  ]
+ },
+ "zf_xiaoxiao": {
+  "group": "v1.0-zh",
+  "gender": "f",
+  "pitch_hz": 235.3,
+  "rate": 5.8,
+  "traits": [
+   "low"
+  ]
+ },
+ "zf_xiaobei": {
+  "group": "v1.0-zh",
+  "gender": "f",
+  "pitch_hz": 251.3,
+  "rate": 5.02,
+  "traits": [
+   "slow"
+  ]
+ },
+ "zf_xiaoni": {
+  "group": "v1.0-zh",
+  "gender": "f",
+  "pitch_hz": 235.3,
+  "rate": 5.82,
+  "traits": []
+ },
+ "zf_xiaoyi": {
+  "group": "v1.0-zh",
+  "gender": "f",
+  "pitch_hz": 300.0,
+  "rate": 6.12,
+  "traits": [
+   "high"
+  ]
+ },
+ "zm_yunxi": {
+  "group": "v1.0-zh",
+  "gender": "m",
+  "pitch_hz": 177.8,
+  "rate": 7.22,
+  "traits": [
+   "fast"
+  ]
+ },
+ "zm_yunjian": {
+  "group": "v1.0-zh",
+  "gender": "m",
+  "pitch_hz": 133.3,
+  "rate": 5.7,
+  "traits": [
+   "low",
+   "slow"
+  ]
+ },
+ "zm_yunxia": {
+  "group": "v1.0-zh",
+  "gender": "m",
+  "pitch_hz": 300.0,
+  "rate": 5.96,
+  "traits": [
+   "high"
+  ]
+ },
+ "zm_yunyang": {
+  "group": "v1.0-zh",
+  "gender": "m",
+  "pitch_hz": 137.9,
+  "rate": 7.96,
+  "traits": [
+   "fast"
+  ]
+ },
+ "zf_001": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 266.7,
+  "rate": 5.79,
+  "traits": [
+   "high"
+  ]
+ },
+ "zf_002": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 222.2,
+  "rate": 5.57,
+  "traits": [
+   "low"
+  ]
+ },
+ "zf_003": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 226.4,
+  "rate": 5.12,
+  "traits": [
+   "low",
+   "slow"
+  ]
+ },
+ "zf_004": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 233.0,
+  "rate": 5.32,
+  "traits": [
+   "slow"
+  ]
+ },
+ "zf_005": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 242.4,
+  "rate": 5.67,
+  "traits": []
+ },
+ "zf_006": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 214.3,
+  "rate": 5.78,
+  "traits": [
+   "low"
+  ]
+ },
+ "zf_007": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 230.8,
+  "rate": 6.64,
+  "traits": [
+   "fast"
+  ]
+ },
+ "zf_008": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 222.2,
+  "rate": 5.15,
+  "traits": [
+   "low",
+   "slow"
+  ]
+ },
+ "zf_017": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 311.7,
+  "rate": 5.35,
+  "traits": [
+   "high",
+   "slow"
+  ]
+ },
+ "zf_018": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 242.4,
+  "rate": 4.87,
+  "traits": [
+   "slow"
+  ]
+ },
+ "zf_019": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 199.2,
+  "rate": 4.77,
+  "traits": [
+   "low",
+   "slow"
+  ]
+ },
+ "zf_021": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 250.0,
+  "rate": 6.01,
+  "traits": [
+   "fast"
+  ]
+ },
+ "zf_022": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 206.0,
+  "rate": 5.16,
+  "traits": [
+   "low",
+   "slow"
+  ]
+ },
+ "zf_023": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 221.2,
+  "rate": 5.57,
+  "traits": [
+   "low"
+  ]
+ },
+ "zf_024": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 230.8,
+  "rate": 5.33,
+  "traits": [
+   "slow"
+  ]
+ },
+ "zf_026": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 244.9,
+  "rate": 6.25,
+  "traits": [
+   "fast"
+  ]
+ },
+ "zf_027": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 228.6,
+  "rate": 6.32,
+  "traits": [
+   "low",
+   "fast"
+  ]
+ },
+ "zf_028": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 272.7,
+  "rate": 5.78,
+  "traits": [
+   "high"
+  ]
+ },
+ "zf_032": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 216.2,
+  "rate": 4.99,
+  "traits": [
+   "low",
+   "slow"
+  ]
+ },
+ "zf_036": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 215.3,
+  "rate": 6.06,
+  "traits": [
+   "low",
+   "fast"
+  ]
+ },
+ "zf_038": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 296.3,
+  "rate": 4.74,
+  "traits": [
+   "high",
+   "slow"
+  ]
+ },
+ "zf_039": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 231.9,
+  "rate": 5.49,
+  "traits": []
+ },
+ "zf_040": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 216.2,
+  "rate": 4.72,
+  "traits": [
+   "low",
+   "slow"
+  ]
+ },
+ "zf_042": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 263.7,
+  "rate": 4.86,
+  "traits": [
+   "slow"
+  ]
+ },
+ "zf_043": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 271.2,
+  "rate": 5.05,
+  "traits": [
+   "high",
+   "slow"
+  ]
+ },
+ "zf_044": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 228.6,
+  "rate": 5.07,
+  "traits": [
+   "low",
+   "slow"
+  ]
+ },
+ "zf_046": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 179.1,
+  "rate": 5.82,
+  "traits": [
+   "low"
+  ]
+ },
+ "zf_047": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 224.3,
+  "rate": 5.27,
+  "traits": [
+   "low",
+   "slow"
+  ]
+ },
+ "zf_048": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 233.0,
+  "rate": 4.54,
+  "traits": [
+   "slow"
+  ]
+ },
+ "zf_049": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 242.4,
+  "rate": 5.43,
+  "traits": []
+ },
+ "zf_051": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 218.2,
+  "rate": 4.61,
+  "traits": [
+   "low",
+   "slow"
+  ]
+ },
+ "zf_059": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 233.0,
+  "rate": 5.53,
+  "traits": []
+ },
+ "zf_060": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 275.9,
+  "rate": 5.3,
+  "traits": [
+   "high",
+   "slow"
+  ]
+ },
+ "zf_067": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 307.7,
+  "rate": 5.93,
+  "traits": [
+   "high",
+   "fast"
+  ]
+ },
+ "zf_070": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 282.4,
+  "rate": 5.75,
+  "traits": [
+   "high"
+  ]
+ },
+ "zf_071": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 260.9,
+  "rate": 5.79,
+  "traits": []
+ },
+ "zf_072": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 292.7,
+  "rate": 5.01,
+  "traits": [
+   "high",
+   "slow"
+  ]
+ },
+ "zf_073": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 315.8,
+  "rate": 5.49,
+  "traits": [
+   "high"
+  ]
+ },
+ "zf_074": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 324.3,
+  "rate": 5.79,
+  "traits": [
+   "high"
+  ]
+ },
+ "zf_075": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 269.7,
+  "rate": 5.34,
+  "traits": [
+   "high",
+   "slow"
+  ]
+ },
+ "zf_076": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 285.7,
+  "rate": 5.65,
+  "traits": [
+   "high"
+  ]
+ },
+ "zf_077": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 303.8,
+  "rate": 6.22,
+  "traits": [
+   "high",
+   "fast"
+  ]
+ },
+ "zf_078": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 241.2,
+  "rate": 5.72,
+  "traits": []
+ },
+ "zf_079": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 143.7,
+  "rate": 5.99,
+  "traits": [
+   "low",
+   "fast"
+  ]
+ },
+ "zf_083": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 258.1,
+  "rate": 6.29,
+  "traits": [
+   "fast"
+  ]
+ },
+ "zf_084": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 285.7,
+  "rate": 5.48,
+  "traits": [
+   "high"
+  ]
+ },
+ "zf_085": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 296.3,
+  "rate": 5.5,
+  "traits": [
+   "high"
+  ]
+ },
+ "zf_086": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 250.0,
+  "rate": 6.12,
+  "traits": [
+   "fast"
+  ]
+ },
+ "zf_087": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 242.4,
+  "rate": 5.36,
+  "traits": []
+ },
+ "zf_088": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 259.5,
+  "rate": 5.91,
+  "traits": []
+ },
+ "zf_090": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 250.0,
+  "rate": 4.65,
+  "traits": [
+   "slow"
+  ]
+ },
+ "zf_092": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 315.8,
+  "rate": 5.49,
+  "traits": [
+   "high"
+  ]
+ },
+ "zf_093": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 282.4,
+  "rate": 5.44,
+  "traits": [
+   "high"
+  ]
+ },
+ "zf_094": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 200.8,
+  "rate": 5.75,
+  "traits": [
+   "low"
+  ]
+ },
+ "zf_099": {
+  "group": "v1.1-zh-zh",
+  "gender": "f",
+  "pitch_hz": 205.1,
+  "rate": 5.09,
+  "traits": [
+   "low",
+   "slow"
+  ]
+ },
+ "zm_009": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 126.3,
+  "rate": 6.35,
+  "traits": [
+   "low",
+   "fast"
+  ]
+ },
+ "zm_010": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 147.2,
+  "rate": 6.01,
+  "traits": [
+   "fast"
+  ]
+ },
+ "zm_011": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 115.9,
+  "rate": 5.71,
+  "traits": [
+   "low"
+  ]
+ },
+ "zm_012": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 141.2,
+  "rate": 5.33,
+  "traits": [
+   "slow"
+  ]
+ },
+ "zm_013": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 121.8,
+  "rate": 6.64,
+  "traits": [
+   "low",
+   "fast"
+  ]
+ },
+ "zm_014": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 118.5,
+  "rate": 6.26,
+  "traits": [
+   "low",
+   "fast"
+  ]
+ },
+ "zm_015": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 131.1,
+  "rate": 7.16,
+  "traits": [
+   "low",
+   "fast"
+  ]
+ },
+ "zm_016": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 167.8,
+  "rate": 6.28,
+  "traits": [
+   "high",
+   "fast"
+  ]
+ },
+ "zm_020": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 206.9,
+  "rate": 4.06,
+  "traits": [
+   "high",
+   "slow"
+  ]
+ },
+ "zm_025": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 132.6,
+  "rate": 8.24,
+  "traits": [
+   "low",
+   "fast"
+  ]
+ },
+ "zm_029": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 104.8,
+  "rate": 5.27,
+  "traits": [
+   "low",
+   "slow"
+  ]
+ },
+ "zm_030": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 125.0,
+  "rate": 8.07,
+  "traits": [
+   "low",
+   "fast"
+  ]
+ },
+ "zm_031": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 124.4,
+  "rate": 4.89,
+  "traits": [
+   "low",
+   "slow"
+  ]
+ },
+ "zm_033": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 108.6,
+  "rate": 6.05,
+  "traits": [
+   "low",
+   "fast"
+  ]
+ },
+ "zm_034": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 112.7,
+  "rate": 5.93,
+  "traits": [
+   "low",
+   "fast"
+  ]
+ },
+ "zm_035": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 139.9,
+  "rate": 5.84,
+  "traits": []
+ },
+ "zm_037": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 133.3,
+  "rate": 6.09,
+  "traits": [
+   "fast"
+  ]
+ },
+ "zm_041": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 216.2,
+  "rate": 5.49,
+  "traits": [
+   "high"
+  ]
+ },
+ "zm_045": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 163.3,
+  "rate": 5.93,
+  "traits": [
+   "high",
+   "fast"
+  ]
+ },
+ "zm_050": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 162.7,
+  "rate": 6.38,
+  "traits": [
+   "high",
+   "fast"
+  ]
+ },
+ "zm_052": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 176.5,
+  "rate": 5.95,
+  "traits": [
+   "high",
+   "fast"
+  ]
+ },
+ "zm_053": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 136.4,
+  "rate": 5.22,
+  "traits": [
+   "slow"
+  ]
+ },
+ "zm_054": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 157.9,
+  "rate": 5.59,
+  "traits": []
+ },
+ "zm_055": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 125.0,
+  "rate": 5.97,
+  "traits": [
+   "low",
+   "fast"
+  ]
+ },
+ "zm_056": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 169.0,
+  "rate": 5.15,
+  "traits": [
+   "high",
+   "slow"
+  ]
+ },
+ "zm_057": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 143.7,
+  "rate": 5.89,
+  "traits": []
+ },
+ "zm_058": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 155.8,
+  "rate": 6.16,
+  "traits": [
+   "fast"
+  ]
+ },
+ "zm_061": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 187.5,
+  "rate": 6.08,
+  "traits": [
+   "high",
+   "fast"
+  ]
+ },
+ "zm_062": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 152.9,
+  "rate": 6.08,
+  "traits": [
+   "fast"
+  ]
+ },
+ "zm_063": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 176.5,
+  "rate": 6.35,
+  "traits": [
+   "high",
+   "fast"
+  ]
+ },
+ "zm_064": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 131.9,
+  "rate": 5.58,
+  "traits": [
+   "low"
+  ]
+ },
+ "zm_065": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 177.8,
+  "rate": 5.41,
+  "traits": [
+   "high"
+  ]
+ },
+ "zm_066": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 135.6,
+  "rate": 5.7,
+  "traits": []
+ },
+ "zm_068": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 167.2,
+  "rate": 6.39,
+  "traits": [
+   "high",
+   "fast"
+  ]
+ },
+ "zm_069": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 167.8,
+  "rate": 5.97,
+  "traits": [
+   "high",
+   "fast"
+  ]
+ },
+ "zm_080": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 132.6,
+  "rate": 4.52,
+  "traits": [
+   "slow"
+  ]
+ },
+ "zm_081": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 145.5,
+  "rate": 5.15,
+  "traits": [
+   "slow"
+  ]
+ },
+ "zm_082": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 155.3,
+  "rate": 6.61,
+  "traits": [
+   "fast"
+  ]
+ },
+ "zm_089": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 141.2,
+  "rate": 5.79,
+  "traits": []
+ },
+ "zm_091": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 159.5,
+  "rate": 6.92,
+  "traits": [
+   "high",
+   "fast"
+  ]
+ },
+ "zm_095": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 166.1,
+  "rate": 5.34,
+  "traits": [
+   "high",
+   "slow"
+  ]
+ },
+ "zm_096": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 181.1,
+  "rate": 5.59,
+  "traits": [
+   "high"
+  ]
+ },
+ "zm_097": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 127.7,
+  "rate": 5.4,
+  "traits": [
+   "low"
+  ]
+ },
+ "zm_098": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 100.2,
+  "rate": 5.08,
+  "traits": [
+   "low",
+   "slow"
+  ]
+ },
+ "zm_100": {
+  "group": "v1.1-zh-zh",
+  "gender": "m",
+  "pitch_hz": 150.9,
+  "rate": 4.77,
+  "traits": [
+   "slow"
+  ]
+ }
+}

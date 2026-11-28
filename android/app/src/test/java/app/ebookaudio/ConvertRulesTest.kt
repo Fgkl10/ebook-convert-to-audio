@@ -4,6 +4,7 @@ import app.ebookaudio.api.Draft
 import app.ebookaudio.api.DraftDetail
 import app.ebookaudio.api.Job
 import app.ebookaudio.api.Report
+import app.ebookaudio.api.VoiceDetail
 import app.ebookaudio.api.VoiceLanguage
 import app.ebookaudio.convert.ApproveLabel
 import app.ebookaudio.convert.ConvertRules
@@ -113,6 +114,24 @@ class ConvertRulesTest {
         assertEquals("zf_xiaoxiao", ConvertRules.startVoice(langs, "zh"))
         assertEquals("af_heart", ConvertRules.startVoice(langs, "en"))
         assertEquals("af_heart", ConvertRules.voiceFor(emptyList(), "af_heart", "zh"))  // no list yet: unchanged
+    }
+
+    @Test
+    fun voiceNames() {
+        val words = mapOf("label" to "%1\$s · %2\$s (%3\$s)", "label_plain" to "%1\$s (%2\$s)", "join" to ", ",
+            "us_female" to "American woman", "gb_male" to "British man", "female" to "woman",
+            "numbered_male" to "Man %1\$s", "low" to "deep", "high" to "bright", "slow" to "calm", "fast" to "lively")
+        val word = { key: String -> words.getValue(key) }
+        assertEquals("Nicole · American woman, deep, calm (af_nicole)", ConvertRules.voiceLabel(
+            VoiceDetail("af_nicole", "female", "us", "Nicole", null, listOf("low", "slow")), word))
+        assertEquals("Lewis · British man (bm_lewis)",
+            ConvertRules.voiceLabel(VoiceDetail("bm_lewis", "male", "gb", "Lewis"), word))
+        assertEquals("Xiaoxiao · woman, bright (zf_xiaoxiao)",
+            ConvertRules.voiceLabel(VoiceDetail("zf_xiaoxiao", "female", null, "Xiaoxiao", null, listOf("high")), word))
+        // a numbered voice: its name says the gender; with no traits, no description
+        assertEquals("Man 025 · deep, lively (zm_025)",
+            ConvertRules.voiceLabel(VoiceDetail("zm_025", "male", null, null, 25, listOf("low", "fast")), word))
+        assertEquals("Man 009 (zm_009)", ConvertRules.voiceLabel(VoiceDetail("zm_009", "male", null, null, 9), word))
     }
 
     @Test

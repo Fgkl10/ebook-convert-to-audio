@@ -1,6 +1,6 @@
 [
   {
-    "id": "0d5b4ccfff2f",
+    "id": "ba8442d6168b",
     "file": "story.txt",
     "voice": "af_heart",
     "speed": 1.0,
@@ -10,7 +10,7 @@
     "message": "Done",
     "book_id": "story-63e1f08d",
     "error": null,
-    "created": 1795851564.4237359,
-    "draft_id": "18c52ec05083"
+    "created": 1795856626.791017,
+    "draft_id": "6745d3ac42d3"
   }
 ]

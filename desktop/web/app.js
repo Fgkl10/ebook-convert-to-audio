@@ -95,13 +95,30 @@ function preferredVoice(lang) {
   const l = VOICE_LANGS.find(x => x.code === lang), saved = savedVoices()[lang];
   return l && l.voices.includes(saved) ? saved : l?.default_voice;
 }
+// What to call a voice (D-046): "Nicole · American woman, deep, calm (af_nicole)". The words come from the server's
+// measured traits; the id stays, so it can be matched with the command line. Literal keys: tests/test_web_i18n.py.
+function voiceLabel(d) {
+  const who = {
+    us_female: t('voice.us_female'), us_male: t('voice.us_male'), gb_female: t('voice.gb_female'),
+    gb_male: t('voice.gb_male'), female: t('voice.female'), male: t('voice.male'),
+  }[d.accent ? `${d.accent}_${d.gender}` : d.gender];
+  const word = { low: t('trait.low'), high: t('trait.high'), slow: t('trait.slow'), fast: t('trait.fast') };
+  const name = d.name || (d.gender === 'female'
+    ? t('voice.numbered_female', { n: String(d.number).padStart(3, '0') })
+    : t('voice.numbered_male', { n: String(d.number).padStart(3, '0') }));
+  // a numbered voice's name already says woman/man
+  const desc = [d.name ? who : null, ...d.traits.map(x => word[x])].filter(Boolean).join(t('voice.join'));
+  return desc ? t('voice.label', { name, desc, id: d.id }) : t('voice.label_plain', { name, id: d.id });
+}
 // Show `lang` in the picker whose Voice list is `sel`, with `voice` chosen when it speaks that language.
 function setVoice(sel, lang, voice) {
   const l = VOICE_LANGS.find(x => x.code === lang) || VOICE_LANGS[0];
   if (!l) return;
   $(sel + 'lang').value = l.code;
   const pick = l.voices.includes(voice) ? voice : preferredVoice(l.code);
-  $(sel).innerHTML = l.voices.map(v => `<option${v === pick ? ' selected' : ''}>${v}</option>`).join('');
+  const details = Object.fromEntries((l.voice_details || []).map(d => [d.id, d]));
+  $(sel).innerHTML = l.voices.map(v => `<option value="${esc(v)}"${v === pick ? ' selected' : ''}>${
+    esc(details[v] ? voiceLabel(details[v]) : v)}</option>`).join('');
 }
 function setVoiceLanguages(langs) {
   const keep = Object.fromEntries(PICKERS.map(s => [s, $(s).value]));  // a refresh after installing keeps choices

@@ -8,6 +8,7 @@ import threading
 import numpy as np
 
 from .. import MODELS
+from . import voice_traits
 from .backend import Backend, Voice
 from .models import V10_REPO, ZH_REPO, ZH_VOICES, repo_of, zh_installed
 
@@ -52,7 +53,8 @@ def _voice(voice_id: str) -> Voice:
     tail = voice_id[3:]
     return Voice(id=voice_id, language=_LANGUAGE[voice_id[0]], gender="female" if voice_id[1] == "f" else "male",
                  accent=_ACCENT.get(voice_id[0]), name=None if tail.isdigit() else tail.capitalize(),
-                 number=int(tail) if tail.isdigit() else None)
+                 number=int(tail) if tail.isdigit() else None,
+                 traits=tuple(voice_traits.load().get(voice_id, ())))  # measured pitch and pace (D-046)
 
 
 class KokoroBackend(Backend):

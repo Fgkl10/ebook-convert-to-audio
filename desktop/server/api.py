@@ -38,10 +38,23 @@ class Address(BaseModel):
     qr_svg: Optional[str] = Field(description="QR code of pair_url as SVG, or null")
 
 
+class VoiceDetail(BaseModel):
+    id: str
+    gender: Literal["female", "male"]
+    accent: Optional[Literal["us", "gb"]] = Field(description="English voices: American or British")
+    name: Optional[str] = Field(description="The voice's own name ('Heart'); null for a numbered voice")
+    number: Optional[int] = Field(description="A numbered voice's number (Kokoro v1.1-zh's zf_001 = 1)")
+    traits: list[Literal["low", "high", "slow", "fast"]] = Field(
+        description="Measured, relative to the voices of the same model, language and gender: pitch low/high, "
+                    "pace slow/fast; none for the middle third (D-046)")
+
+
 class VoiceLanguage(BaseModel):
     code: Literal["en", "zh"]
     voices: list[str]
     default_voice: str
+    voice_details: list[VoiceDetail] = Field(description="The same voices, in the same order, with what to call "
+                                                         "them (D-046)")
 
 
 class Info(BaseModel):
@@ -265,7 +278,8 @@ def _voices() -> dict:
     """/info's voice fields, from the TTS backend in use (D-045)."""
     tts = service.tts()
     return {"voices": tts.voice_ids(), "default_voice": tts.default_voice("en"),
-            "languages": [{"code": lang, "voices": tts.voice_ids(lang), "default_voice": tts.default_voice(lang)}
+            "languages": [{"code": lang, "voices": tts.voice_ids(lang), "default_voice": tts.default_voice(lang),
+                           "voice_details": [v.public() for v in tts.voices(lang)]}
                           for lang in tts.languages()]}
 
 
