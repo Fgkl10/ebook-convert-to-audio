@@ -24,3 +24,4 @@ include = ["desktop*"]
 
 [tool.setuptools.package-data]
 "desktop.web" = ["*.html", "*.js", "*.css", "i18n/*.json"]
+"desktop.tts" = ["voice_traits.json"]

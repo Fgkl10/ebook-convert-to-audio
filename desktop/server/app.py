@@ -76,7 +76,14 @@ def main() -> None:
                          "default: the local address. Any other address can be picked on the home page")
     ap.add_argument("--new-token", action="store_true",
                     help="make a new pairing token: every phone has to scan the QR code again")
+    ap.add_argument("--tts", metavar="BACKEND",
+                    help="the TTS backend (also $EBOOK_AUDIO_TTS); then the page can't change it. "
+                         "Default: the one picked on the page, else kokoro")
     args = ap.parse_args()
+    try:
+        service.configure_tts(args.tts)  # refuse an unknown name before starting
+    except ValueError as e:
+        ap.error(str(e))
     if args.advertise:
         try:
             host, port = network.parse_address(args.advertise, args.port)  # refuse a typo before starting
@@ -101,6 +108,7 @@ def main() -> None:
     print(f"\n  Ebook Audio Server\n  On this PC:   http://localhost:{args.port}\n"
           f"  Phone:        scan the QR code at http://localhost:{args.port}\n"
           f"  API docs:     http://localhost:{args.port}/docs\n"
+          f"  Speech:       {service.tts().name}\n"
           f"  Data folder:  {service.LIBRARY.parent}\n")
     try:
         # On Ctrl+C uvicorn waits for open connections to close; a phone downloading a chapter could hold it for

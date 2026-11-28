@@ -53,8 +53,12 @@ class ApiClient(val baseUrl: String, private val token: String, http: OkHttpClie
     /** A file URL for this client's own requests (the header carries the token). */
     fun fileRequestUrl(bookId: String, name: String): String = url("/books/${enc(bookId)}/files/${enc(name)}")
 
-    /** About 5 s of a voice reading a fixed sentence, for the player (the token rides in the query). */
-    fun voiceSampleUrl(voice: String): String = url("/voices/${enc(voice)}/sample") + "?token=" + enc(token)
+    /** The sample's audio, blocking: the PC makes it on the first request (up to ~20 s while its model loads). */
+    fun voiceSampleBytes(voice: String): ByteArray =
+        client.newCall(Request.Builder().url(url("/voices/${enc(voice)}/sample")).build()).execute().use { r ->
+            check(r)
+            r.body.bytes()
+        }
 
     private fun call(request: Request, http: OkHttpClient = client): String =
         http.newCall(request).execute().use { r ->

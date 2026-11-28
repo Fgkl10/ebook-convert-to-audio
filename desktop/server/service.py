@@ -24,7 +24,9 @@ from ..core.parse import load_book
 from ..tts.build import (LEFTOVER_SUFFIXES, ROOT, Cancelled, build_book, chapter_number, chapter_text_sha1,
                          encode_m4a, make_book_id, remove_leftovers, select_chapters)
 from ..core.language import detect_language
-from ..tts.kokoro import DEFAULT_VOICE, all_voices, voice_for, voice_language
+from ..tts import build
+from ..tts.backend import BACKENDS, Backend, chosen, create, save_setting
+from ..tts.backend import NAMES as BACKEND_NAMES
 from ..tts.models import ZH_REPO, ZH_VOICES, ZhModel
 
 CANCELLED_MESSAGE = "Cancelled: approve again to resume (finished chapters and sentences are kept)."
@@ -62,14 +64,50 @@ def _write_json(path: Path, data) -> None:
 
 
 _DRAFT_DEFAULTS = {
-    "file": "", "source": "", "message": "", "done": 0, "total": 0, "auto": False, "voice": DEFAULT_VOICE,
+    "file": "", "source": "", "message": "", "done": 0, "total": 0, "auto": False, "voice": "",
     "speed": 1.0, "ocr": "auto", "error": None, "created": 0, "chapters": 0, "checks": 0, "job_id": None,
     "book_id": None, "source_sha1": "", "last_chapters": None,
 }
 
 
-def check_options(voice: str, speed: float) -> None:
-    if voice not in all_voices():
+CLI_TTS: str | None = None  # ebook-server --tts
+
+
+def configure_tts(cli: str | None) -> None:
+    """ebook-server --tts: checked at start, so a typo stops the server instead of the first conversion."""
+    global CLI_TTS
+    chosen(build.ROOT, cli)  # ValueError for an unknown name (also from EBOOK_AUDIO_TTS)
+    CLI_TTS = cli
+
+
+def tts() -> Backend:
+    """The TTS backend in use (D-045)."""
+    return jobs.backend()
+
+
+def tts_setting() -> dict:
+    current = tts()
+    return {"backend": current.id, "fixed_by": jobs.fixed_by,
+            "backends": [{"id": n, "name": BACKEND_NAMES.get(n, n)} for n in BACKENDS]}
+
+
+def set_tts(name: str) -> dict:
+    """The page's backend choice: saved in <data>/settings.json and used from now on. Refused when --tts or
+    EBOOK_AUDIO_TTS chose it, and while a conversion is queued or running."""
+    if name not in BACKENDS:
+        raise Invalid(f"Unknown TTS backend {name}: choose one of {', '.join(BACKENDS)}")
+    tts()  # fixed_by is known once the backend exists
+    if jobs.fixed_by:
+        raise Conflict(f"The TTS backend was set with {jobs.fixed_by} when the server started")
+    if name != jobs.tts.id:
+        jobs.switch_backend(name)
+    save_setting(build.ROOT, "tts", name)
+    return tts_setting()
+
+
+def check_options(voice: str | None, speed: float) -> None:
+    """voice None: the backend's default for the book's language, chosen when the language is known."""
+    if voice is not None and voice not in tts().voice_ids():
         raise Invalid(f"Unknown voice {voice}")
     if not 0.5 <= speed <= 2.0:
         raise Invalid("Speed must be between 0.5 and 2.0")
@@ -128,10 +166,12 @@ class Drafts:
             if (self.root / draft_id).exists():
                 _write_json(self.root / draft_id / "draft.json", draft)
 
-    def create(self, upload: BinaryIO, filename: str, auto: bool = False, voice: str = DEFAULT_VOICE,
+    def create(self, upload: BinaryIO, filename: str, auto: bool = False, voice: str | None = None,
                speed: float = 1.0, ocr: str = "auto") -> dict:
         """Upload a book to clean. auto=True converts right after cleaning, with no review stop.
-        ocr (PDF only): auto, always or never (D-030)."""
+        ocr (PDF only): auto, always or never (D-030). voice None: the English default (a Chinese book then gets
+        the Chinese default at approval)."""
+        voice = voice or tts().default_voice("en")
         check_options(voice, speed)
         if ocr not in OCR_MODES:
             raise Invalid(f"OCR must be one of {', '.join(OCR_MODES)}")
@@ -160,8 +200,9 @@ class Drafts:
         self.queue.put(draft_id)
         return draft
 
-    def create_cleaned(self, upload: BinaryIO, filename: str, voice: str = DEFAULT_VOICE, speed: float = 1.0) -> dict:
+    def create_cleaned(self, upload: BinaryIO, filename: str, voice: str | None = None, speed: float = 1.0) -> dict:
         """A book already cleaned (CLI, or edited in Sigil): no cleaning step, straight to conversion (D-030)."""
+        voice = voice or tts().default_voice("en")
         check_options(voice, speed)
         draft_id = uuid.uuid4().hex[:12]
         d = self.root / draft_id
@@ -299,7 +340,9 @@ class Drafts:
         """Queue the cleaned book for conversion; voice and speed default to the ones chosen at upload.
         chapters: 1-based numbers to convert into the book's library entry (D-035); None converts them all."""
         draft = self.get(draft_id)
-        voice, speed = voice or draft["voice"], speed or draft["speed"]
+        if not voice and draft["voice"] in tts().voice_ids():
+            voice = draft["voice"]  # the upload's voice, unless that backend or model is no longer in use
+        speed = speed or draft["speed"]
         check_options(voice, speed)
         if draft["status"] not in ("review", "done"):
             raise Conflict(f"Cannot convert a draft that is {draft['status']}")
@@ -312,9 +355,12 @@ class Drafts:
         # A voice in another language than the book's (picked at upload, before the language was known) gives way
         # to that language's default voice (D-043).
         lang = (self.report(draft_id) or {}).get("language") or detect_language(book) or "en"
-        picked = voice_for(voice, lang)
-        message = "Waiting to convert" if picked == voice else f"Waiting to convert, with {picked}: {voice} does not " \
-                                                              f"speak this book's language"
+        backend = tts()
+        if lang not in backend.languages():
+            raise Invalid(f"{backend.name} can't read this book's language")
+        picked = backend.voice_for(voice, lang) if voice else backend.default_voice(lang)
+        message = "Waiting to convert" if picked == voice or not voice else \
+            f"Waiting to convert, with {picked}: {voice} does not speak this book's language"
         job = jobs.submit(self.root / draft_id / STD, draft["file"], picked, speed, draft_id=draft_id,
                           chapters=chapters, book_id=book_id)
         self.update(draft_id, status="queued", voice=picked, speed=speed, job_id=job["id"], error=None,
@@ -376,7 +422,8 @@ class Jobs:
         self.queue: "queue.Queue[str]" = queue.Queue()
         self.lock = threading.Lock()
         self.model_lock = threading.Lock()
-        self.tts = None
+        self.tts: Backend | None = None  # backend(): made on first use
+        self.fixed_by: str | None = None  # "--tts" / "EBOOK_AUDIO_TTS" when one of them chose the backend
         threading.Thread(target=self._worker, daemon=True).start()
 
     def submit(self, path: Path, filename: str, voice: str, speed: float, draft_id: str | None = None,
@@ -412,19 +459,24 @@ class Jobs:
                 raise NotFound("No such job")
             return self._public(job)
 
-    def model(self):
-        """The one TTS model, loaded on first use and kept (it speaks both voice languages, D-031)."""
-        with self.model_lock:  # not self.lock: loading takes ~10 s and must not block the job list
+    def backend(self) -> Backend:
+        """The one TTS backend (D-045), shared by every job and voice sample. Made on first use from the setting
+        (backend.chosen); its model loads with the first sentence and stays loaded (D-031)."""
+        with self.model_lock:
             if self.tts is None:
-                from ..tts.kokoro import KokoroTTS
-
-                self.tts = KokoroTTS()
+                name, self.fixed_by = chosen(build.ROOT, CLI_TTS)
+                self.tts = create(name)
             return self.tts
 
-    def _get_tts(self, voice: str, speed: float):
-        tts = self.model()
-        tts.voice, tts.speed = voice, speed  # only the conversion worker sets these; samples pass their own
-        return tts
+    def switch_backend(self, name: str) -> None:
+        """Use another backend from now on; the old one's model is freed (D-045)."""
+        with self.lock:
+            if any(j["status"] in ("queued", "running") for j in self.jobs.values()):
+                raise Conflict("A conversion is queued or running: wait for it or cancel it first")
+        with self.model_lock:
+            old, self.tts = self.tts, create(name)
+        if old is not None and old.id != name:
+            old.unload()
 
     def cancel(self, job_id: str) -> dict:
         """Stop a conversion. Queued: it never starts. Running: it stops at the next sentence (build_book's cancel
@@ -465,8 +517,7 @@ class Jobs:
             try:
                 # The job gets the cleaned .std.epub the user approved (D-029).
                 job["message"] = "Loading TTS model"
-                tts = self._get_tts(job["voice"], job["speed"])
-                out = build_book(job["_path"], LIBRARY, job["voice"], job["speed"], progress, tts=tts,
+                out = build_book(job["_path"], LIBRARY, job["voice"], job["speed"], progress, self.backend(),
                                  chapters=job["_chapters"], merge=True, cancel=job["_cancel"])
                 job.update(status="done", book_id=out.name, message="Done")
                 if draft_id:
@@ -621,17 +672,32 @@ _sample_lock = threading.Lock()
 
 def voice_sample(voice: str) -> Path:
     """About 5 s of the voice reading one fixed sentence; made once, then kept in cache/voice-samples/."""
-    if voice not in all_voices():
+    backend = tts()
+    if voice not in backend.voice_ids():
         raise NotFound("No such voice")
-    text = SAMPLE_TEXTS[voice_language(voice) or "en"]
+    text = SAMPLE_TEXTS[backend.voice_language(voice) or "en"]
     digest = hashlib.sha1(text.encode()).hexdigest()[:8]
-    path = SAMPLES / f"{voice}-{digest}.m4a"
+    path = SAMPLES / (f"{voice}-{digest}.m4a" if backend.id == "kokoro" else f"{backend.id}-{voice}-{digest}.m4a")
     with _sample_lock:  # two first clicks must not make the same file at once
         if not path.exists():
             SAMPLES.mkdir(parents=True, exist_ok=True)
-            audio = jobs.model().synth(text, voice=voice, speed=1.0)
-            encode_m4a(audio, path)
+            audio = backend.synth(text, voice, 1.0)
+            encode_m4a(audio, path, backend.sample_rate)
     return path
+
+
+def saved_samples() -> dict:
+    """How many voice samples are kept, and their size."""
+    files = list(SAMPLES.glob("*.m4a")) if SAMPLES.is_dir() else []
+    return {"count": len(files), "bytes": sum(f.stat().st_size for f in files)}
+
+
+def delete_samples() -> dict:
+    """Delete the kept samples; the next ▶ makes them again. Waits for a sample being made."""
+    with _sample_lock:
+        for f in SAMPLES.glob("*.m4a") if SAMPLES.is_dir() else []:
+            f.unlink(missing_ok=True)
+    return saved_samples()
 
 
 # ---------------------------------------------------------------- optional Kokoro v1.1-zh (D-044)
@@ -652,7 +718,7 @@ def remove_zh_model() -> None:
         zh_model.remove()
     except RuntimeError as e:
         raise Conflict(str(e)) from None
-    if jobs.tts is not None:
+    if jobs.tts is not None and jobs.tts.id == "kokoro":
         jobs.tts.unload(ZH_REPO)
 
 

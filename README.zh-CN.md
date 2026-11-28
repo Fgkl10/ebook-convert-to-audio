@@ -136,9 +136,9 @@ ebook-convert path\to\book.std.epub --chapters 1    # 只转换一章（也可�
 
 | 命令 | 主要参数 |
 |---|---|
-| `ebook-server` | `--port`（默认 8000）、`--advertise ADDRESS`、`--new-token` |
+| `ebook-server` | `--port`（默认 8000）、`--advertise ADDRESS`、`--new-token`、`--tts BACKEND` |
 | `ebook-normalize` | `--out`、`--ocr auto\|always\|never`、`--ignore-language` |
-| `ebook-convert` | `--voice`、`--speed`、`--chapters`、`--list-chapters`、`--out`、`--ignore-language` |
+| `ebook-convert` | `--voice`、`--speed`、`--chapters`、`--list-chapters`、`--out`、`--ignore-language`、`--tts BACKEND` |
 
 ## 配置
 
@@ -146,6 +146,7 @@ ebook-convert path\to\book.std.epub --chapters 1    # 只转换一章（也可�
 |---|---|
 | `EBOOK_AUDIO_DATA=<文件夹>` | 把 `library/`、`cache/`、`drafts/` 和配对令牌放在项目文件夹之外 |
 | `EBOOK_AUDIO_ADVERTISE=<地址>` / `--advertise` | 配对二维码默认显示的地址 |
+| `EBOOK_AUDIO_TTS=<引擎>` / `--tts` | 语音引擎。目前只有 `kokoro`（Kokoro-82M）。不设置时，使用网页“语音引擎”里选的引擎 |
 | `HF_HOME`、`DOCTR_CACHE_DIR` | 语音和 OCR 模型的存放位置 |
 | `ebook-server --new-token` | 生成新的配对令牌，所有手机都会解除配对 |
 
@@ -241,6 +242,7 @@ Android 系统，尤其是很多厂商定制系统，会为了省电停止后台
 - **Android：** 应用跟随手机的系统语言。想换成其他语言，请在应用内打开 **设置 → 语言**。小米等隐藏了系统“应用语言”页面的手机也可以使用。此功能已在 Android 14 上测试；Android 8–12 尚未测试，在这些版本上下载通知可能仍显示手机的系统语言。
 - **网页：** 跟随浏览器语言，也可以用顶部的语言下拉菜单（English / 简体中文 / 繁體中文）切换，浏览器会记住你的选择。
 - **书籍：** 支持英文和中文，从正文识别。繁体中文书用普通话朗读，屏幕上的文字仍是繁体。如果所选声音不会说这本书的语言，会换成该语言的默认声音。
+- **声音名称：** 网页和应用用各自的界面语言描述每个声音，例如“Nicole · 美式英语女声，低沉，舒缓（af_nicole）”。“低沉/明亮”和“舒缓/轻快”是测量每个声音的音高和语速得出的，与同一模型、同一语言、同一性别的其他声音相比较；居中的声音不加描述。
 - 来自电脑的消息（错误详情、清理报告条目）目前仍是英文。
 
 ## 常见问题
@@ -303,6 +305,7 @@ git push origin v0.5.0      # -> 生成附带 ebook-audio-0.5.0.apk 的 GitHub R
 - [x] M5 手机跟读、睡眠定时、网页阅读器控制
 - [x] M6a 简体与繁体中文界面；支持所有 Android 手机
 - [x] M7 中文声音：转换中文书籍（简体与繁体），可选 Kokoro v1.1-zh 声音
+- [x] M8 语音引擎统一接口（首个为 Kokoro），根据测量的音高和语速给声音命名
 - [ ] 中文扫描版 PDF（中文 OCR）
 - [ ] 进一步完善
 

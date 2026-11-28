@@ -24,14 +24,15 @@ STORY = ("Chapter 1\n\nIt was a dark night. The wind howled loudly over the hill
 
 
 class RecordingTTS(FakeTTS):
-    """One shared model like KokoroTTS: synth(text, voice=None, speed=None), every call recorded."""
+    """The shared backend, with every (voice, text) it was asked for recorded."""
 
     def __init__(self):
+        super().__init__()
         self.calls = []
 
-    def synth(self, text, voice=None, speed=None):
-        self.calls.append((voice or self.voice, text))
-        return super().synth(text)
+    def synth(self, text, voice="af_heart", speed=1.0):
+        self.calls.append((voice, text))
+        return super().synth(text, voice, speed)
 
 
 @pytest.fixture
@@ -217,7 +218,19 @@ def test_srv31_sample_does_not_change_a_conversions_voice(api):
     d = _wait(api, draft_id, "done")
     assert api.get(f"{V1}/books/{d['book_id']}").json()["voice"] == "af_heart"
     assert {v for v, text in tts.calls if text != service.SAMPLE_TEXTS["en"]} == {"af_heart"}
-    assert tts.voice == "af_heart"  # the sample passed its own voice instead of setting the model's
+    assert ("bm_george", service.SAMPLE_TEXTS["en"]) in tts.calls  # the sample asked for its own voice
+
+
+def test_srv35_saved_samples_can_be_deleted(api):
+    assert api.get(f"{V1}/voices/samples").json() == {"count": 0, "bytes": 0}
+    for voice in ("af_heart", "bm_george", "af_heart"):  # the second af_heart is reused
+        assert api.get(f"{V1}/voices/{voice}/sample").status_code == 200
+    kept = api.get(f"{V1}/voices/samples").json()
+    assert kept["count"] == 2 and kept["bytes"] > 0
+    assert api.delete(f"{V1}/voices/samples").json() == {"count": 0, "bytes": 0}
+    assert not list(service.SAMPLES.glob("*.m4a"))
+    assert api.get(f"{V1}/voices/af_heart/sample").status_code == 200  # made again
+    assert api.get(f"{V1}/voices/samples").json()["count"] == 1
 
 
 def test_srv10_language_refusal_is_a_draft_error(api):

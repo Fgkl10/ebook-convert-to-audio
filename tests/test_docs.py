@@ -1,16 +1,23 @@
 """The Mermaid diagrams in the docs avoid what breaks GitHub's renderer (DOC-01)."""
+import os
 import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SKIP = {".venv", ".scratch", "node_modules", "build", ".git", ".gradle"}
+# not walked: tools, build output and data folders (models/ alone holds thousands of files)
+SKIP = {".venv", ".scratch", "node_modules", "build", ".git", ".gradle", "models", "cache", "library", "drafts",
+        "samples"}
 ENTITY = re.compile(r"&#?\w+;")  # &lt; &amp; &#35; keep their semicolon
 
 
+def markdown_files():
+    for folder, dirs, files in os.walk(ROOT):
+        dirs[:] = sorted(d for d in dirs if d not in SKIP)
+        yield from (Path(folder) / f for f in sorted(files) if f.endswith(".md"))
+
+
 def mermaid_blocks():
-    for md in sorted(ROOT.rglob("*.md")):
-        if SKIP & set(md.relative_to(ROOT).parts):
-            continue
+    for md in markdown_files():
         lines = md.read_text(encoding="utf-8").splitlines()
         i = 0
         while i < len(lines):

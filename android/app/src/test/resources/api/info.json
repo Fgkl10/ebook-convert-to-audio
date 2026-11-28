@@ -63,7 +63,148 @@
         "bm_fable",
         "bm_lewis"
       ],
-      "default_voice": "af_heart"
+      "default_voice": "af_heart",
+      "voice_details": [
+        {
+          "id": "af_heart",
+          "gender": "female",
+          "accent": "us",
+          "name": "Heart",
+          "number": null,
+          "traits": []
+        },
+        {
+          "id": "af_bella",
+          "gender": "female",
+          "accent": "us",
+          "name": "Bella",
+          "number": null,
+          "traits": [
+            "high"
+          ]
+        },
+        {
+          "id": "af_nicole",
+          "gender": "female",
+          "accent": "us",
+          "name": "Nicole",
+          "number": null,
+          "traits": [
+            "low",
+            "slow"
+          ]
+        },
+        {
+          "id": "af_sarah",
+          "gender": "female",
+          "accent": "us",
+          "name": "Sarah",
+          "number": null,
+          "traits": [
+            "fast"
+          ]
+        },
+        {
+          "id": "af_sky",
+          "gender": "female",
+          "accent": "us",
+          "name": "Sky",
+          "number": null,
+          "traits": [
+            "low"
+          ]
+        },
+        {
+          "id": "am_michael",
+          "gender": "male",
+          "accent": "us",
+          "name": "Michael",
+          "number": null,
+          "traits": [
+            "low",
+            "slow"
+          ]
+        },
+        {
+          "id": "am_fenrir",
+          "gender": "male",
+          "accent": "us",
+          "name": "Fenrir",
+          "number": null,
+          "traits": [
+            "high",
+            "fast"
+          ]
+        },
+        {
+          "id": "am_puck",
+          "gender": "male",
+          "accent": "us",
+          "name": "Puck",
+          "number": null,
+          "traits": [
+            "fast"
+          ]
+        },
+        {
+          "id": "am_adam",
+          "gender": "male",
+          "accent": "us",
+          "name": "Adam",
+          "number": null,
+          "traits": []
+        },
+        {
+          "id": "bf_emma",
+          "gender": "female",
+          "accent": "gb",
+          "name": "Emma",
+          "number": null,
+          "traits": []
+        },
+        {
+          "id": "bf_isabella",
+          "gender": "female",
+          "accent": "gb",
+          "name": "Isabella",
+          "number": null,
+          "traits": [
+            "high",
+            "slow"
+          ]
+        },
+        {
+          "id": "bm_george",
+          "gender": "male",
+          "accent": "gb",
+          "name": "George",
+          "number": null,
+          "traits": [
+            "high",
+            "slow"
+          ]
+        },
+        {
+          "id": "bm_fable",
+          "gender": "male",
+          "accent": "gb",
+          "name": "Fable",
+          "number": null,
+          "traits": [
+            "fast"
+          ]
+        },
+        {
+          "id": "bm_lewis",
+          "gender": "male",
+          "accent": "gb",
+          "name": "Lewis",
+          "number": null,
+          "traits": [
+            "low"
+          ]
+        }
+      ]
     },
     {
       "code": "zh",
@@ -77,7 +218,88 @@
         "zm_yunxia",
         "zm_yunyang"
       ],
-      "default_voice": "zf_xiaoxiao"
+      "default_voice": "zf_xiaoxiao",
+      "voice_details": [
+        {
+          "id": "zf_xiaoxiao",
+          "gender": "female",
+          "accent": null,
+          "name": "Xiaoxiao",
+          "number": null,
+          "traits": [
+            "low"
+          ]
+        },
+        {
+          "id": "zf_xiaobei",
+          "gender": "female",
+          "accent": null,
+          "name": "Xiaobei",
+          "number": null,
+          "traits": [
+            "slow"
+          ]
+        },
+        {
+          "id": "zf_xiaoni",
+          "gender": "female",
+          "accent": null,
+          "name": "Xiaoni",
+          "number": null,
+          "traits": []
+        },
+        {
+          "id": "zf_xiaoyi",
+          "gender": "female",
+          "accent": null,
+          "name": "Xiaoyi",
+          "number": null,
+          "traits": [
+            "high"
+          ]
+        },
+        {
+          "id": "zm_yunxi",
+          "gender": "male",
+          "accent": null,
+          "name": "Yunxi",
+          "number": null,
+          "traits": [
+            "fast"
+          ]
+        },
+        {
+          "id": "zm_yunjian",
+          "gender": "male",
+          "accent": null,
+          "name": "Yunjian",
+          "number": null,
+          "traits": [
+            "low",
+            "slow"
+          ]
+        },
+        {
+          "id": "zm_yunxia",
+          "gender": "male",
+          "accent": null,
+          "name": "Yunxia",
+          "number": null,
+          "traits": [
+            "high"
+          ]
+        },
+        {
+          "id": "zm_yunyang",
+          "gender": "male",
+          "accent": null,
+          "name": "Yunyang",
+          "number": null,
+          "traits": [
+            "fast"
+          ]
+        }
+      ]
     }
   ],
   "ocr_modes": [

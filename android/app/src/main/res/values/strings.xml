@@ -120,6 +120,8 @@
     <string name="storage">Storage</string>
     <string name="storage_used">Books on this phone use %1$s.</string>
     <string name="delete_all_downloads">Delete all downloads</string>
+    <string name="samples_used">Voice samples you played: %1$s</string>
+    <string name="delete_samples">Delete voice samples</string>
     <string name="unpair_title">Unpair from the PC?</string>
     <string name="unpair_text">Books on this phone still play. To use the PC again, scan its QR code.</string>
     <string name="delete_all_title">Delete all downloads?</string>
@@ -227,7 +229,26 @@
     <string name="voice_language">Language</string>
     <string name="voice_lang_en">English</string>
     <string name="voice_lang_zh">Chinese</string>
+    <!-- voice names (desktop D-046): "Nicole · American woman, deep, calm (af_nicole)" -->
+    <string name="voice_label">%1$s · %2$s (%3$s)</string>
+    <string name="voice_label_plain">%1$s (%2$s)</string>
+    <string name="voice_join">", "</string>
+    <string name="voice_us_female">American woman</string>
+    <string name="voice_us_male">American man</string>
+    <string name="voice_gb_female">British woman</string>
+    <string name="voice_gb_male">British man</string>
+    <string name="voice_female">woman</string>
+    <string name="voice_male">man</string>
+    <string name="voice_numbered_female">Woman %1$s</string>
+    <string name="voice_numbered_male">Man %1$s</string>
+    <string name="trait_low">deep</string>
+    <string name="trait_high">bright</string>
+    <string name="trait_slow">calm</string>
+    <string name="trait_fast">lively</string>
     <string name="stop_sample">Stop the sample</string>
+    <string name="cancel_sample">Preparing the sample: tap to cancel</string>
+    <string name="preparing_sample">Preparing sample… the first one also starts the voice engine on the PC, which can take up to a minute.</string>
+    <string name="sample_error">Could not play the voice sample.</string>
     <string name="hear_sample">Hear a sample of %1$s</string>
 
     <!-- downloads (notification) -->

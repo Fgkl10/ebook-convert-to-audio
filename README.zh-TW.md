@@ -136,9 +136,9 @@ ebook-convert path\to\book.std.epub --chapters 1    # 只轉換一章（也可�
 
 | 指令 | 主要參數 |
 |---|---|
-| `ebook-server` | `--port`（預設 8000）、`--advertise ADDRESS`、`--new-token` |
+| `ebook-server` | `--port`（預設 8000）、`--advertise ADDRESS`、`--new-token`、`--tts BACKEND` |
 | `ebook-normalize` | `--out`、`--ocr auto\|always\|never`、`--ignore-language` |
-| `ebook-convert` | `--voice`、`--speed`、`--chapters`、`--list-chapters`、`--out`、`--ignore-language` |
+| `ebook-convert` | `--voice`、`--speed`、`--chapters`、`--list-chapters`、`--out`、`--ignore-language`、`--tts BACKEND` |
 
 ## 設定
 
@@ -146,6 +146,7 @@ ebook-convert path\to\book.std.epub --chapters 1    # 只轉換一章（也可�
 |---|---|
 | `EBOOK_AUDIO_DATA=<資料夾>` | 把 `library/`、`cache/`、`drafts/` 和配對權杖放在專案資料夾之外 |
 | `EBOOK_AUDIO_ADVERTISE=<位址>` / `--advertise` | 配對 QR 碼預設顯示的位址 |
+| `EBOOK_AUDIO_TTS=<引擎>` / `--tts` | 語音引擎。目前只有 `kokoro`（Kokoro-82M）。未設定時，使用網頁「語音引擎」中選擇的引擎 |
 | `HF_HOME`、`DOCTR_CACHE_DIR` | 語音和 OCR 模型的存放位置 |
 | `ebook-server --new-token` | 產生新的配對權杖，所有手機都會解除配對 |
 
@@ -241,6 +242,7 @@ Android 系統，尤其是許多廠商的客製化系統，會為了省電停止
 - **Android：** 應用程式跟隨手機的系統語言。想換成其他語言，請在應用程式內開啟 **設定 → 語言**。小米等隱藏了系統「應用程式語言」頁面的手機也可以使用。此功能已在 Android 14 上測試；Android 8–12 尚未測試，在這些版本上下載通知可能仍顯示手機的系統語言。
 - **網頁：** 跟隨瀏覽器語言，也可以用頂端的語言下拉選單（English / 简体中文 / 繁體中文）切換，瀏覽器會記住你的選擇。
 - **書籍：** 支援英文和中文，從內文辨識。繁體中文書以華語朗讀，螢幕上的文字仍是繁體。如果所選語音不會說這本書的語言，會換成該語言的預設語音。
+- **語音名稱：** 網頁和 App 以各自的介面語言描述每個語音，例如「Nicole · 美式英語女聲，低沉，舒緩（af_nicole）」。「低沉/明亮」和「舒緩/輕快」是測量每個語音的音高和語速得出，與同一模型、同一語言、同一性別的其他語音相比；居中的語音不加描述。
 - 來自電腦的訊息（錯誤詳情、清理報告項目）目前仍是英文。
 
 ## 疑難排解
@@ -303,6 +305,7 @@ git push origin v0.5.0      # -> 產生附有 ebook-audio-0.5.0.apk 的 GitHub R
 - [x] M5 手機跟讀、睡眠定時、網頁閱讀器控制
 - [x] M6a 簡體與繁體中文介面；支援所有 Android 手機
 - [x] M7 中文語音：轉換中文書籍（簡體與繁體），可選 Kokoro v1.1-zh 語音
+- [x] M8 語音引擎統一介面（首個為 Kokoro），依測量的音高和語速為語音命名
 - [ ] 中文掃描版 PDF（中文 OCR）
 - [ ] 進一步改善
 

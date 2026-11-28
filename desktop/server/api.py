@@ -17,7 +17,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from . import auth, network, service
 from ..core.normalize import OCR_MODES
-from ..tts.kokoro import DEFAULT_VOICE, all_voices, default_voice, voices
 
 API_VERSION = 1
 PREFIX = f"/api/v{API_VERSION}"
@@ -39,10 +38,23 @@ class Address(BaseModel):
     qr_svg: Optional[str] = Field(description="QR code of pair_url as SVG, or null")
 
 
+class VoiceDetail(BaseModel):
+    id: str
+    gender: Literal["female", "male"]
+    accent: Optional[Literal["us", "gb"]] = Field(description="English voices: American or British")
+    name: Optional[str] = Field(description="The voice's own name ('Heart'); null for a numbered voice")
+    number: Optional[int] = Field(description="A numbered voice's number (Kokoro v1.1-zh's zf_001 = 1)")
+    traits: list[Literal["low", "high", "slow", "fast"]] = Field(
+        description="Measured, relative to the voices of the same model, language and gender: pitch low/high, "
+                    "pace slow/fast; none for the middle third (D-046)")
+
+
 class VoiceLanguage(BaseModel):
     code: Literal["en", "zh"]
     voices: list[str]
     default_voice: str
+    voice_details: list[VoiceDetail] = Field(description="The same voices, in the same order, with what to call "
+                                                         "them (D-046)")
 
 
 class Info(BaseModel):
@@ -66,6 +78,23 @@ class TtsModel(BaseModel):
     error: Optional[str]
 
 
+class TtsBackend(BaseModel):
+    id: str
+    name: str
+
+
+class TtsSetting(BaseModel):
+    backend: str = Field(description="The TTS backend in use (D-045)")
+    backends: list[TtsBackend] = Field(description="The backends this server can use")
+    fixed_by: Optional[str] = Field(description='"--tts" or "EBOOK_AUDIO_TTS" when one of them chose the backend at '
+                                                "server start: it can't be changed here then")
+
+
+class TtsChoice(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    backend: str
+
+
 class Report(BaseModel):
     source: str
     method: str
@@ -87,7 +116,7 @@ class Draft(BaseModel):
     done: int = Field(0, description="Progress while cleaning (scanned pages read)")
     total: int = 0
     auto: bool = Field(False, description="Converts right after cleaning, with no review stop")
-    voice: str = DEFAULT_VOICE
+    voice: str = ""
     speed: float = 1.0
     ocr: str = "auto"
     error: Optional[str] = None
@@ -242,9 +271,16 @@ def info(request: Request) -> dict:
             for a in network.phone_addresses(getattr(request.app.state, "advertise", None))]
     return {"api_version": API_VERSION, "name": socket.gethostname(), "url": urls[0]["url"],
             "qr_svg": urls[0]["qr_svg"], "urls": urls,
-            "voices": all_voices(), "default_voice": DEFAULT_VOICE, "ocr_modes": list(OCR_MODES),
-            "languages": [{"code": lang, "voices": vs, "default_voice": default_voice(lang)}
-                          for lang, vs in voices().items()]}
+            "ocr_modes": list(OCR_MODES), **_voices()}
+
+
+def _voices() -> dict:
+    """/info's voice fields, from the TTS backend in use (D-045)."""
+    tts = service.tts()
+    return {"voices": tts.voice_ids(), "default_voice": tts.default_voice("en"),
+            "languages": [{"code": lang, "voices": tts.voice_ids(lang), "default_voice": tts.default_voice(lang),
+                           "voice_details": [v.public() for v in tts.voices(lang)]}
+                          for lang in tts.languages()]}
 
 
 @router.get("/models/zh", response_model=TtsModel, tags=["server"])
@@ -267,12 +303,42 @@ def remove_zh_model() -> dict:
     return service.zh_model.status()
 
 
+@router.get("/settings/tts", response_model=TtsSetting, tags=["server"])
+def tts_setting() -> dict:
+    """The TTS backend in use and the ones on offer (D-045)."""
+    return service.tts_setting()
+
+
+@router.put("/settings/tts", response_model=TtsSetting, responses=ERRORS, tags=["server"])
+def set_tts(choice: TtsChoice) -> dict:
+    """Use another TTS backend from now on (kept across restarts). 409 while a conversion is queued or running, or
+    when --tts / EBOOK_AUDIO_TTS chose it. Voices of the old backend give way to the new one's defaults."""
+    return service.set_tts(choice.backend)
+
+
 @router.get("/qr", response_model=Address, responses=ERRORS, tags=["server"])
 def qr(request: Request, address: str = Query(description="A host name, IPv4 or [IPv6] address, optional :port")
        ) -> dict:
     """A pairing QR code for an address typed by hand (e.g. a ZeroTier or VPN address the PC doesn't list)."""
     host, port = network.parse_address(address, request.app.state.port)
     return _address(host, "typed", port)
+
+
+class SavedSamples(BaseModel):
+    count: int = Field(description="Voice samples kept on the PC")
+    bytes: int
+
+
+@router.get("/voices/samples", response_model=SavedSamples, tags=["server"])
+def saved_samples() -> dict:
+    """The voice samples kept on the PC (each is made on its first ▶, then reused)."""
+    return service.saved_samples()
+
+
+@router.delete("/voices/samples", response_model=SavedSamples, tags=["server"])
+def delete_samples() -> dict:
+    """Delete the kept voice samples → what is left (nothing). The next ▶ of each voice makes it again."""
+    return service.delete_samples()
 
 
 @router.get("/voices/{voice}/sample", response_class=FileResponse, responses={404: {"model": Error}},
@@ -285,7 +351,7 @@ def voice_sample(voice: str) -> FileResponse:
 # ---------------------------------------------------------------- drafts: clean and review
 
 @router.post("/drafts", response_model=DraftCreated, responses=ERRORS, tags=["drafts"])
-def create_draft(file: UploadFile = File(...), voice: str = Form(DEFAULT_VOICE), speed: float = Form(1.0),
+def create_draft(file: UploadFile = File(...), voice: Optional[str] = Form(None), speed: float = Form(1.0),
                  auto: bool = Form(False), ocr: str = Form("auto")) -> dict:
     """Upload an .epub, .pdf or .txt to clean. auto=true converts right after cleaning, with no review stop.
     ocr (PDF only): auto, always or never."""
@@ -294,7 +360,7 @@ def create_draft(file: UploadFile = File(...), voice: str = Form(DEFAULT_VOICE),
 
 
 @router.post("/drafts/cleaned", response_model=CleanedCreated, responses=ERRORS, tags=["drafts"])
-def create_cleaned(file: UploadFile = File(...), voice: str = Form(DEFAULT_VOICE),
+def create_cleaned(file: UploadFile = File(...), voice: Optional[str] = Form(None),
                    speed: float = Form(1.0)) -> dict:
     """Upload a book that is already cleaned (a .std.epub from the CLI or Sigil); it converts right away."""
     draft = service.drafts.create_cleaned(file.file, _upload_name(file), voice, speed)

@@ -45,7 +45,7 @@ flowchart LR
 | `library` | `LocalLibrary.kt`, `Versions.kt`, `LibraryScreen.kt`, `BookScreen.kt` | Books on the phone (A-004); chapter states and merging (A-009); the On this phone / On the PC tabs; the book screen (play/continue, download, delete, per-chapter state) |
 | `download` | `Downloader.kt`, `DownloadWorker.kt` | Range-resumable, size-checked, atomic chapter downloads in a WorkManager foreground worker (A-006) |
 | `player` | `PlaybackService.kt`, `PlayerConnection.kt`, `NowPlaying.kt`, `PlayerScreen.kt`, `ReadAlong.kt`, `SentenceSync.kt`, `SleepTimer.kt` | Media3 session + ExoPlayer (A-007); playlist = chapters (file or stream); position saving; the sleep timer and its `app.ebookaudio.SLEEP` session command (A-016); player screen with the read-along text or cover (Chinese sentences joined with no space, A-021), sentence buttons, text size, keep-screen-on (A-015); mini player |
-| `convert` | `ConvertRules.kt`, `ConvertText.kt`, `ConvertScreen.kt`, `UploadScreen.kt`, `ReviewScreen.kt`, `VoicePicker.kt` | The web page's conversion features (A-011): drafts and jobs lists polled every 2 s; upload with Language ▸ Voice/speed/skip review/OCR or as a cleaned book (streamed, A-012); review with report, chapter text, chapter picks and the mixed-voice warning, starting on the book's language (A-021); voice samples in a separate short-lived player. `ConvertRules` returns values (`StatusLabel`, `ApproveLabel`, `MixedVoice`); `ConvertText` turns them into localized text (A-017) |
+| `convert` | `ConvertRules.kt`, `ConvertText.kt`, `ConvertScreen.kt`, `UploadScreen.kt`, `ReviewScreen.kt`, `VoicePicker.kt` | The web page's conversion features (A-011): drafts and jobs lists polled every 2 s; upload with Language ▸ Voice/speed/skip review/OCR or as a cleaned book (streamed, A-012); review with report, chapter text, chapter picks and the mixed-voice warning, starting on the book's language (A-021); voices labelled from `voice_details` (A-022); voice samples in a separate short-lived player. `ConvertRules` returns values (`StatusLabel`, `ApproveLabel`, `MixedVoice`); `ConvertText` turns them into localized text (A-017) |
 | `ui` | `MainActivity.kt`, `SettingsScreen.kt`, `Theme.kt` (with `Format`), `Texts.kt`, `BackgroundTips.kt`, `AppLanguage.kt` | Edge-to-edge `AppCompatActivity`, the Settings language choice (A-019), navigation with the Library / Convert bottom bar, "Open with"/Share intake (A-013), theme, settings with background-playback steps for the phone's maker (A-018). `Texts.kt`: localized durations and error text (`durationText`, `Resources.errorText`) |
 
 ## Text and languages (A-017)
@@ -72,6 +72,7 @@ filesDir/books/<book id>/          book id: [a-z0-9-]{1,80}
   ch000.m4a, ch001.m4a, …          chapter audio (AAC/M4A, as on the PC)
   ch000.m4a.part                   an unfinished download (never played, resumed with Range)
   cover.jpg|png                    optional
+filesDir/voice-samples/<voice>.m4a voice samples played on this phone (A-023); deleted from Settings → Storage
 DataStore "settings"               pairing, speed, last book, positions
 ```
 

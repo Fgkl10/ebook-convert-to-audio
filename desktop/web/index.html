@@ -33,6 +33,13 @@
           </form>
           <div class="muted formmsg" id="addrmsg"></div>
         </details>
+        <details class="addrbox" id="ttsbox">
+          <summary class="muted" data-i18n="tts.summary">Speech engine</summary>
+          <div class="row"><label><span data-i18n="tts.label">Engine</span> <select id="ttsbackend"></select></label>
+            <span id="ttsstate" class="muted"></span></div>
+          <div class="row"><span id="samplesinfo" class="muted"></span>
+            <button type="button" id="samplesdel" data-i18n="samples.delete">Delete saved samples</button></div>
+        </details>
         <details class="addrbox" id="zhbox">
           <summary class="muted" data-i18n="zh.summary">Better Chinese voices (Kokoro v1.1-zh)</summary>
           <div class="muted formmsg" data-i18n="zh.about">An optional second model with about 100 Mandarin voices that sound clearly better than the 8 built-in ones. It is a ~330 MB download and uses more GPU memory. English voices stay as they are.</div>

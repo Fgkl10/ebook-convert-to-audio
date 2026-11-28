@@ -28,11 +28,15 @@ Not under `/api/v1`, and open to every device: `GET /` (the web page), `/static/
 
 | Method & path | Purpose |
 |---|---|
-| `GET /info` | `{api_version: 1, name, url, qr_svg, urls, voices, default_voice, languages, ocr_modes}`. `urls` lists every address of the PC, the default first, each as `{address, adapter, url, pair_url, qr_svg}` with `pair_url` = `<url>/#token=<token>`. `url` and `qr_svg` are the first entry's. `languages` is `[{code: "en"\|"zh", voices, default_voice}]` (D-043); `voices` is all of them in one list and `default_voice` the English default, for apps before that |
+| `GET /info` | `{api_version: 1, name, url, qr_svg, urls, voices, default_voice, languages, ocr_modes}`. `urls` lists every address of the PC, the default first, each as `{address, adapter, url, pair_url, qr_svg}` with `pair_url` = `<url>/#token=<token>`. `url` and `qr_svg` are the first entry's. `languages` is `[{code: "en"\|"zh", voices, default_voice, voice_details}]` (D-043), the current backend's (D-045); `voices` is all of them in one list and `default_voice` the English default, for apps before that. `voice_details` holds the same voices in the same order as `{id, gender: "female"\|"male", accent: "us"\|"gb"\|null, name, number, traits}`, where `name` is the voice's own name (null for a numbered voice), `number` a numbered voice's number, and `traits` measured words from `low`/`high` and `slow`/`fast` (D-046) |
+| `GET /settings/tts` | The speech engine (D-045): `{backend, backends: [{id, name}], fixed_by}`; `fixed_by` is `"--tts"` or `"EBOOK_AUDIO_TTS"` when the server's start fixed it, else null |
+| `PUT /settings/tts` | JSON `{backend}` → the same as GET; saved in `settings.json` for the next start. 400 for an unknown backend; 409 while a conversion is queued or running, or when `fixed_by` is set |
 | `GET /models/zh` | The optional Kokoro v1.1-zh model (D-044): `{id, installed, installing, done_bytes, total_bytes, error}`. While it is installed, the `zh` voices in `/info` are its 100 voices |
 | `POST /models/zh` | Start downloading it (~327 MB, in the background) → the status; nothing happens when it is installed or installing |
 | `DELETE /models/zh` | Remove it → the status. 409 while it is downloading or while a queued or running conversion uses one of its voices |
 | `GET /qr?address=` | An `Address` (adapter `"typed"`) for an address typed by hand: a host name, IPv4 or `[IPv6]`, with an optional `:port` (otherwise the server's port). 400 for anything else: a scheme, a path, spaces, or a port outside 1–65535 |
+| `GET /voices/samples` | The voice samples kept on the PC: `{count, bytes}` (D-047) |
+| `DELETE /voices/samples` | Delete them → `{count: 0, bytes: 0}`; waits for a sample being made. The next ▶ of each voice makes it again |
 | `GET /voices/{voice}/sample` | ~5 s m4a of the voice reading a fixed sentence, English or Chinese by the voice's language (made once, then cached); 404 for a voice not offered now |
 | `POST /drafts` | Upload and clean. Multipart `file`, `voice`, `speed` (0.5–2.0), `auto`, `ocr` (`auto`/`always`/`never`, PDF only) → `{draft_id}`. Waits for review, or converts at once with `auto=true` (replaces the old `/api/clean` and `/api/convert`) |
 | `POST /drafts/cleaned` | Multipart `file` (a cleaned `.std.epub`), `voice`, `speed` → `{draft_id, job_id}`. No cleaning; converted at once. 400 for anything without the `ebook-audio:normalized` marker |
@@ -57,13 +61,14 @@ names reject `/`, `\`, and a leading `.` (path-traversal guard).
 
 ## What the Android app calls
 
-The app uses every route except `GET /qr`, `GET /jobs/{id}`, the two `std.epub` routes and the three `/models/zh`
-routes (those are the web page's typed-address QR code, the Sigil round-trip, and installing Kokoro v1.1-zh, which
-stays on the PC's page).
+The app uses every route except `GET /qr`, `GET /jobs/{id}`, the two `std.epub` routes, the three `/models/zh`
+routes, the two `/settings/tts` routes and the two `/voices/samples` routes (those are the web page's typed-address
+QR code, the Sigil round-trip, installing Kokoro v1.1-zh, picking the speech engine and the PC's saved samples, which
+stay on the PC's page).
 
 | Call | Used for |
 |---|---|
-| `GET /info` | Pairing check (`api_version`, PC name); the Language and Voice lists (`languages`, else `voices`) |
+| `GET /info` | Pairing check (`api_version`, PC name); the Language and Voice lists (`languages`, else `voices`), voice labels from `voice_details` (A-022) |
 | `GET /books` | The On the PC tab |
 | `GET /books/{id}` | Book screen, downloads, version check |
 | `GET /books/{id}/files/{name}` | Audio and covers: download (with `Range`) and streaming |
@@ -74,7 +79,7 @@ stays on the PC's page).
 | `GET /drafts/{id}`, `GET /drafts/{id}/chapters/{i}` | Review: report, picks, chapter text |
 | `POST /drafts/{id}/approve` (`{voice, speed, chapters}`; `null` = all) | Convert |
 | `POST /drafts/{id}/cancel`, `POST /jobs/{id}/cancel`, `DELETE /drafts/{id}` | Cancel, discard |
-| `GET /voices/{voice}/sample` | ▶ voice sample (token in the query) |
+| `GET /voices/{voice}/sample` | ▶ voice sample, fetched with the Bearer header and kept on the phone (A-023) |
 
 Every request sends `Authorization: Bearer <token>`; media URLs carry `?token=` because ExoPlayer and Coil fetch
 them themselves.

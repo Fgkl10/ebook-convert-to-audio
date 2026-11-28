@@ -186,12 +186,30 @@ Tests: `tests/test_models_cache.py` (the other cases need the real model and sta
 
 | ID | Case | Steps / input | Expected | Status |
 |---|---|---|---|---|
-| TTS-01 | Basic synthesis | `KokoroTTS().synth("Hello world.")` | Non-empty float32 mono array, plausible length (~1 s) | Manual (requires the model and GPU) |
+| TTS-01 | Basic synthesis | `KokoroBackend().synth("Hello world.", "af_heart")` | Non-empty float32 mono array, plausible length (~1 s) | Manual (requires the model and GPU) |
 | TTS-02 | Device selection | Run with and without CUDA available | `device` is `cuda` or `cpu` accordingly | Manual |
-| TTS-03 | British voice | `KokoroTTS().synth(text, voice="bf_emma")` | A `lang_code="b"` pipeline is made on first use, sharing the already loaded model | Manual (checked through SRV-12) |
+| TTS-03 | British voice | `KokoroBackend().synth(text, "bf_emma")` | A `lang_code="b"` pipeline is made on first use, sharing the already loaded model | Manual (checked through SRV-12) |
 | TTS-04 | Empty result | Text that yields no audio | A zero-length array, with no exception | Manual |
 | DEV-01 | Model caches inside the project | Import `desktop` with `HF_HOME` / `DOCTR_CACHE_DIR` unset, then preset | Unset: both point to `models/huggingface` and `models/doctr` in the project; preset: the user's values are kept (D-028) | Automated `test_dev01_model_caches_inside_project`, `test_dev01_preset_cache_kept` |
-| DEV-02 | Models load from the project offline | `HF_HUB_OFFLINE=1`, `KokoroTTS().synth(…)` and `ocr.make_engine()` | Both load from `models/` with no download, and nothing is written to `~/.cache` | Manual (checked after the move) |
+| DEV-02 | Models load from the project offline | `HF_HUB_OFFLINE=1`, `KokoroBackend().synth(…)` and `ocr.make_engine()` | Both load from `models/` with no download, and nothing is written to `~/.cache` | Manual (checked after the move) |
+
+## TTS backends and voice names (`tts/backend.py`, `tts/voice_traits.py`, `tests/test_tts_backend.py`, D-045, D-046)
+
+| ID | Case | Steps / input | Expected | Status |
+|---|---|---|---|---|
+| TTS-10 | Kokoro's cache key unchanged | `KokoroBackend().cache_key("af_heart", 1.0, text)`; the `CachedSynth` path | `"af_heart\|1.0\|text"` and its sha1 file name, as before D-045; the base class prefixes the backend id | Automated `test_tts10_kokoro_cache_key_unchanged`; live Manual, pass (2026-11-28: a cache written before the refactor, 32 of 32 files matched the new keys) |
+| TTS-11 | Backends speak known languages | Every registered backend | Its languages ⊆ `SUPPORTED_LANGUAGES`; each default voice is in its list; ids are unique | Automated `test_tts11_every_backend_speaks_only_known_languages` |
+| TTS-12 | Kokoro voices from their ids | `voice("af_heart")`, `bm_george`, `zf_xiaoxiao`, `zm_012` with v1.1-zh | Language, gender, accent, name or number; a v1.0 Chinese voice is unlisted but its language is still known | Automated `test_tts12_kokoro_voices_from_their_ids` |
+| TTS-13 | Unknown backend | `create("nope")` | `ValueError` naming the known backends | Automated `test_tts13_unknown_backend_refused` |
+| TTS-14 | Which backend | Nothing set; saved `other`; `EBOOK_AUDIO_TTS`; `--tts`; an unknown env value; a saved name no longer in the code | kokoro; other; the env value; `--tts` wins; refused; back to kokoro | Automated `test_tts14_which_backend` |
+| TTS-15 | Switch on the page | A fake second backend; `GET/PUT /settings/tts`; a running job; an unknown name; approve a draft made with a Kokoro voice | 409 while a job runs, 400 unknown; saved in `settings.json`; `/info` lists its voices; a Kokoro sample is 404; the draft converts with the new default; Kokoro's model is freed | Automated `test_tts15_switch_backend_on_the_page` |
+| TTS-16 | Fixed at start | Start with `--tts kokoro`; `PUT` another | `fixed_by` `--tts`, 409 naming it; an unknown `--tts` stops the start | Automated `test_tts16_backend_fixed_at_start` |
+| TTS-17 | Pitch and pace measures | Generated voice-like tones (90, 180, 300 Hz, with harmonics, vibrato and a pause); a weak fundamental; syllable counts | Pitch within 2 %; the pause isn't speech; no octave error; Chinese characters and English vowel groups counted | Automated `test_tts17_pitch_and_pace_measures` |
+| TTS-18 | Traits are relative thirds | Made-up measurements | Lowest third low/slow, highest high/fast, middle no word; pitch grouped by gender, pace not | Automated `test_tts18_traits_are_relative_thirds` |
+| TTS-19 | Every Kokoro voice measured | `voice_traits.json` | All 14 English, 8 v1.0 Chinese and 100 v1.1-zh voices, only known words | Automated `test_tts19_every_kokoro_voice_is_measured` |
+| TTS-20 | `/info` names every voice | `GET /info` | `voice_details` has the same ids in the same order as `voices`, e.g. `af_nicole` = female, us, Nicole, low+slow | Automated `test_tts20_info_names_every_voice` |
+| TTS-21 | Measurements are stable | Re-measure 13 voices on other sentences | Small shifts in the same direction for every voice; the words hold | Manual, pass (2026-11-28) |
+| TTS-22 | Real conversions after the refactor | One chapter each: English `af_nicole`, Chinese `zf_001` (v1.1-zh), `zf_xiaoxiao` (v1.0); a voice sample of `zm_025` | Each book uses the chosen voice; the sample keeps its old file name; build time no slower than the code before the refactor | Manual, pass (2026-11-28) |
 
 ## Build pipeline (`tts/build.py`, command `ebook-convert`)
 
@@ -272,6 +290,7 @@ CI: `test_api11` failed with a `FileNotFoundError` on a `.npy.tmp`.
 | SRV-11 | Sequential jobs | Submit 2 conversions at once | The second stays `queued` until the first finishes | Manual |
 | SRV-12 | Model reuse | Jobs and samples with `af_*`, `am_*`, then `b*` voices | The model loads once for both languages (one `KModel`, a pipeline per language, D-031), and each job uses its own voice | Manual (checked: 14 samples American then British, then a `bm_lewis` conversion in 3.8 s with no reload) |
 | SRV-30 | Voice sample | `GET /voices/bm_george/sample` twice; an unknown voice | `audio/mp4`; made once (the second call doesn't synthesize) and served from `cache/voice-samples/`; 404 for an unknown voice | Automated `test_srv30_voice_sample_made_once_and_cached`; real Kokoro Manual (checked: all 14 voices, about 5.2–5.7 s each; ~4 s to make the first time, including the voice download; 0.03 s cached) |
+| SRV-35 | Saved samples can be deleted (D-047) | `GET /voices/samples`; samples of af_heart, bm_george, af_heart; `DELETE /voices/samples`; af_heart again | 0 → 2 kept (the second af_heart reused) → `{count: 0, bytes: 0}` and no files → 1 (made again) | Automated `test_srv35_saved_samples_can_be_deleted` |
 | SRV-31 | Sample during a conversion | Approve with `af_heart`, request a `bm_george` sample meanwhile | The book is converted entirely in `af_heart`; the sample passes its own voice and never changes the model's | Automated `test_srv31_sample_does_not_change_a_conversions_voice` |
 | SRV-13 | Upload file name sanitizing | Upload `../../evil name.txt` | Saved as `drafts/<id>/evil name.txt` (path dropped, unsafe characters replaced; a name that clashes with the draft's own files becomes `book.<ext>`) | Manual |
 | SRV-14 | mDNS | Start the server and browse `_ebookaudio._tcp` from another device | The service is visible with the correct IP and port. If multicast is blocked, the server still runs and prints a hint | Manual |
@@ -351,6 +370,9 @@ in Firefox.
 | UI-12 | Dark mode | OS set to dark | Dark palette, and the highlight is still readable | Manual |
 | UI-29 | Page language (M6a, D-040) | Fresh browser asking for `zh-TW`; open the Clean tab with a draft in review. Click 简体; tick "skip review"; open the review page; reload. Click EN | Traditional at first (title 電子書聽書, `lang="zh-Hant"`, 繁體 marked, draft "待審閱 · 1 章", address list "預設"). 简体 switches the page to Simplified (待审阅, button 清理 → 清理并转换), the review page reads 批准并转换 / 要转换的章节 / "250 字", and the choice survives the reload. EN brings back the English page ("ready for review", "default"). Server messages ("Ready for review", the cleaning method) stay English | Manual (checked in headless Chrome on a test server with a made-up `.txt`: 6/6 pass, 2026-11-28). The key files: automated `tests/test_web_i18n.py` |
 | UI-30 | Language dropdown | Fresh browser asking for `zh-TW`; pick 简体中文 in the dropdown at the top; reload; pick English | One dropdown (English / 简体中文 / 繁體中文) on 繁體中文, labelled 語言; 简体中文 reloads the page in Simplified (电子书听书, label 语言) and survives the reload; English brings the English page back; no page errors. UI-29's text checks still apply (the buttons became this dropdown) | Manual (checked in headless Chrome on a test server: 5/5 pass, 2026-11-28) |
+| UI-31 | Speech engine box (D-045) | Open "Speech engine" in each page language; start the server with `--tts kokoro` | The engine dropdown lists Kokoro-82M; with `--tts` it is disabled with "Set with --tts when the server started." (in the page's language) | Manual, pass (2026-11-28, headless Chrome, en / 简体 / 繁體) |
+| UI-33 | Sample wait, cancel, delete (D-047) | Fresh server; ▶ a voice; after it ends, ▶ another and click "…" at once; click **Delete saved samples** | "Preparing sample…" note while it is made (56 s on a busy PC), then ■; the click cancels and the note goes; the box shows "Saved voice samples: 45.3 KB" style sizes and "0.0 KB" after Delete, which waits for the sample in progress | Manual, pass (2026-11-28, headless Chrome) |
+| UI-32 | Voice labels (D-046) | Open the Clean tab in each page language; switch the voice Language to 中文 | "Nicole · American woman, deep, calm (af_nicole)", "女声 001 · 明亮（zf_001）"; the selected value stays the id | Manual, pass (2026-11-28, headless Chrome, en / 简体 / 繁體) |
 | UI-G01 | Server messages in Chinese | Use the page in 简体 or 繁體; cause an error, clean a book | **Gap:** error details, draft/job messages and cleaning-report entries come from the server in English (D-040) | Gap |
 
 ## Web page languages (`web/i18n/*.json`, `tests/test_web_i18n.py`, D-040)

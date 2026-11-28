@@ -44,6 +44,8 @@ keyword, then read only that entry.
 | A-019 | Language choice in Settings, through AppCompat | ui | amends A-017 | here |
 | A-020 | APK built and signed by GitHub Actions | build, CI | | here |
 | A-021 | Chinese voices: Language and Voice pickers, Chinese read-along | convert, player | desktop D-042, D-043 | here |
+| A-022 | Voice names in the Voice dropdown | convert | desktop D-046 | here |
+| A-023 | Voice samples: "Preparing sample…", kept on the phone, deletable | convert, settings | desktop D-047 | here |
 
 ## A-002 Latest stable versions; compileSdk 37.2, JDK 21
 Status: Accepted · Milestone: M4a
@@ -222,3 +224,36 @@ Why: Same behaviour as the web page, and the rules stay pure functions with unit
 Consequences:
 - The app doesn't remember the last voice per language; a language switch starts on that language's default.
 - A mixed English–Chinese paragraph joins an English sentence after a Chinese one without a space.
+
+## A-022 Voice names in the Voice dropdown
+Status: Accepted · Milestone: M8 (TTS backends, voice names)
+Context: The PC now describes each voice (desktop D-046): `/info`'s `languages[].voice_details` gives gender, accent,
+name or number, and measured traits. The user wanted the same "name + id" labels on the phone as on the page, in the
+app's language.
+Decision:
+- `VoiceLanguage.details` (`List<VoiceDetail>`, empty from an older PC, which then shows the ids as before).
+- `ConvertRules.voiceLabel(detail, word)` builds "Nicole · American woman, deep, calm (af_nicole)" from localized
+  words (`voice_*`, `trait_*` strings in the three locales) passed in by key, so it stays a pure, tested function. A
+  numbered voice's name ("Man 025") already says the gender. `VoiceAndSpeed` shows the label; the value is still the id.
+Why: Same labels as the web page, and the wording lives in string resources.
+Consequences: The labels are long; the dropdown field shows the whole label, and narrow phones wrap it.
+
+## A-023 Voice samples: "Preparing sample…", kept on the phone, deletable
+Status: Accepted · Milestone: M8 (TTS backends, voice names)
+Context: The first ▶ of a session waited silently while the PC loaded its speech model (23–60 s measured), and every
+voice's first sample waits for the PC to make it. The user asked for the wait to be shown, for played samples to be
+kept, and for the user to be able to delete them and to cancel a wait. Making every sample ahead of time was
+offered and turned down.
+Decision:
+- `SamplePlayer` fetches the sample with `ApiClient.voiceSampleBytes` (instead of streaming the URL into ExoPlayer),
+  keeps it in `SampleStore` (`filesDir/voice-samples/<voice>.m4a`, written to a temp file and renamed), then plays the
+  file. A kept sample plays at once, also without the PC.
+- While fetching, ▶ becomes a spinner and a line says "Preparing sample… the first one also starts the voice engine
+  on the PC, which can take up to a minute". Tapping the spinner cancels the wait; the fetch still finishes and is
+  kept. A ticket counter drops a fetch's result after a cancel, another ▶, or leaving the screen.
+- Settings → Storage shows "Voice samples you played: 0.0 KB" (one decimal, `Format.smallSize`) and **Delete voice
+  samples**.
+Why: The wait is explained, and a voice heard once never waits again.
+Consequences:
+- A sample is kept by voice id only: if the PC changes its sample sentence, the phone keeps the old one until deleted.
+- A failed fetch shows a toast ("Could not play the voice sample").

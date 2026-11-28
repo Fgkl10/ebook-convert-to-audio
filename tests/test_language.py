@@ -4,6 +4,7 @@ import pytest
 from desktop.core.language import MIN_WORDS, check_language, english_score
 from desktop.core.parse import Book, Chapter, load_book
 from desktop.tts import build
+from desktop.tts.kokoro import KokoroBackend
 from tests.epub_factory import build_epub, novel_spec
 
 EN = ("The river ran quietly past the old mill while the morning light grew warmer. The old miller got up "
@@ -49,10 +50,8 @@ def test_lang04_text_wins_over_wrong_metadata(tmp_path):
     check_language(b)
 
 
-class ExplodingTTS:
-    voice, speed = "af_heart", 1.0
-
-    def synth(self, text):
+class ExplodingTTS(KokoroBackend):
+    def synth(self, text, voice="af_heart", speed=1.0):
         raise AssertionError("TTS must not run for a refused book")
 
 
@@ -61,7 +60,7 @@ def test_lang05_build_refuses_before_tts(tmp_path, monkeypatch):
     src = tmp_path / "hu.txt"
     src.write_text("\n\n".join([HU] * 8), encoding="utf-8")
     with pytest.raises(ValueError, match="doesn't look like English"):
-        build.build_book(src, tmp_path / "lib", tts=ExplodingTTS())
+        build.build_book(src, tmp_path / "lib", backend=ExplodingTTS())
     assert not (tmp_path / "lib").exists()  # nothing written
 
 
@@ -71,5 +70,5 @@ def test_lang07_ignore_language_overrides(tmp_path, monkeypatch):
     monkeypatch.setattr(build, "ROOT", tmp_path)
     src = tmp_path / "hu.txt"
     src.write_text("\n\n".join([HU] * 8), encoding="utf-8")
-    out = build.build_book(src, tmp_path / "lib", tts=FakeTTS(), ignore_language=True)
+    out = build.build_book(src, tmp_path / "lib", backend=FakeTTS(), ignore_language=True)
     assert (out / "book.json").exists()

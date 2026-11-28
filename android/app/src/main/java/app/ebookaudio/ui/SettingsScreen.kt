@@ -31,6 +31,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,6 +54,8 @@ fun SettingsScreen(onBack: () -> Unit, onPair: () -> Unit) {
     val scope = rememberCoroutineScope()
     val pairing by graph.settings.pairing.collectAsState(null)
     var used by remember { mutableLongStateOf(graph.library.sizeBytes()) }
+    var samples by remember { mutableIntStateOf(graph.samples.count()) }
+    var samplesUsed by remember { mutableLongStateOf(graph.samples.sizeBytes()) }
     var confirm by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
@@ -85,6 +88,13 @@ fun SettingsScreen(onBack: () -> Unit, onPair: () -> Unit) {
                 if (used > 0) OutlinedButton(onClick = { confirm = "delete" }) {
                     Text(stringResource(R.string.delete_all_downloads))
                 }
+                // voice samples played on this phone (A-023); made again by the PC on the next ▶
+                Text(stringResource(R.string.samples_used, Format.smallSize(samplesUsed)))
+                if (samples > 0) OutlinedButton(onClick = {
+                    graph.samples.clear()
+                    samples = graph.samples.count()
+                    samplesUsed = graph.samples.sizeBytes()
+                }) { Text(stringResource(R.string.delete_samples)) }
             }
             Section(stringResource(R.string.language)) {
                 val current = remember { AppLanguage.fromTags(AppCompatDelegate.getApplicationLocales().toLanguageTags()) }

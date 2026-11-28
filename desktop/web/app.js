@@ -95,13 +95,30 @@ function preferredVoice(lang) {
   const l = VOICE_LANGS.find(x => x.code === lang), saved = savedVoices()[lang];
   return l && l.voices.includes(saved) ? saved : l?.default_voice;
 }
+// What to call a voice (D-046): "Nicole · American woman, deep, calm (af_nicole)". The words come from the server's
+// measured traits; the id stays, so it can be matched with the command line. Literal keys: tests/test_web_i18n.py.
+function voiceLabel(d) {
+  const who = {
+    us_female: t('voice.us_female'), us_male: t('voice.us_male'), gb_female: t('voice.gb_female'),
+    gb_male: t('voice.gb_male'), female: t('voice.female'), male: t('voice.male'),
+  }[d.accent ? `${d.accent}_${d.gender}` : d.gender];
+  const word = { low: t('trait.low'), high: t('trait.high'), slow: t('trait.slow'), fast: t('trait.fast') };
+  const name = d.name || (d.gender === 'female'
+    ? t('voice.numbered_female', { n: String(d.number).padStart(3, '0') })
+    : t('voice.numbered_male', { n: String(d.number).padStart(3, '0') }));
+  // a numbered voice's name already says woman/man
+  const desc = [d.name ? who : null, ...d.traits.map(x => word[x])].filter(Boolean).join(t('voice.join'));
+  return desc ? t('voice.label', { name, desc, id: d.id }) : t('voice.label_plain', { name, id: d.id });
+}
 // Show `lang` in the picker whose Voice list is `sel`, with `voice` chosen when it speaks that language.
 function setVoice(sel, lang, voice) {
   const l = VOICE_LANGS.find(x => x.code === lang) || VOICE_LANGS[0];
   if (!l) return;
   $(sel + 'lang').value = l.code;
   const pick = l.voices.includes(voice) ? voice : preferredVoice(l.code);
-  $(sel).innerHTML = l.voices.map(v => `<option${v === pick ? ' selected' : ''}>${v}</option>`).join('');
+  const details = Object.fromEntries((l.voice_details || []).map(d => [d.id, d]));
+  $(sel).innerHTML = l.voices.map(v => `<option value="${esc(v)}"${v === pick ? ' selected' : ''}>${
+    esc(details[v] ? voiceLabel(details[v]) : v)}</option>`).join('');
 }
 function setVoiceLanguages(langs) {
   const keep = Object.fromEntries(PICKERS.map(s => [s, $(s).value]));  // a refresh after installing keeps choices
@@ -123,6 +140,25 @@ PICKERS.forEach(s => $(s).addEventListener('change', () => {
   try { localStorage.setItem('ebookAudioVoices', JSON.stringify({ ...savedVoices(), [voiceLang($(s).value)]: $(s).value })); }
   catch (e) { /* not remembered */ }
 }));
+
+// The TTS backend (D-045): which speech engine converts. Fixed by --tts / EBOOK_AUDIO_TTS, the dropdown is
+// disabled and says so. A switch reloads the voice lists; Kokoro's v1.1-zh box shows only with Kokoro.
+async function ttsBackend(choice) {
+  const r = choice
+    ? await fetch(`${API}/settings/tts`, { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ backend: choice }) })
+    : await fetch(`${API}/settings/tts`);
+  const ok = r.ok, s = ok ? await r.json() : await (await fetch(`${API}/settings/tts`)).json();
+  const pick = $('#ttsbackend');
+  pick.innerHTML = s.backends.map(b => `<option value="${esc(b.id)}">${esc(b.name)}</option>`).join('');
+  pick.value = s.backend;
+  pick.disabled = !!s.fixed_by;
+  $('#ttsstate').classList.toggle('err', !ok);
+  $('#ttsstate').textContent = !ok ? await errText(r) : s.fixed_by ? t('tts.fixed', { by: s.fixed_by }) : '';
+  $('#zhbox').hidden = s.backend !== 'kokoro';
+  if (choice && ok) loadInfo();
+}
+$('#ttsbackend').onchange = () => ttsBackend($('#ttsbackend').value);
 
 // The optional Kokoro v1.1-zh model (D-044): install or remove it; while it downloads, the line shows how far it is.
 let zhTimer = null;
@@ -185,17 +221,45 @@ addEventListener('hashchange', showTab);
 // ---------------- voice samples: ▶ next to every Voice list plays ~5 s of that voice (D-031)
 const sampleAudio = new Audio();
 let sampleBtn = null;
-const resetSample = () => { if (sampleBtn) sampleBtn.textContent = '▶'; sampleBtn = null; };
+// A note after the button while the PC makes the sample: the first one of a session also loads the model (~20 s).
+const sampleNote = document.createElement('span');
+sampleNote.className = 'muted samplenote';
+const resetSample = () => {
+  if (sampleBtn) { sampleBtn.textContent = '▶'; sampleBtn.title = t('form.hear'); }
+  sampleBtn = null; sampleNote.remove();
+};
 sampleAudio.onended = resetSample;
 document.querySelectorAll('.hear').forEach(btn => btn.onclick = async () => {
   const playing = sampleBtn === btn;
-  sampleAudio.pause(); resetSample();
-  if (playing) return;  // a second click stops it
-  sampleBtn = btn; btn.textContent = '…';  // the first sample of a session also loads the model (~10 s)
+  sampleAudio.pause(); sampleAudio.removeAttribute('src'); resetSample();
+  if (playing) return;  // a second click stops it, also while it is being prepared
+  sampleBtn = btn; btn.textContent = '…'; btn.title = t('sample.cancel');
+  sampleNote.textContent = t('sample.preparing');
+  btn.after(sampleNote);
   sampleAudio.src = tok(`${API}/voices/${$(btn.dataset.for).value}/sample`);
-  try { await sampleAudio.play(); if (sampleBtn === btn) btn.textContent = '■'; }
-  catch (e) { resetSample(); alert(t('sample.error')); }
+  try {
+    await sampleAudio.play();
+    if (sampleBtn === btn) { btn.textContent = '■'; btn.title = t('sample.stop'); sampleNote.remove(); loadSamples(); }
+  } catch (e) {
+    if (sampleBtn !== btn || e.name === 'AbortError') return;  // cancelled, or another sample was asked for
+    resetSample(); alert(t('sample.error'));
+  }
 });
+
+// Voice samples kept on the PC, with a Delete button (in the Speech engine box).
+async function loadSamples() {
+  try {
+    const s = await getJSON('/voices/samples');
+    // one decimal, like the app's Settings: "0.0 KB" when there are none
+    const size = s.bytes < 1e6 ? `${(s.bytes / 1e3).toFixed(1)} KB` : `${(s.bytes / 1e6).toFixed(1)} MB`;
+    $('#samplesinfo').textContent = t('samples.saved', { size });
+    $('#samplesdel').disabled = !s.count;
+  } catch (e) { $('#samplesinfo').textContent = ''; }
+}
+$('#samplesdel').onclick = async () => {
+  const r = await fetch(`${API}/voices/samples`, { method: 'DELETE' });
+  if (r.ok) loadSamples();
+};
 const goTab = (tab) => { show('#home'); location.hash = tab; showTab(); };
 
 async function loadBooks() {
@@ -537,4 +601,6 @@ $('#rate').onchange = () => audio.playbackRate = +$('#rate').value;
 $('#back').onclick = () => { audio.pause(); goTab('library'); $('#player').hidden = true; book = null; };
 
 showTab();
-loadStrings().then(() => { ocrForFile(); loadInfo(); zhModel(); refresh(); setInterval(refresh, 2000); });
+loadStrings().then(() => {
+  ocrForFile(); loadInfo(); ttsBackend(); loadSamples(); zhModel(); refresh(); setInterval(refresh, 2000);
+});

@@ -70,6 +70,9 @@ keyword, then read only that entry.
 | D-042 | Chinese books: detection, cleaning rules, sentences | core | Amends D-018, D-016 | here |
 | D-043 | Voices by language: two pickers, fallback, Chinese pronunciation | tts, server, web | Amends D-031; android A-021 | here |
 | D-044 | Optional Kokoro v1.1-zh for better Chinese voices | tts, server, web | Amends D-031, D-028 | here |
+| D-045 | TTS behind a backend interface; a setting picks the backend | tts, server, web | Amends D-031 | here |
+| D-046 | Voice names from measured pitch and pace | tts, server, web | android A-022 | here |
+| D-047 | Voice samples: "Preparing sample…", cancel, delete the saved ones | server, web | android A-023 | here |
 
 ---
 
@@ -589,7 +592,7 @@ option that each user installs or leaves out.
   `models/huggingface/`). `ZhModel` downloads in a background thread and removes the model folder. Voice files
   (~0.5 MB each) download on first use, as with v1.0.
 - Installed, the Chinese list shows v1.1-zh's voices instead of v1.0's 8, and the Chinese default becomes `zf_001`.
-  English stays on v1.0. A voice's model follows from its name (`repo_of`). `KokoroTTS` keeps one `KModel` per repo
+  English stays on v1.0. A voice's model follows from its name (`repo_of`). The Kokoro backend keeps one `KModel` per repo
   and loads v1.1-zh on its first Chinese sentence. Pipelines are keyed by (language, repo).
 - API: `GET /models/zh` (status, and `done_bytes`: what has reached the cache so far; with Hugging Face's xet
   transfer that stays 0 until the file is complete, so the page then says "Downloading about 327 MB…"), `POST` (install), `DELETE` (remove; 409 while a queued or running
@@ -602,3 +605,70 @@ option that each user installs or leaves out.
   Review page offers v1.1-zh voices, with the mixed-voice warning for new chapters.
 - Removing it while the app shows a v1.1-zh voice: the next approve is refused with "Unknown voice" until the
   user picks again.
+
+## D-045 TTS behind a backend interface; a setting picks the backend
+Status: Accepted · Milestone: M8 (TTS backends, voice names)
+**Context:** Kokoro was called directly from `build.py` and `service.py` (`KokoroTTS`, module-level voice lists), so
+another engine would have meant edits all over. The user asked for an interface with Kokoro as the first backend and a
+setting to pick one, without adding other engines yet.
+**Decision:**
+- `tts/backend.py` defines `Backend`: `languages()`, `voices(lang)` (as `Voice` records: id, language, gender, accent,
+  name, number, traits), `default_voice(lang)`, `synth(text, voice, speed) → float32 mono`, `sample_rate`, `unload()`
+  and `cache_key(voice, speed, text)`, plus helpers (`voice_ids`, `voice_language`, `voice_for`). `BACKENDS` maps a
+  name to a lazy constructor, so importing it loads no model. Only `kokoro` is registered.
+- `tts/kokoro.py` is `KokoroBackend`. Its `cache_key` stays `voice|speed|text`, so sentences cached before this
+  change still resume (checked on a real pre-change cache: 32 of 32 files match). Other backends' keys are prefixed
+  with their id. Voice sample files keep their names for Kokoro and are prefixed with the backend id otherwise.
+- Which backend: `--tts` (`ebook-server`, `ebook-convert`) > `EBOOK_AUDIO_TTS` > `settings.json` `"tts"` in the data
+  folder (written by the page) > `kokoro`. An unknown name from the command line or the variable stops the start
+  with the list of names; an unknown saved name falls back to Kokoro.
+- API: `GET /settings/tts` → `{backend, backends: [{id, name}], fixed_by}`; `PUT` `{backend}` switches (400 unknown,
+  409 while a conversion is queued or running, 409 when `fixed_by` is `--tts` or `EBOOK_AUDIO_TTS`). Switching frees
+  the old backend's model. The page has a "Speech engine" box; the phone doesn't use these routes.
+- A draft's voice that the current backend doesn't offer gives way to its default for the book's language; a book in
+  a language the backend can't read is refused.
+**Why:** One seam for engines, no shared mutable voice state, and an unchanged cache and sample layout.
+**Consequences:**
+- `SUPPORTED_LANGUAGES` stays in `core`; a backend may offer a subset.
+- Tests use a fake second backend (`OtherTTS`); none ships.
+- The page's subtitle still says "Kokoro TTS".
+
+## D-046 Voice names from measured pitch and pace
+Status: Accepted · Milestone: M8 (TTS backends, voice names)
+**Context:** The pickers showed raw ids (`af_nicole`, `zf_047`). Kokoro publishes no description of its voices, and
+v1.1-zh's 100 voices are only numbered. The user asked for names based on each voice's style, chose measured traits
+over hand-written ones, and the format "translated name + id" in the interface language.
+**Decision:**
+- `tts/voice_traits.py` synthesizes three fixed sentences per voice and measures the median F0 of voiced frames
+  (normalized autocorrelation, checked on generated tones including a weak fundamental) and the pace (syllables per
+  second of speech, pauses left out). Pitch is ranked within model + language + gender, pace within model + language;
+  the lowest third gets `low`/`slow`, the highest `high`/`fast`, the middle no word. The results for all 122 voices are
+  committed as `voice_traits.json` (packaged), so naming a voice never runs the model. Re-measured on other sentences,
+  13 voices moved a few percent, all in the same direction, and kept their words.
+- `Voice.traits` carries the words; `/info` adds `languages[].voice_details` (same order as `voices`, which stays a
+  list of ids).
+- The clients build the label: "Nicole · American woman, deep, calm (af_nicole)", "女声 025 · 低沉，轻快（zm_025）".
+  The user picked the descriptive words deep/bright and calm/lively (低沉/明亮, 舒缓/轻快) over "lower/higher". The
+  v1.0 Chinese names stay in pinyin (Xiaoxiao) in every language: Kokoro doesn't publish their characters.
+- The option's value stays the id, so saved choices, the CLI and the API are unchanged.
+**Why:** Measured words are honest about what they describe and cover the numbered voices too.
+**Consequences:**
+- The words are relative: a "deep" woman's voice is deep for a woman's voice of that model.
+- A new voice or model needs `python -m desktop.tts.voice_traits` (GPU, a few minutes); until then it shows without
+  traits. A backend other than Kokoro brings its own traits or none.
+
+## D-047 Voice samples: "Preparing sample…", cancel, delete the saved ones
+Status: Accepted · Milestone: M8 (TTS backends, voice names)
+**Context:** A voice's first ▶ waits while the PC makes the sample, and the first one of a server run also loads the
+model (23 s, and 56–61 s on a busy PC). The page only showed "…". The user asked for the wait to be explained, for a
+way to cancel it, and for the saved samples to be deletable. Making all samples ahead of time was offered and turned
+down; loading the model at server start was offered as an option and not taken up.
+**Decision:**
+- Page: while a sample is being made, a note after ▶ says "Preparing sample… the first one also starts the voice
+  engine, which can take up to a minute"; clicking "…" cancels (the PC still finishes and keeps the sample).
+- `GET /voices/samples` → `{count, bytes}`, `DELETE /voices/samples` deletes `cache/voice-samples/*.m4a` (under the
+  sample lock, so it waits for a sample being made). The Speech engine box shows "Saved voice samples: 0.0 KB" and
+  **Delete saved samples**.
+- The phone keeps the samples it played (android A-023).
+**Why:** A visible reason for the wait, and the user decides what stays on disk.
+**Consequences:** Deleting makes the next ▶ of each voice wait again.

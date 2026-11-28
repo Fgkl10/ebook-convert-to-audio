@@ -3,6 +3,7 @@ package app.ebookaudio
 import android.app.Application
 import android.content.Context
 import app.ebookaudio.api.ApiClient
+import app.ebookaudio.convert.SampleStore
 import app.ebookaudio.library.LocalLibrary
 import app.ebookaudio.settings.Settings
 import kotlinx.coroutines.CoroutineScope
@@ -31,6 +32,7 @@ class AppGraph(context: Context) {
         .build()
     val settings = Settings(context)
     val library = LocalLibrary(File(context.filesDir, "books"))
+    val samples = SampleStore(File(context.filesDir, "voice-samples"))
 
     /** Work that must finish even when the screen that started it is gone (saving a position). */
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)

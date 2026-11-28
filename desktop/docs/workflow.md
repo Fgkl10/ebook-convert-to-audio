@@ -91,10 +91,10 @@ flowchart TD
     S2 --> D
     S3 --> D["plan_chapters(book, lang)<br/>segment.split_text per chapter (Chinese rule for zh)<br/>todo = selected chapters with text"]
     D --> E["count todo sentences<br/>report progress 0/total"]
-    E --> F{tts passed in?}
-    F -- no --> F1["load KokoroTTS(voice, speed)"]
+    E --> F{backend passed in?}
+    F -- no --> F1["create(chosen()): --tts, EBOOK_AUDIO_TTS,<br/>settings.json, else kokoro (D-045)"]
     F -- yes --> G
-    F1 --> G["wrap in CachedSynth<br/>cache/&lt;book_id&gt;/"]
+    F1 --> G["wrap in CachedSynth(backend, voice, speed)<br/>cache/&lt;book_id&gt;/"]
     G --> H["write cover file (if any)"]
     H --> M0{"merge=True and<br/>book.json exists?"}
     M0 -- yes --> M1["keep its chapters (number filled in<br/>for old books) and created"]
@@ -117,9 +117,9 @@ flowchart TD
 flowchart TD
     S([paragraphs → sentences]) --> L0["pieces = [300 ms silence]<br/>pos = lead length"]
     L0 --> N{next sentence?}
-    N -- yes --> C{"cache hit?<br/>sha1(voice|speed|text)"}
+    N -- yes --> C{"cache hit?<br/>sha1(backend.cache_key(voice, speed, text))<br/>Kokoro: voice|speed|text"}
     C -- yes --> R["np.load(.npy)"]
-    C -- no --> T["KokoroTTS.synth(text)<br/>(zh: Traditional → Simplified, Latin words<br/>via English G2P, D-043)<br/>np.save(.npy)"]
+    C -- no --> T["backend.synth(text, voice, speed)<br/>(Kokoro zh: Traditional → Simplified, Latin words<br/>via English G2P, D-043)<br/>np.save(.npy)"]
     R --> ST
     T --> ST["record start_ms = pos<br/>append audio, pos += len"]
     ST --> G{last sentence<br/>of paragraph?}
@@ -305,7 +305,7 @@ sequenceDiagram
     participant UI as app.js: "Better Chinese voices" box
     participant API as /api/v1/models/zh
     participant M as tts/models.py ZhModel
-    participant T as KokoroTTS (shared, D-031)
+    participant T as KokoroBackend (shared, D-031)
 
     UI->>API: GET → {installed: false}
     U->>UI: Install
@@ -321,4 +321,42 @@ sequenceDiagram
     UI->>API: DELETE (409 while a queued/running job uses one of its voices)
     API->>T: unload(v1.1-zh repo)
     API->>M: delete the model folder → Chinese is v1.0's 8 voices again
+```
+
+## 6. Picking the speech engine (D-045)
+
+```mermaid
+sequenceDiagram
+    actor U as User (PC's page)
+    participant UI as app.js: "Speech engine" box
+    participant API as /api/v1/settings/tts
+    participant S as service.py
+    participant B as tts/backend.py
+
+    Note over S,B: at start, chosen(): --tts, else EBOOK_AUDIO_TTS,<br/>else settings.json "tts", else kokoro
+    UI->>API: GET → {backend, backends, fixed_by}
+    alt fixed_by is --tts or EBOOK_AUDIO_TTS
+        UI->>UI: dropdown disabled, "Set with --tts when the server started."
+    else
+        U->>UI: pick another engine
+        UI->>API: PUT {backend}
+        API->>S: set_tts(): 400 unknown, 409 while a conversion is queued or running
+        S->>B: create(name), the old backend's unload()
+        S->>B: save_setting(settings.json)
+        UI->>UI: loadInfo(): voices, labels and the zh box follow the new engine
+    end
+```
+
+## 7. Voice names (D-046)
+
+```mermaid
+flowchart TD
+    A(["python -m desktop.tts.voice_traits<br/>(by hand, GPU)"]) --> B["each voice reads 3 fixed sentences"]
+    B --> C["median F0 of voiced frames,<br/>syllables per second of speech"]
+    C --> D["rank: pitch within model+language+gender,<br/>pace within model+language"]
+    D --> E["lowest third low/slow, highest high/fast,<br/>middle no word"]
+    E --> F[("voice_traits.json (committed)")]
+    F --> G["KokoroBackend: Voice.traits"]
+    G --> H["GET /info: languages[].voice_details"]
+    H --> I["web voiceLabel(), app ConvertRules.voiceLabel():<br/>Nicole · American woman, deep, calm (af_nicole)"]
 ```

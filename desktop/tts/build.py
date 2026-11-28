@@ -37,11 +37,12 @@ from .. import PROJECT
 from ..core.language import LANGUAGE_NAMES, check_language, detect_language
 from ..core.parse import Book, load_book
 from ..core.segment import split_text
-from .kokoro import DEFAULT_VOICE, SAMPLE_RATE, voice_for, voice_language
+from .backend import Backend, chosen, create
 
 # Data folder for library/, cache/ and drafts/: the project, unless EBOOK_AUDIO_DATA points elsewhere (D-032), so a
 # second server (e.g. for testing) can run without touching the first one's books.
 ROOT = Path(os.environ.get("EBOOK_AUDIO_DATA") or PROJECT).resolve()
+SAMPLE_RATE = 24000  # Kokoro's; a backend passes its own
 SENTENCE_GAP_S = 0.25
 PARAGRAPH_GAP_S = 0.6
 CHAPTER_LEAD_S = 0.3
@@ -130,21 +131,22 @@ def assemble_chapter(
     paragraphs: list[list[str]],
     synth: Callable[[str], np.ndarray],
     on_sentence: Callable[[], None] | None = None,
+    sample_rate: int = SAMPLE_RATE,
 ) -> tuple[np.ndarray, list[dict]]:
     """Synthesize and stitch one chapter. Returns (audio, sentences-with-timestamps).
 
     end_ms of a sentence == start_ms of the next one (the pause belongs to the
     sentence before it), so every playback position maps to exactly one sentence.
     """
-    sent_gap = np.zeros(int(SENTENCE_GAP_S * SAMPLE_RATE), dtype=np.float32)
-    para_gap = np.zeros(int(PARAGRAPH_GAP_S * SAMPLE_RATE), dtype=np.float32)
-    pieces: list[np.ndarray] = [np.zeros(int(CHAPTER_LEAD_S * SAMPLE_RATE), dtype=np.float32)]
+    sent_gap = np.zeros(int(SENTENCE_GAP_S * sample_rate), dtype=np.float32)
+    para_gap = np.zeros(int(PARAGRAPH_GAP_S * sample_rate), dtype=np.float32)
+    pieces: list[np.ndarray] = [np.zeros(int(CHAPTER_LEAD_S * sample_rate), dtype=np.float32)]
     pos = len(pieces[0])
     sentences: list[dict] = []
     for p_idx, para in enumerate(paragraphs):
         for s_idx, text in enumerate(para):
             audio = synth(text)
-            sentences.append({"i": len(sentences), "p": p_idx, "text": text, "start_ms": round(pos * 1000 / SAMPLE_RATE)})
+            sentences.append({"i": len(sentences), "p": p_idx, "text": text, "start_ms": round(pos * 1000 / sample_rate)})
             pieces.append(audio)
             pos += len(audio)
             gap = para_gap if s_idx == len(para) - 1 else sent_gap
@@ -152,7 +154,7 @@ def assemble_chapter(
             pos += len(gap)
             if on_sentence:
                 on_sentence()
-    total_ms = round(pos * 1000 / SAMPLE_RATE)
+    total_ms = round(pos * 1000 / sample_rate)
     for a, b in zip(sentences, sentences[1:]):
         a["end_ms"] = b["start_ms"]
     if sentences:
@@ -179,14 +181,14 @@ def remove_leftovers(*folders: Path) -> list[Path]:
     return removed
 
 
-def encode_m4a(audio: np.ndarray, out_path: Path) -> None:
+def encode_m4a(audio: np.ndarray, out_path: Path, sample_rate: int = SAMPLE_RATE) -> None:
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         raise RuntimeError("ffmpeg not found on PATH")
     tmp = out_path.with_suffix(TMP_M4A_SUFFIX)
     cmd = [
         ffmpeg, "-y", "-loglevel", "error",
-        "-f", "f32le", "-ar", str(SAMPLE_RATE), "-ac", "1", "-i", "pipe:0",
+        "-f", "f32le", "-ar", str(sample_rate), "-ac", "1", "-i", "pipe:0",
         "-c:a", "aac", "-b:a", "64k", "-movflags", "+faststart", str(tmp),
     ]
     peak = float(np.max(np.abs(audio))) if audio.size else 0.0
@@ -199,15 +201,15 @@ def encode_m4a(audio: np.ndarray, out_path: Path) -> None:
 
 
 class CachedSynth:
-    """Caches each sentence's audio on disk keyed by (voice, speed, text)."""
+    """Caches each sentence's audio on disk keyed by (backend, voice, speed, text): see Backend.cache_key."""
 
-    def __init__(self, tts, cache_dir: Path):
-        self.tts = tts
+    def __init__(self, backend: Backend, voice: str, speed: float, cache_dir: Path):
+        self.backend, self.voice, self.speed = backend, voice, speed
         self.cache_dir = cache_dir
         cache_dir.mkdir(parents=True, exist_ok=True)
 
     def path(self, text: str) -> Path:
-        key = hashlib.sha1(f"{self.tts.voice}|{self.tts.speed}|{text}".encode()).hexdigest()
+        key = hashlib.sha1(self.backend.cache_key(self.voice, self.speed, text).encode()).hexdigest()
         return self.cache_dir / f"{key}.npy"
 
     def __call__(self, text: str) -> np.ndarray:
@@ -217,7 +219,7 @@ class CachedSynth:
                 return np.load(f)
             except (ValueError, EOFError, OSError):  # cut off by a version before atomic writes: make it again
                 f.unlink(missing_ok=True)
-        audio = self.tts.synth(text)
+        audio = self.backend.synth(text, self.voice, self.speed)
         # Atomic: a Ctrl+C mid-write leaves only <key>.npy.tmp (removed at server start), never a half <key>.npy.
         # Through a file handle, because np.save(path) would append ".npy" to the temp name.
         tmp = f.with_name(f.name + TMP_SUFFIX)
@@ -230,10 +232,10 @@ class CachedSynth:
 def build_book(
     source: str | Path,
     out_root: str | Path = ROOT / "library",
-    voice: str = DEFAULT_VOICE,
+    voice: str | None = None,
     speed: float = 1.0,
     progress: ProgressFn | None = None,
-    tts=None,
+    backend: Backend | None = None,
     chapters: str | list[int] | None = None,
     ignore_language: bool = False,
     merge: bool = False,
@@ -247,16 +249,20 @@ def build_book(
     Chapters keep their number in the cleaned book: audio ch{number-1:03d}.m4a, "number" in book.json.
     cancel: when set, the run stops at the next sentence with Cancelled (D-038). Finished chapters stay in book.json
     and the sentences made so far stay cached, so the same call later resumes.
+    backend: the TTS engine (D-045); None = the configured one (backend.chosen). voice None = its default for the
+    book's language.
     """
     source = Path(source)
     out_root = Path(out_root)
     book = load_book(source)
+    if backend is None:
+        backend = create(chosen(ROOT)[0])
     # Before the TTS model loads. Forced through, the book is read in the chosen voice's language.
-    if tts is not None:
-        voice = tts.voice  # a TTS passed in (the server's shared model) already holds the voice asked for
-    lang = (voice_language(voice) or "en") if ignore_language else check_language(book)
-    picked = voice_for(voice, lang)
-    if picked != voice and progress:
+    lang = ((voice and backend.voice_language(voice)) or "en") if ignore_language else check_language(book)
+    if lang not in backend.languages():
+        raise ValueError(f"The book is in {LANGUAGE_NAMES.get(lang, lang)}, which {backend.name} can't read")
+    picked = backend.voice_for(voice, lang) if voice else backend.default_voice(lang)
+    if voice and picked != voice and progress:
         progress(0, 0, f"The book is in {LANGUAGE_NAMES[lang]}: reading it with {picked} instead of {voice}")
     voice = picked
     book_id = make_book_id(book, source)
@@ -278,13 +284,8 @@ def build_book(
         if progress:
             progress(done, total, msg)
 
-    report("Loading TTS model")
-    if tts is None:
-        from .kokoro import KokoroTTS
-
-        tts = KokoroTTS(voice=voice, speed=speed)
-    tts.voice = voice  # the language's default voice may have replaced the one asked for
-    synth =CachedSynth(tts, ROOT / "cache" / book_id)
+    report("Loading TTS model")  # the backend loads it on the first sentence that isn't cached
+    synth = CachedSynth(backend, voice, speed, ROOT / "cache" / book_id)
 
     cover_name = None
     if book.cover:
@@ -305,8 +306,8 @@ def build_book(
         "author": book.author,
         "language": lang,  # "en" or "zh" (D-042)
         "cover": cover_name,
-        "voice": tts.voice,  # of the latest run; each chapter has its own
-        "speed": tts.speed,
+        "voice": voice,  # of the latest run; each chapter has its own
+        "speed": speed,
         "complete": False,
         "chapter_selection": chapters if test_folder else None,  # only a CLI test folder is a selection
         "chapters_total": len(wanted),
@@ -340,9 +341,9 @@ def build_book(
                 report(f"Chapter {idx + 1}/{len(plans)}: {chapter.title}")
             check_cancel()  # between sentences: the sentence just made is cached, ffmpeg is not running
 
-        audio, sentences = assemble_chapter(paragraphs, synth, tick)
+        audio, sentences = assemble_chapter(paragraphs, synth, tick, backend.sample_rate)
         audio_name = f"ch{idx:03d}.m4a"  # the chapter's index in the cleaned book, stable as chapters are added
-        encode_m4a(audio, out_dir / audio_name)
+        encode_m4a(audio, out_dir / audio_name, backend.sample_rate)
         written = (out_dir / audio_name).stat()
         manifest["chapters"] = [c for c in manifest["chapters"] if c["number"] != idx + 1]
         manifest["chapters"].append({
@@ -350,11 +351,11 @@ def build_book(
             "number": idx + 1,
             "title": chapter.title,
             "audio": audio_name,
-            "duration_ms": round(len(audio) * 1000 / SAMPLE_RATE),
+            "duration_ms": round(len(audio) * 1000 / backend.sample_rate),
             "size_bytes": written.st_size,  # with "updated_ms": a phone can tell its copy is stale (D-038)
             "updated_ms": written.st_mtime_ns // 1_000_000,
-            "voice": tts.voice,
-            "speed": tts.speed,
+            "voice": voice,
+            "speed": speed,
             "text_sha1": chapter_text_sha1(chapter.text),
             "sentences": sentences,
         })
@@ -376,7 +377,9 @@ def build_book(
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description="Convert an ebook to an audiobook with sentence timestamps.")
     ap.add_argument("source")
-    ap.add_argument("--voice", default=DEFAULT_VOICE)
+    ap.add_argument("--voice", help="default: the backend's default voice for the book's language")
+    ap.add_argument("--tts", metavar="BACKEND",
+                    help="TTS backend (default: EBOOK_AUDIO_TTS, else the one picked on the server's page, else kokoro)")
     ap.add_argument("--speed", type=float, default=1.0)
     ap.add_argument("--out", default=str(ROOT / "library"))
     ap.add_argument("--chapters", help="convert only these chapters, e.g. 3, 2-4 or 1,3,5-6 (see --list-chapters)")
@@ -406,7 +409,8 @@ def main(argv: list[str] | None = None) -> None:
         sys.stdout.flush()
 
     try:
-        out = build_book(args.source, args.out, args.voice, args.speed, progress, chapters=args.chapters,
+        backend = create(chosen(ROOT, args.tts)[0])
+        out = build_book(args.source, args.out, args.voice, args.speed, progress, backend, chapters=args.chapters,
                          ignore_language=args.ignore_language)
     except ValueError as e:
         sys.exit(f"error: {e}")

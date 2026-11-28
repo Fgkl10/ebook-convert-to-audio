@@ -42,4 +42,8 @@ object Format {
         bytes >= 1_000_000 -> "%.0f MB".format(bytes / 1e6)
         else -> "%.0f KB".format(bytes / 1e3)
     }
+
+    /** Small files (voice samples, ~50 KB each): one decimal, "0.0 KB" when there are none. */
+    fun smallSize(bytes: Long): String =
+        if (bytes >= 1_000_000) "%.1f MB".format(bytes / 1e6) else "%.1f KB".format(bytes / 1e3)
 }

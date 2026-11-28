@@ -6,7 +6,7 @@ import pytest
 
 from desktop.core.segment import MAX_CHARS, split_paragraph, split_text
 from desktop.tts import build
-from desktop.tts.kokoro import SAMPLE_RATE
+from desktop.tts.kokoro import SAMPLE_RATE, KokoroBackend
 
 
 def test_abbreviations_and_quotes():
@@ -32,10 +32,10 @@ def test_paragraphs():
     assert split_text("One. Two.\n\nThree.") == [["One.", "Two."], ["Three."]]
 
 
-class FakeTTS:
-    voice, speed = "af_heart", 1.0
+class FakeTTS(KokoroBackend):
+    """The Kokoro backend's voices and cache keys, with a flat 10 ms of audio per character instead of the model."""
 
-    def synth(self, text):  # 10 ms of audio per character
+    def synth(self, text, voice="af_heart", speed=1.0):
         return np.full(len(text) * SAMPLE_RATE // 100, 0.1, dtype=np.float32)
 
 
@@ -57,7 +57,7 @@ def test_build_txt_end_to_end(tmp_path, monkeypatch):
     src = tmp_path / "story.txt"
     src.write_text("Chapter 1\n\nIt was a dark night. The wind howled loudly.\n\n"
                    "Chapter 2\n\nMorning came at last. Everyone was relieved.\n", encoding="utf-8")
-    out = build.build_book(src, tmp_path / "lib", tts=FakeTTS())
+    out = build.build_book(src, tmp_path / "lib", backend=FakeTTS())
     m = json.loads((out / "book.json").read_text(encoding="utf-8"))
     assert m["complete"] and len(m["chapters"]) == 2
     assert m["chapters"][0]["sentences"][0]["text"] == "Chapter 1"
@@ -81,8 +81,8 @@ def test_bld12_build_selected_chapters_into_separate_folder(tmp_path, monkeypatc
     src.write_text("Chapter 1\n\nIt was a dark night. The wind howled.\n\n"
                    "Chapter 2\n\nMorning came at last. Everyone was relieved.\n\n"
                    "Chapter 3\n\nThe end came quietly. Nobody noticed at all.\n", encoding="utf-8")
-    full = build.build_book(src, tmp_path / "lib", tts=FakeTTS())
-    part = build.build_book(src, tmp_path / "lib", tts=FakeTTS(), chapters="2")
+    full = build.build_book(src, tmp_path / "lib", backend=FakeTTS())
+    part = build.build_book(src, tmp_path / "lib", backend=FakeTTS(), chapters="2")
     assert part.name == f"{full.name}-ch2"
     m = json.loads((part / "book.json").read_text(encoding="utf-8"))
     assert m["complete"] and m["chapter_selection"] == "2"
@@ -90,7 +90,7 @@ def test_bld12_build_selected_chapters_into_separate_folder(tmp_path, monkeypatc
     full_m = json.loads((full / "book.json").read_text(encoding="utf-8"))
     assert len(full_m["chapters"]) == 3 and full_m["chapter_selection"] is None  # full book untouched
     with pytest.raises(ValueError, match="out of range"):
-        build.build_book(src, tmp_path / "lib", tts=FakeTTS(), chapters="4")
+        build.build_book(src, tmp_path / "lib", backend=FakeTTS(), chapters="4")
 
 
 # ---------------------------------------------------------------- chosen chapters added to one book (D-035)
@@ -110,14 +110,16 @@ def _manifest(folder: Path) -> dict:
 
 
 class CountingTTS(FakeTTS):
-    def __init__(self, voice="af_heart", fail_after=None):
-        self.voice, self.calls, self.fail_after = voice, [], fail_after
+    def __init__(self, fail_after=None):
+        super().__init__()
+        self.calls, self.voices_used, self.fail_after = [], set(), fail_after
 
-    def synth(self, text):
+    def synth(self, text, voice="af_heart", speed=1.0):
         if self.fail_after is not None and len(self.calls) >= self.fail_after:
             raise KeyboardInterrupt  # like Ctrl+C in the middle of a chapter
         self.calls.append(text)
-        return super().synth(text)
+        self.voices_used.add(voice)
+        return super().synth(text, voice, speed)
 
 
 def test_bld16_select_chapters():
@@ -132,7 +134,7 @@ def test_bld16_select_chapters():
 def test_bld14_chapters_added_into_one_book(tmp_path, monkeypatch):
     src = _four(tmp_path, monkeypatch)
     lib = tmp_path / "lib"
-    out = build.build_book(src, lib, tts=FakeTTS(), chapters=[2], merge=True)
+    out = build.build_book(src, lib, backend=FakeTTS(), chapters=[2], merge=True)
     m = _manifest(out)
     assert out.name == build.make_book_id(build.load_book(src), src)  # the book's own folder, no -ch suffix
     assert [(c["number"], c["audio"], c["index"]) for c in m["chapters"]] == [(2, "ch001.m4a", 0)]
@@ -141,7 +143,7 @@ def test_bld14_chapters_added_into_one_book(tmp_path, monkeypatch):
     m["created"] = 123
     (out / "book.json").write_text(json.dumps(m), encoding="utf-8")
 
-    assert build.build_book(src, lib, tts=FakeTTS(), chapters=[4, 1], merge=True) == out
+    assert build.build_book(src, lib, backend=FakeTTS(), chapters=[4, 1], merge=True) == out
     m = _manifest(out)
     assert [(c["number"], c["audio"], c["index"]) for c in m["chapters"]] == [
         (1, "ch000.m4a", 0), (2, "ch001.m4a", 1), (4, "ch003.m4a", 2)]
@@ -150,7 +152,7 @@ def test_bld14_chapters_added_into_one_book(tmp_path, monkeypatch):
     assert m["duration_ms"] == sum(c["duration_ms"] for c in m["chapters"])
     assert m["chapters"][0]["text_sha1"] == build.chapter_text_sha1(build.load_book(src).chapters[0].text)
 
-    build.build_book(src, lib, tts=FakeTTS(), chapters=[3], merge=True)
+    build.build_book(src, lib, backend=FakeTTS(), chapters=[3], merge=True)
     m = _manifest(out)
     assert [c["number"] for c in m["chapters"]] == [1, 2, 3, 4] and m["complete"] is True
     assert not (tmp_path / "cache" / out.name).exists()  # complete: the sentence cache is removed
@@ -159,8 +161,10 @@ def test_bld14_chapters_added_into_one_book(tmp_path, monkeypatch):
 def test_bld15_reconvert_one_chapter_in_another_voice(tmp_path, monkeypatch):
     src = _four(tmp_path, monkeypatch)
     lib = tmp_path / "lib"
-    out = build.build_book(src, lib, tts=FakeTTS(), chapters=[1, 2], merge=True)
-    build.build_book(src, lib, tts=CountingTTS(voice="bf_emma"), chapters=[2], merge=True)
+    out = build.build_book(src, lib, backend=FakeTTS(), chapters=[1, 2], merge=True)
+    emma = CountingTTS()
+    build.build_book(src, lib, "bf_emma", backend=emma, chapters=[2], merge=True)
+    assert emma.voices_used == {"bf_emma"}  # the voice reaches the backend with every sentence (D-045)
     m = _manifest(out)
     assert [(c["number"], c["voice"]) for c in m["chapters"]] == [(1, "af_heart"), (2, "bf_emma")]
     assert m["voice"] == "bf_emma"  # the latest run
@@ -168,7 +172,7 @@ def test_bld15_reconvert_one_chapter_in_another_voice(tmp_path, monkeypatch):
 
 def test_bld16_cli_selection_keeps_original_numbers(tmp_path, monkeypatch):
     src = _four(tmp_path, monkeypatch)
-    out = build.build_book(src, tmp_path / "lib", tts=FakeTTS(), chapters="2")
+    out = build.build_book(src, tmp_path / "lib", backend=FakeTTS(), chapters="2")
     m = _manifest(out)
     assert out.name.endswith("-ch2") and m["chapter_selection"] == "2"
     assert [(c["number"], c["audio"]) for c in m["chapters"]] == [(2, "ch001.m4a")]
@@ -193,7 +197,7 @@ def test_bld17_old_manifest_merges_by_audio_name(tmp_path, monkeypatch):
     assert build.chapter_number(old[1], 1, {"chapter_selection": "2-5", "chapters": old}) == 2  # a skip: position
     assert build.chapter_number(old[1], 1, {"chapter_selection": "bad", "chapters": old}) == 2
 
-    build.build_book(src, tmp_path / "lib", tts=FakeTTS(), chapters=[3], merge=True)
+    build.build_book(src, tmp_path / "lib", backend=FakeTTS(), chapters=[3], merge=True)
     m = _manifest(out)
     assert [(c["number"], c["audio"]) for c in m["chapters"]] == [(1, "ch000.m4a"), (3, "ch002.m4a"), (4, "ch003.m4a")]
     assert (out / "ch002.m4a").read_bytes() != b"old" and (out / "ch000.m4a").read_bytes() == b"old"
@@ -201,7 +205,7 @@ def test_bld17_old_manifest_merges_by_audio_name(tmp_path, monkeypatch):
 
 
 def test_bld19_interrupted_cache_write_leaves_no_half_entry(tmp_path, monkeypatch):
-    synth = build.CachedSynth(FakeTTS(), tmp_path / "cache")
+    synth = build.CachedSynth(FakeTTS(), "af_heart", 1.0, tmp_path / "cache")
     entry = synth.path("Hello there.")
     real_save = np.save
 
@@ -229,13 +233,13 @@ def test_bld19_interrupted_cache_write_leaves_no_half_entry(tmp_path, monkeypatc
 
 def test_bld20_chapter_size_and_time_change_when_reconverted(tmp_path, monkeypatch):
     src = _four(tmp_path, monkeypatch)
-    out = build.build_book(src, tmp_path / "lib", tts=FakeTTS(), chapters=[1, 2], merge=True)
+    out = build.build_book(src, tmp_path / "lib", backend=FakeTTS(), chapters=[1, 2], merge=True)
     first = {c["number"]: c for c in _manifest(out)["chapters"]}
     for c in first.values():
         st = (out / c["audio"]).stat()
         assert c["size_bytes"] == st.st_size > 0 and c["updated_ms"] == st.st_mtime_ns // 1_000_000
     # FakeTTS makes the same length in any voice, so the size may not change; the millisecond time does
-    build.build_book(src, tmp_path / "lib", tts=CountingTTS(voice="bf_emma"), chapters=[2], merge=True)
+    build.build_book(src, tmp_path / "lib", "bf_emma", backend=CountingTTS(), chapters=[2], merge=True)
     again = {c["number"]: c for c in _manifest(out)["chapters"]}
     assert again[1] == first[1]  # untouched chapter: same version
     assert again[2]["size_bytes"] == (out / "ch001.m4a").stat().st_size > 0 and again[2]["voice"] == "bf_emma"
@@ -248,20 +252,20 @@ def test_bld21_cancel_stops_between_sentences_and_resumes(tmp_path, monkeypatch)
     lib, stop = tmp_path / "lib", threading.Event()
 
     class StopAfter(CountingTTS):
-        def synth(self, text):
-            audio = super().synth(text)
+        def synth(self, text, voice="af_heart", speed=1.0):
+            audio = super().synth(text, voice, speed)
             if len(self.calls) == 5:  # in chapter 2: chapter 1 (3 sentences) is finished
                 stop.set()
             return audio
 
     with pytest.raises(build.Cancelled):
-        build.build_book(src, lib, tts=StopAfter(), merge=True, cancel=stop)
+        build.build_book(src, lib, backend=StopAfter(), merge=True, cancel=stop)
     out = lib / build.make_book_id(build.load_book(src), src)
     assert [c["number"] for c in _manifest(out)["chapters"]] == [1]
     assert not list(out.glob("*.tmp.m4a"))  # stopped between sentences, never inside ffmpeg
     assert len(list((tmp_path / "cache" / out.name).glob("*.npy"))) == 5
     resumed = CountingTTS()
-    build.build_book(src, lib, tts=resumed, merge=True, cancel=threading.Event())
+    build.build_book(src, lib, backend=resumed, merge=True, cancel=threading.Event())
     assert "Word 2 came first." not in resumed.calls and len(resumed.calls) == 12 - 5
     assert _manifest(out)["complete"] is True
 
@@ -270,16 +274,16 @@ def test_bld18_interrupted_selection_keeps_its_cache(tmp_path, monkeypatch):
     src = _four(tmp_path, monkeypatch)
     lib = tmp_path / "lib"
     with pytest.raises(KeyboardInterrupt):  # stops after 2 sentences of chapter 3
-        build.build_book(src, lib, tts=CountingTTS(fail_after=2), chapters=[3, 4], merge=True)
+        build.build_book(src, lib, backend=CountingTTS(fail_after=2), chapters=[3, 4], merge=True)
     out = lib / build.make_book_id(build.load_book(src), src)
     assert not (out / "book.json").exists()
 
-    build.build_book(src, lib, tts=FakeTTS(), chapters=[1], merge=True)  # another selection finishes meanwhile
+    build.build_book(src, lib, backend=FakeTTS(), chapters=[1], merge=True)  # another selection finishes meanwhile
     assert [c["number"] for c in _manifest(out)["chapters"]] == [1]
     assert len(list((tmp_path / "cache" / out.name).glob("*.npy"))) == 2  # chapter 3's sentences are still there
 
     resumed = CountingTTS()
-    build.build_book(src, lib, tts=resumed, chapters=[3, 4], merge=True)
+    build.build_book(src, lib, backend=resumed, chapters=[3, 4], merge=True)
     assert "Chapter 3" not in resumed.calls and "Word 3 came first." not in resumed.calls
     assert "Then word 3 again." in resumed.calls
     assert [c["number"] for c in _manifest(out)["chapters"]] == [1, 3, 4]

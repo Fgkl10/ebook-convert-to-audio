@@ -125,7 +125,18 @@ class ApiClientTest {
     }
 
     @Test
-    fun voiceSampleUrlCarriesTheToken() {
-        assertEquals("${api.baseUrl}/api/v1/voices/af_heart/sample?token=$token", api.voiceSampleUrl("af_heart"))
+    fun voiceSampleIsFetchedWithTheToken() {
+        val audio = ByteArray(5_000) { (it % 251).toByte() }
+        server.enqueue(MockResponse().setBody(okio.Buffer().write(audio)))
+        assertTrue(audio.contentEquals(api.voiceSampleBytes("zm_025")))
+        val r = server.takeRequest()
+        assertEquals("/api/v1/voices/zm_025/sample", r.path)
+        assertEquals("Bearer $token", r.getHeader("Authorization"))
+        server.enqueue(MockResponse().setResponseCode(404).setBody("""{"detail": "No such voice"}"""))
+        try {
+            api.voiceSampleBytes("gone"); throw AssertionError("expected 404")
+        } catch (e: ApiError) {
+            assertEquals(404, e.code)
+        }
     }
 }

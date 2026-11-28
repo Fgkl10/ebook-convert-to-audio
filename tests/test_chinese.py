@@ -141,13 +141,14 @@ def test_zh06_english_splitting_unchanged():
 # ---------------------------------------------------------------- voices
 
 def test_zh07_voices_by_language(monkeypatch):
-    assert kokoro.voice_language("zf_xiaoxiao") == "zh" and kokoro.voice_language("bm_george") == "en"
-    assert kokoro.voice_for("bm_george", "zh") == "zf_xiaoxiao"  # English voice, Chinese book
-    assert kokoro.voice_for("zm_yunxi", "zh") == "zm_yunxi"
-    assert kokoro.voices("zh") == kokoro.V10_VOICES["zh"]
+    k = kokoro.KokoroBackend()
+    assert k.voice_language("zf_xiaoxiao") == "zh" and k.voice_language("bm_george") == "en"
+    assert k.voice_for("bm_george", "zh") == "zf_xiaoxiao"  # English voice, Chinese book
+    assert k.voice_for("zm_yunxi", "zh") == "zm_yunxi"
+    assert k.voice_ids("zh") == kokoro.V10_VOICES["zh"]
     monkeypatch.setattr(kokoro, "zh_installed", lambda: True)  # Kokoro v1.1-zh installed (D-044)
-    assert kokoro.voices("zh") == models.ZH_VOICES and kokoro.voices("en") == kokoro.V10_VOICES["en"]
-    assert kokoro.default_voice("zh") == "zf_001" and kokoro.voice_for("af_heart", "zh") == "zf_001"
+    assert k.voice_ids("zh") == models.ZH_VOICES and k.voice_ids("en") == kokoro.V10_VOICES["en"]
+    assert k.default_voice("zh") == "zf_001" and k.voice_for("af_heart", "zh") == "zf_001"
     assert models.repo_of("zf_001") == models.ZH_REPO and models.repo_of("zf_xiaoxiao") == models.V10_REPO
 
 

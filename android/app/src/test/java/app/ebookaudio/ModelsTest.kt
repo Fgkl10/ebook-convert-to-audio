@@ -17,6 +17,8 @@ import org.junit.Test
  * AND-03: the app reads what the PC sends. The fixtures are real server responses, kept in step with the server by
  * tests/test_android_contract.py (AND-01).
  */
+private val TRAITS = setOf("low", "high", "slow", "fast")
+
 class ModelsTest {
     private fun fixture(name: String): String =
         javaClass.classLoader!!.getResource("api/$name")!!.readText()
@@ -30,6 +32,12 @@ class ModelsTest {
         assertEquals(listOf("en", "zh"), info.languages.map { it.code })
         info.languages.forEach { assertTrue(it.defaultVoice in it.voices) }
         assertTrue(info.languages.single { it.code == "zh" }.voices.all { it.startsWith("z") })
+        // names (desktop D-046): the same voices in the same order, with a gender and known trait words
+        info.languages.forEach { l ->
+            assertEquals(l.voices, l.details.map { it.id })
+            assertTrue(l.details.all { it.gender in setOf("female", "male") && it.traits.all { t -> t in TRAITS } })
+        }
+        assertEquals("Nicole", info.languages.first().details.single { it.id == "af_nicole" }.name)
         // every address's pair_url is a link the scanner accepts
         val urls = JSON.parseToJsonElement(fixture("info.json")).jsonObject["urls"]!!.jsonArray
         assertTrue(urls.isNotEmpty())
