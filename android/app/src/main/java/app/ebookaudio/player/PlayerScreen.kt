@@ -57,10 +57,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.media3.session.MediaController
+import app.ebookaudio.R
 import app.ebookaudio.graph
 import app.ebookaudio.settings.Settings
 import app.ebookaudio.ui.Format
@@ -73,9 +76,11 @@ fun speedText(speed: Float): String =
     (if (speed == speed.toInt().toFloat()) speed.toInt().toString() else speed.toString()) + "×"
 
 /** "Sleep in 23:41", "Sleep at end of chapter", or null when the timer is off. */
+@Composable
 fun sleepText(np: NowPlaying): String? = when (np.sleepMode) {
-    "minutes" -> np.sleepLeftMs?.let { "Sleep in ${Format.clock(it)}" }
-    "chapter" -> "Sleep at end of chapter" + (np.sleepLeftMs?.let { " (${Format.clock(it)})" } ?: "")
+    "minutes" -> np.sleepLeftMs?.let { stringResource(R.string.sleep_in, Format.clock(it)) }
+    "chapter" -> np.sleepLeftMs?.let { stringResource(R.string.sleep_at_chapter_end_left, Format.clock(it)) }
+        ?: stringResource(R.string.sleep_at_chapter_end)
     else -> null
 }
 
@@ -108,20 +113,28 @@ fun PlayerScreen(controller: MediaController?, onBack: () -> Unit) {
         contentWindowInsets = WindowInsets(0),
         topBar = {
             TopAppBar(
-                title = { Text(np?.bookTitle ?: "Player", maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
+                title = {
+                    Text(np?.bookTitle ?: stringResource(R.string.player), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back)) }
+                },
                 actions = {
                     if (np != null && controller != null) {
                         IconButton(onClick = { scope.launch { settings.setShowText(!showText) } }) {
-                            if (showText) Icon(Icons.Filled.Image, "Show the cover")
-                            else Icon(Icons.AutoMirrored.Filled.Subject, "Show the text")
+                            if (showText) Icon(Icons.Filled.Image, stringResource(R.string.show_cover))
+                            else Icon(Icons.AutoMirrored.Filled.Subject, stringResource(R.string.show_text))
                         }
                         Box {
-                            IconButton(onClick = { moreMenu = true }) { Icon(Icons.Filled.MoreVert, "More") }
+                            IconButton(onClick = { moreMenu = true }) {
+                                Icon(Icons.Filled.MoreVert, stringResource(R.string.more))
+                            }
                             DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
-                                DropdownMenuItem(text = { Text("Larger text") }, enabled = textSize < Settings.TEXT_SIZE_MAX,
+                                DropdownMenuItem(text = { Text(stringResource(R.string.larger_text)) },
+                                    enabled = textSize < Settings.TEXT_SIZE_MAX,
                                     onClick = { scope.launch { settings.setTextSize(textSize + Settings.TEXT_SIZE_STEP) } })
-                                DropdownMenuItem(text = { Text("Smaller text") }, enabled = textSize > Settings.TEXT_SIZE_MIN,
+                                DropdownMenuItem(text = { Text(stringResource(R.string.smaller_text)) },
+                                    enabled = textSize > Settings.TEXT_SIZE_MIN,
                                     onClick = { scope.launch { settings.setTextSize(textSize - Settings.TEXT_SIZE_STEP) } })
                             }
                         }
@@ -132,7 +145,7 @@ fun PlayerScreen(controller: MediaController?, onBack: () -> Unit) {
     ) { padding ->
         if (np == null || controller == null) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text("Nothing is playing. Pick a book in the library.")
+                Text(stringResource(R.string.nothing_playing))
             }
             return@Scaffold
         }
@@ -143,7 +156,7 @@ fun PlayerScreen(controller: MediaController?, onBack: () -> Unit) {
                     modifier = Modifier.weight(1f).fillMaxWidth())
             } else {
                 Box(Modifier.weight(1f).fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-                    if (showText && sentences == null) Text("Loading the text…")
+                    if (showText && sentences == null) Text(stringResource(R.string.loading_text))
                     else AsyncImage(
                         model = np.artwork,
                         contentDescription = null,
@@ -160,27 +173,28 @@ fun PlayerScreen(controller: MediaController?, onBack: () -> Unit) {
                     TextButton(onClick = { sleepMenu = true }) {
                         Icon(Icons.Filled.Bedtime, null, Modifier.size(18.dp).padding(end = 4.dp))
                         Text(when (np.sleepMode) {
-                            "minutes" -> np.sleepLeftMs?.let { Format.clock(it) } ?: "Sleep"
-                            "chapter" -> "Ch. end"
-                            else -> "Sleep"
+                            "minutes" -> np.sleepLeftMs?.let { Format.clock(it) } ?: stringResource(R.string.sleep)
+                            "chapter" -> stringResource(R.string.sleep_chapter_end_short)
+                            else -> stringResource(R.string.sleep)
                         }, color = if (np.sleepMode != "off") MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     DropdownMenu(expanded = sleepMenu, onDismissRequest = { sleepMenu = false }) {
                         SleepTimer.PRESETS.forEach { m ->
-                            DropdownMenuItem(text = { Text("$m minutes") }, onClick = {
+                            DropdownMenuItem(text = { Text(pluralStringResource(R.plurals.sleep_minutes, m, m)) }, onClick = {
                                 sleepMenu = false
                                 PlaybackService.setSleep(controller, m)
                             })
                         }
-                        DropdownMenuItem(text = { Text("Other…") }, onClick = { sleepMenu = false; customSleep = true })
-                        DropdownMenuItem(text = { Text("End of this chapter") }, onClick = {
+                        DropdownMenuItem(text = { Text(stringResource(R.string.sleep_other)) },
+                            onClick = { sleepMenu = false; customSleep = true })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.sleep_end_of_chapter)) }, onClick = {
                             sleepMenu = false
                             PlaybackService.setSleep(controller, null)
                         })
                         if (np.sleepMode != "off") {
                             HorizontalDivider()
-                            DropdownMenuItem(text = { Text("Turn off") }, onClick = {
+                            DropdownMenuItem(text = { Text(stringResource(R.string.sleep_turn_off)) }, onClick = {
                                 sleepMenu = false
                                 PlaybackService.setSleep(controller, null, off = true)
                             })
@@ -196,18 +210,19 @@ fun PlayerScreen(controller: MediaController?, onBack: () -> Unit) {
         val value = minutes.toIntOrNull()?.takeIf { it in 1..SleepTimer.MAX_MINUTES }
         AlertDialog(
             onDismissRequest = { customSleep = false },
-            title = { Text("Sleep timer") },
+            title = { Text(stringResource(R.string.sleep_timer)) },
             text = {
-                OutlinedTextField(minutes, { minutes = it.filter(Char::isDigit).take(4) }, label = { Text("Minutes") },
+                OutlinedTextField(minutes, { minutes = it.filter(Char::isDigit).take(4) },
+                    label = { Text(stringResource(R.string.minutes)) },
                     singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
             },
             confirmButton = {
                 TextButton(enabled = value != null, onClick = {
                     customSleep = false
                     PlaybackService.setSleep(controller, value)
-                }) { Text("Start") }
+                }) { Text(stringResource(R.string.start)) }
             },
-            dismissButton = { TextButton(onClick = { customSleep = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { customSleep = false }) { Text(stringResource(R.string.cancel)) } },
         )
     }
 }
@@ -243,17 +258,21 @@ private fun Controls(
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             IconButton(onClick = { controller.seekToPreviousMediaItem() }, enabled = np.hasPrevious) {
-                Icon(Icons.Filled.SkipPrevious, "Previous chapter")
+                Icon(Icons.Filled.SkipPrevious, stringResource(R.string.previous_chapter))
             }
-            IconButton(onClick = { controller.seekBack() }) { Icon(Icons.Filled.Replay10, "Back 10 seconds") }
+            IconButton(onClick = { controller.seekBack() }) {
+                Icon(Icons.Filled.Replay10, stringResource(R.string.back_10))
+            }
             FilledIconButton(onClick = { if (np.isPlaying) controller.pause() else controller.play() },
                 modifier = Modifier.size(64.dp)) {
                 Icon(if (np.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                    if (np.isPlaying) "Pause" else "Play", Modifier.size(36.dp))
+                    stringResource(if (np.isPlaying) R.string.pause else R.string.play), Modifier.size(36.dp))
             }
-            IconButton(onClick = { controller.seekForward() }) { Icon(Icons.Filled.Forward30, "Forward 30 seconds") }
+            IconButton(onClick = { controller.seekForward() }) {
+                Icon(Icons.Filled.Forward30, stringResource(R.string.forward_30))
+            }
             IconButton(onClick = { controller.seekToNextMediaItem() }, enabled = np.hasNext) {
-                Icon(Icons.Filled.SkipNext, "Next chapter")
+                Icon(Icons.Filled.SkipNext, stringResource(R.string.next_chapter))
             }
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
@@ -262,10 +281,12 @@ private fun Controls(
             val next = SentenceSync.nextStart(sentences, np.positionMs)
             // like the web reader: a sentence button also starts playback
             TextButton(onClick = { prev?.let { controller.seekTo(it); controller.play() } }, enabled = prev != null) {
-                Text("‹ Sentence")
+                Text(stringResource(R.string.sentence_previous))
             }
             Box {
-                TextButton(onClick = { onSpeedMenu(true) }) { Text("Speed ${speedText(np.speed)}") }
+                TextButton(onClick = { onSpeedMenu(true) }) {
+                    Text(stringResource(R.string.speed_value, speedText(np.speed)))
+                }
                 DropdownMenu(expanded = speedMenu, onDismissRequest = { onSpeedMenu(false) }) {
                     SPEEDS.forEach { s ->
                         DropdownMenuItem(text = { Text(speedText(s)) }, onClick = {
@@ -278,10 +299,10 @@ private fun Controls(
             }
             sleepButton()
             TextButton(onClick = { next?.let { controller.seekTo(it); controller.play() } }, enabled = next != null) {
-                Text("Sentence ›")
+                Text(stringResource(R.string.sentence_next))
             }
         }
-        if (np.buffering) Text("Loading…", style = MaterialTheme.typography.bodySmall)
+        if (np.buffering) Text(stringResource(R.string.loading), style = MaterialTheme.typography.bodySmall)
     }
 }
 
@@ -300,7 +321,8 @@ fun MiniPlayer(controller: MediaController?, onOpen: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall)
             }
             IconButton(onClick = { if (np.isPlaying) controller?.pause() else controller?.play() }) {
-                Icon(if (np.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow, if (np.isPlaying) "Pause" else "Play")
+                Icon(if (np.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                    stringResource(if (np.isPlaying) R.string.pause else R.string.play))
             }
         }
     }

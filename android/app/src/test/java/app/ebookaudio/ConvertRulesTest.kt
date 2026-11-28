@@ -4,7 +4,10 @@ import app.ebookaudio.api.Draft
 import app.ebookaudio.api.DraftDetail
 import app.ebookaudio.api.Job
 import app.ebookaudio.api.Report
+import app.ebookaudio.convert.ApproveLabel
 import app.ebookaudio.convert.ConvertRules
+import app.ebookaudio.convert.MixedVoice
+import app.ebookaudio.convert.StatusLabel
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.assertEquals
@@ -25,12 +28,16 @@ class ConvertRulesTest {
 
     @Test
     fun statusLabels() {
-        assertEquals("ready for review", ConvertRules.statusLabel(Draft("d", status = "review")))
-        assertEquals("converted 2 of 5", ConvertRules.statusLabel(Draft("d", status = "done", chapters = 5, converted = listOf(1, 2))))
-        assertEquals("converted", ConvertRules.statusLabel(Draft("d", status = "done", chapters = 2, converted = listOf(1, 2))))
-        assertEquals("converting · converted 1 of 3",
+        assertEquals(StatusLabel("review"), ConvertRules.statusLabel(Draft("d", status = "review")))
+        // "converted 2 of 5" alone
+        assertEquals(StatusLabel(null, 2, 5),
+            ConvertRules.statusLabel(Draft("d", status = "done", chapters = 5, converted = listOf(1, 2))))
+        assertEquals(StatusLabel("done"),
+            ConvertRules.statusLabel(Draft("d", status = "done", chapters = 2, converted = listOf(1, 2))))
+        // "converting · converted 1 of 3"
+        assertEquals(StatusLabel("converting", 1, 3),
             ConvertRules.statusLabel(Draft("d", status = "converting", chapters = 3, converted = listOf(1))))
-        assertEquals("odd", ConvertRules.statusLabel(Draft("d", status = "odd")))
+        assertEquals(StatusLabel("odd"), ConvertRules.statusLabel(Draft("d", status = "odd")))
     }
 
     @Test
@@ -72,10 +79,10 @@ class ConvertRulesTest {
     @Test
     fun approve() {
         val d = detail()
-        assertEquals("Approve & convert", ConvertRules.approveLabel(d, setOf(1, 2, 3, 4)))
-        assertEquals("Convert all again", ConvertRules.approveLabel(detail(status = "done"), setOf(1, 2, 3, 4)))
-        assertEquals("Convert 1 chapter", ConvertRules.approveLabel(d, setOf(2)))
-        assertEquals("Convert 2 chapters", ConvertRules.approveLabel(d, setOf(2, 4)))
+        assertEquals(ApproveLabel.All, ConvertRules.approveLabel(d, setOf(1, 2, 3, 4)))
+        assertEquals(ApproveLabel.AllAgain, ConvertRules.approveLabel(detail(status = "done"), setOf(1, 2, 3, 4)))
+        assertEquals(ApproveLabel.Some(1), ConvertRules.approveLabel(d, setOf(2)))
+        assertEquals(ApproveLabel.Some(2), ConvertRules.approveLabel(d, setOf(2, 4)))
         assertNull(ConvertRules.approveChapters(d, setOf(1, 2, 3, 4)))
         assertEquals(listOf(2, 4), ConvertRules.approveChapters(d, setOf(4, 2)))
         assertFalse(ConvertRules.canApprove(d, emptySet()))
@@ -87,7 +94,7 @@ class ConvertRulesTest {
     fun mixedVoiceWarning() {
         val d = detail(converted = listOf(1, 2), bookVoice = "af_heart", bookSpeed = 1.0)
         assertNull(ConvertRules.mixedVoiceWarning(d, setOf(3), "af_heart", 1.0))          // same voice
-        assertTrue(ConvertRules.mixedVoiceWarning(d, setOf(3), "bm_george", 1.0)!!.contains("af_heart at 1.0×"))
+        assertEquals(MixedVoice("af_heart", 1.0), ConvertRules.mixedVoiceWarning(d, setOf(3), "bm_george", 1.0))
         assertTrue(ConvertRules.mixedVoiceWarning(d, setOf(3), "af_heart", 1.2) != null) // other speed
         assertNull(ConvertRules.mixedVoiceWarning(d, setOf(1, 2, 3), "bm_george", 1.0))   // nothing kept
         assertNull(ConvertRules.mixedVoiceWarning(detail(), setOf(1), "bm_george", 1.0))  // no book yet

@@ -41,8 +41,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import app.ebookaudio.R
 import app.ebookaudio.api.ApiClient
 import app.ebookaudio.api.NotPaired
 import app.ebookaudio.graph
@@ -54,6 +57,7 @@ import java.io.IOException
 @Composable
 fun PairScreen(onPaired: () -> Unit, onBack: (() -> Unit)?) {
     val context = LocalContext.current
+    val res = LocalResources.current
     val graph = context.graph
     val scope = rememberCoroutineScope()
     var link by rememberSaveable { mutableStateOf("") }
@@ -71,7 +75,7 @@ fun PairScreen(onPaired: () -> Unit, onBack: (() -> Unit)?) {
         if (busy) return
         val pairing = PairUrl.parse(text)
         if (pairing == null) {
-            error = "That isn't a pairing code. Scan the QR code on the PC's page (http://localhost:8000 on the PC)."
+            error = res.getString(R.string.pair_bad_code)
             return
         }
         busy = true
@@ -80,17 +84,15 @@ fun PairScreen(onPaired: () -> Unit, onBack: (() -> Unit)?) {
             try {
                 val info = ApiClient(pairing.baseUrl, pairing.token, graph.http).info()
                 if (info.apiVersion != 1) {
-                    error = "The PC speaks API version ${info.apiVersion}; this app needs version 1. Update the app."
+                    error = res.getString(R.string.pair_api_version, info.apiVersion)
                 } else {
                     graph.settings.pair(pairing.copy(pcName = info.name))
                     onPaired()
                 }
             } catch (e: NotPaired) {
-                error = "The PC refused this code: it may have made a new token. Scan the QR code again."
+                error = res.getString(R.string.pair_refused)
             } catch (e: IOException) {
-                error = "Can't reach ${pairing.baseUrl}. Is the server running on the PC, and is ZeroTier on " +
-                    "on this phone? If the phone uses another network, pick that address under " +
-                    "\"Other addresses\" on the PC's page and scan again."
+                error = res.getString(R.string.pair_cant_reach, pairing.baseUrl)
             } finally {
                 busy = false
             }
@@ -101,9 +103,11 @@ fun PairScreen(onPaired: () -> Unit, onBack: (() -> Unit)?) {
         contentWindowInsets = WindowInsets(0),
         topBar = {
             TopAppBar(
-                title = { Text("Pair with the PC") },
+                title = { Text(stringResource(R.string.pair_with_pc)) },
                 navigationIcon = {
-                    if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+                    if (onBack != null) IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back))
+                    }
                 },
             )
         },
@@ -113,8 +117,7 @@ fun PairScreen(onPaired: () -> Unit, onBack: (() -> Unit)?) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text("On the PC, start ebook-server and open http://localhost:8000. Scan the QR code shown there. " +
-                "Using ZeroTier? Click the ZeroTier address under \"Other addresses\" first.")
+            Text(stringResource(R.string.pair_intro))
             Surface(
                 modifier = Modifier.widthIn(max = 360.dp).fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(12.dp)),
                 tonalElevation = 2.dp,
@@ -130,16 +133,18 @@ fun PairScreen(onPaired: () -> Unit, onBack: (() -> Unit)?) {
                     }, modifier = Modifier.fillMaxSize())
                 } else {
                     Box(contentAlignment = Alignment.Center) {
-                        Button(onClick = { askCamera.launch(Manifest.permission.CAMERA) }) { Text("Scan with the camera") }
+                        Button(onClick = { askCamera.launch(Manifest.permission.CAMERA) }) {
+                            Text(stringResource(R.string.pair_scan_camera))
+                        }
                     }
                 }
             }
             if (busy) CircularProgressIndicator()
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            Text("Or paste the pairing link (http://…/#token=…):", style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.pair_or_paste), style = MaterialTheme.typography.bodySmall)
             OutlinedTextField(value = link, onValueChange = { link = it }, singleLine = true,
-                label = { Text("Pairing link") }, modifier = Modifier.fillMaxWidth())
-            Button(onClick = { pair(link) }, enabled = link.isNotBlank() && !busy) { Text("Pair") }
+                label = { Text(stringResource(R.string.pair_link)) }, modifier = Modifier.fillMaxWidth())
+            Button(onClick = { pair(link) }, enabled = link.isNotBlank() && !busy) { Text(stringResource(R.string.pair)) }
         }
     }
 }

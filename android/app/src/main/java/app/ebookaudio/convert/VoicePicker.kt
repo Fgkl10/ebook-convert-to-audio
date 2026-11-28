@@ -26,11 +26,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaController
+import app.ebookaudio.R
 import app.ebookaudio.api.ApiClient
 
 /**
@@ -90,7 +92,7 @@ fun VoiceAndSpeed(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.weight(1f)) {
                 OutlinedTextField(
-                    value = voice, onValueChange = {}, readOnly = true, label = { Text("Voice") },
+                    value = voice, onValueChange = {}, readOnly = true, label = { Text(stringResource(R.string.voice)) },
                     trailingIcon = { Icon(Icons.Filled.ArrowDropDown, null) },
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -103,11 +105,11 @@ fun VoiceAndSpeed(
                 }
             }
             IconButton(onClick = { api?.let { sample.toggle(it, voice, book) } }, enabled = api != null) {
-                if (sample.playing == voice) Icon(Icons.Filled.Stop, "Stop the sample")
-                else Icon(Icons.Filled.PlayArrow, "Hear a sample of $voice")
+                if (sample.playing == voice) Icon(Icons.Filled.Stop, stringResource(R.string.stop_sample))
+                else Icon(Icons.Filled.PlayArrow, stringResource(R.string.hear_sample, voice))
             }
         }
-        Text("Speed ${"%.2f".format(speed).trimEnd('0').trimEnd('.')}×")
+        Text(stringResource(R.string.speed_value, "%.2f".format(speed).trimEnd('0').trimEnd('.') + "×"))
         Slider(
             value = speed.toFloat(),
             onValueChange = { onSpeed(Math.round(it * 20) / 20.0) },

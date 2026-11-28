@@ -1,0 +1,227 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Simplified Chinese (zh-Hans). Keep the keys in step with values/strings.xml (A-017). -->
+<resources>
+    <string name="app_name">电子书听书</string>
+
+    <!-- common -->
+    <string name="back">返回</string>
+    <string name="settings">设置</string>
+    <string name="more">更多</string>
+    <string name="cancel">取消</string>
+    <string name="delete">删除</string>
+    <string name="discard">丢弃</string>
+    <string name="yes">是</string>
+    <string name="no">否</string>
+    <string name="loading">正在加载…</string>
+    <string name="play">播放</string>
+    <string name="pause">暂停</string>
+    <string name="pair_with_pc">与电脑配对</string>
+    <string name="cant_reach_pc">无法连接电脑</string>
+    <string name="not_paired_error">此手机尚未与电脑配对：请重新扫描电脑页面上的二维码。</string>
+    <string name="duration_h_min">%1$d 小时 %2$d 分钟</string>
+    <string name="duration_min">%1$d 分钟</string>
+
+    <!-- navigation -->
+    <string name="tab_library">书库</string>
+    <string name="tab_convert">转换</string>
+
+    <!-- library -->
+    <string name="library_title">书库</string>
+    <string name="refresh">刷新</string>
+    <string name="tab_on_phone">本机（%1$d）</string>
+    <string name="tab_on_pc">电脑上</string>
+    <string name="library_cant_reach">无法连接电脑（%1$s）。服务器是否正在运行？此手机是否与电脑在同一网络或 VPN 中？本机上的书仍可播放。</string>
+    <string name="library_empty_phone">本机还没有书。在“电脑上”标签页中打开一本书并下载，即可离线收听。</string>
+    <string name="not_paired_yet">此手机尚未与电脑配对。</string>
+    <string name="pc_library_empty">电脑上的书库是空的。请先在电脑上转换一本书。</string>
+    <plurals name="chapters_count">
+        <item quantity="other">%d 章</item>
+    </plurals>
+    <plurals name="chapters_of_total">
+        <item quantity="other">%1$d / %2$d 章</item>
+    </plurals>
+    <string name="book_converting">转换中</string>
+    <string name="on_phone_count">本机 %1$d 章</string>
+
+    <!-- book -->
+    <string name="delete_from_pc">从电脑删除</string>
+    <plurals name="chapters_on_phone">
+        <item quantity="other">本机已有 %1$d / %2$d 章</item>
+    </plurals>
+    <string name="continue_at">继续 · 第 %1$d 章，%2$s</string>
+    <string name="stop_download">停止下载</string>
+    <string name="download_n">下载 %1$d 章 · %2$s</string>
+    <string name="delete_from_phone">从手机删除</string>
+    <string name="download_progress">%1$s · %2$s / %3$s</string>
+    <string name="waiting_network">正在等待网络…</string>
+    <string name="pc_out_of_reach">无法连接电脑：只能播放本机上的章节。</string>
+    <string name="delete_from_pc_title">从电脑删除？</string>
+    <string name="delete_from_pc_text">这本书及其音频将从电脑上删除，只有重新转换才能恢复。</string>
+    <string name="copy_stays">本机上的副本会保留。</string>
+    <string name="deleted_from_pc">已从电脑删除。本机上的副本会保留。</string>
+    <string name="delete_from_phone_title">从此手机删除？</string>
+    <string name="delete_from_phone_text">这本书仍保留在电脑上，可以再次下载。收听进度会保留。</string>
+    <string name="on_this_phone">已在本机</string>
+    <string name="download">下载</string>
+    <string name="changed_on_pc">电脑上已更新：重新下载</string>
+
+    <!-- pairing -->
+    <string name="pair_bad_code">这不是配对码。请扫描电脑页面上的二维码（在电脑上打开 http://localhost:8000）。</string>
+    <string name="pair_api_version">电脑使用的 API 版本为 %1$d，此应用需要版本 1。请更新应用。</string>
+    <string name="pair_refused">电脑拒绝了此配对码：它可能已生成新的令牌。请重新扫描二维码。</string>
+    <string name="pair_cant_reach">无法连接 %1$s。电脑上的服务器是否正在运行？此手机能否访问该地址（同一 Wi-Fi，或 ZeroTier 等 VPN）？如果手机使用其他网络，请在电脑页面的“其他地址”中选择对应地址，然后重新扫描。</string>
+    <string name="pair_intro">在电脑上启动 ebook-server 并打开 http://localhost:8000，然后扫描页面上显示的二维码。使用 ZeroTier 等 VPN？请先在“其他地址”中点击它的地址。</string>
+    <string name="pair_scan_camera">用相机扫描</string>
+    <string name="pair_or_paste">或粘贴配对链接（http://…/#token=…）：</string>
+    <string name="pair_link">配对链接</string>
+    <string name="pair">配对</string>
+
+    <!-- player -->
+    <string name="player">播放器</string>
+    <string name="show_cover">显示封面</string>
+    <string name="show_text">显示文字</string>
+    <string name="larger_text">放大文字</string>
+    <string name="smaller_text">缩小文字</string>
+    <string name="nothing_playing">没有正在播放的内容。请在书库中选择一本书。</string>
+    <string name="loading_text">正在加载文字…</string>
+    <string name="no_text">本章没有文字。</string>
+    <string name="sleep">定时</string>
+    <string name="sleep_chapter_end_short">本章末</string>
+    <plurals name="sleep_minutes">
+        <item quantity="other">%d 分钟</item>
+    </plurals>
+    <string name="sleep_other">其他…</string>
+    <string name="sleep_end_of_chapter">播完本章</string>
+    <string name="sleep_turn_off">关闭</string>
+    <string name="sleep_timer">睡眠定时</string>
+    <string name="minutes">分钟数</string>
+    <string name="start">开始</string>
+    <string name="sleep_in">%1$s 后停止</string>
+    <string name="sleep_at_chapter_end">播完本章后停止</string>
+    <string name="sleep_at_chapter_end_left">播完本章后停止（%1$s）</string>
+    <string name="previous_chapter">上一章</string>
+    <string name="next_chapter">下一章</string>
+    <string name="back_10">后退 10 秒</string>
+    <string name="forward_30">前进 30 秒</string>
+    <string name="sentence_previous">‹ 上一句</string>
+    <string name="sentence_next">下一句 ›</string>
+    <string name="speed_value">倍速 %1$s</string>
+
+    <!-- settings -->
+    <string name="settings_pc">电脑</string>
+    <string name="pc_at">%1$s（%2$s）</string>
+    <string name="not_paired">未配对</string>
+    <string name="pair_again">重新配对</string>
+    <string name="unpair">取消配对</string>
+    <string name="storage">存储空间</string>
+    <string name="storage_used">本机上的书占用 %1$s。</string>
+    <string name="delete_all_downloads">删除全部下载</string>
+    <string name="unpair_title">取消与电脑的配对？</string>
+    <string name="unpair_text">本机上的书仍可播放。要再次使用电脑，请扫描它的二维码。</string>
+    <string name="delete_all_title">删除全部下载？</string>
+    <string name="delete_all_text">书仍保留在电脑上。收听进度会保留。</string>
+    <string name="language">语言</string>
+    <string name="language_system">跟随手机语言</string>
+    <string name="bg_title">熄屏播放</string>
+    <string name="bg_intro">有些手机为了省电会停止后台应用。为了让书能持续播放：</string>
+    <string name="bg_steps_xiaomi">1. 应用信息 → 省电策略 → 无限制\n2. 应用信息 → 自启动 → 开启\n3. 在最近任务中，将应用卡片下拉锁定</string>
+    <string name="bg_steps_huawei">1. 设置 → 电池 → 启动管理 → 本应用：关闭“自动管理”，并允许后台活动\n2. 在最近任务中，将应用卡片下拉锁定</string>
+    <string name="bg_steps_samsung">1. 应用信息 → 电池 → 不受限制\n2. 设置 → 电池 → 后台使用限制：不要把本应用加入“休眠应用”或“深度休眠应用”</string>
+    <string name="bg_steps_oppo">1. 应用信息 → 耗电管理 → 允许后台行为和自动启动\n2. 在最近任务中锁定应用卡片</string>
+    <string name="bg_steps_vivo">1. 设置 → 电池 → 后台耗电管理 → 本应用 → 允许\n2. 应用信息 → 权限 → 自启动 → 开启\n3. 在最近任务中锁定应用卡片</string>
+    <string name="bg_steps_other">1. 应用信息 → 电池 → 不受限制（或“不优化”）\n2. 如果手机有自启动或后台应用设置，也请在那里允许本应用</string>
+    <string name="open_app_info">打开应用信息</string>
+
+    <!-- convert -->
+    <string name="convert_title">在电脑上转换</string>
+    <string name="add_book">添加书籍</string>
+    <string name="convert_pair_hint">与电脑配对后，即可从此手机转换书籍。</string>
+    <string name="convert_cant_reach">无法连接电脑（%1$s）。服务器是否正在运行？此手机是否与电脑在同一网络或 VPN 中？</string>
+    <string name="conversions_running">正在转换</string>
+    <string name="no_conversions">没有正在进行的转换。</string>
+    <string name="cleaned_to_review">已清理，待审阅</string>
+    <string name="cleaned_empty">这里还没有内容。添加一本书，在电脑上清理它。</string>
+    <string name="approved">已批准</string>
+    <string name="approved_empty">还没有已批准的书。</string>
+    <string name="confirm_cancel_conversion">取消此次转换？已完成的章节会保留在书库中；再次批准会从中断处继续。</string>
+    <string name="confirm_discard_draft">丢弃这本已清理的书？上传的文件和清理后的版本将从电脑上删除。已转换的书会保留在书库中。</string>
+    <string name="job_progress">%1$d/%2$d 句 · %3$s%%</string>
+    <string name="job_queued">排队中</string>
+    <string name="job_running">运行中</string>
+    <string name="job_done">已完成</string>
+    <string name="job_error">失败</string>
+    <string name="job_cancelled">已取消</string>
+    <string name="draft_chapters">%1$d 章</string>
+    <string name="draft_checks">%1$d 处待检查</string>
+    <string name="review">审阅</string>
+    <string name="review_again">重新审阅</string>
+    <string name="listen">收听</string>
+    <string name="status_cleaning">清理中</string>
+    <string name="status_review">待审阅</string>
+    <string name="status_queued">等待转换</string>
+    <string name="status_converting">转换中</string>
+    <string name="status_done">已转换</string>
+    <string name="status_error">失败</string>
+    <string name="status_partial">已转换 %1$d / %2$d 章</string>
+
+    <!-- review -->
+    <string name="not_cleaned_yet">这本书还没有清理。</string>
+    <string name="check_by_hand">需手动检查（%1$d）</string>
+    <string name="report_removed">已移除</string>
+    <string name="report_toc_ignored">已忽略的目录项</string>
+    <string name="report_notes">备注</string>
+    <string name="details_count">%1$s（%2$d）</string>
+    <string name="chapters_header">章节（%1$d）</string>
+    <string name="pick_all">全选</string>
+    <string name="pick_none">全不选</string>
+    <string name="pick_new">未转换</string>
+    <string name="tap_chapter_hint">点按章节可阅读其文字。</string>
+    <string name="chapter_chars">%1$s 字</string>
+    <string name="chapter_converted">✓ 已转换</string>
+    <string name="mixed_voice">本书其他章节使用 %1$s、%2$s× 倍速；全书将混用不同声音。</string>
+    <string name="approve_all_again">全部重新转换</string>
+    <string name="approve_all">批准并转换</string>
+    <plurals name="approve_some">
+        <item quantity="other">转换 %d 章</item>
+    </plurals>
+    <string name="confirm_discard_review">丢弃这本已清理的书？上传的文件和清理后的版本将从电脑上删除。</string>
+
+    <!-- upload -->
+    <string name="pick_file_hint">请选择 EPUB、PDF 或 TXT 文件。</string>
+    <string name="only_formats">只能转换 .epub、.pdf 和 .txt 格式的书。</string>
+    <string name="choose_file">选择文件</string>
+    <string name="choose_another">选择其他文件</string>
+    <string name="already_cleaned">已清理（.std.epub）</string>
+    <string name="already_cleaned_hint">来自电脑的清理工具或 Sigil：立即转换，无需审阅。</string>
+    <string name="skip_review">跳过审阅</string>
+    <string name="skip_review_hint">清理后直接转换，不先检查章节。</string>
+    <string name="ocr_title">OCR（扫描版 PDF）</string>
+    <string name="ocr_auto">自动</string>
+    <string name="ocr_always">始终</string>
+    <string name="ocr_never">从不</string>
+    <string name="ocr_hint">OCR 用于识别扫描版 PDF。EPUB 和 TXT 文件自带文字，无需 OCR。</string>
+    <string name="cleaned_is_epub">已清理的书必须是 .epub（.std.epub）。</string>
+    <string name="upload_convert">上传并转换</string>
+    <string name="upload_clean_convert">上传、清理并转换</string>
+    <string name="upload_clean">上传并清理</string>
+    <string name="uploading">正在上传… %1$s</string>
+    <string name="uploading_of">正在上传… %1$s / %2$s</string>
+    <string name="keep_open">上传完成前请不要离开此页面。</string>
+    <string name="upload_failed">上传失败</string>
+    <string name="cant_read">无法读取 %1$s</string>
+    <string name="not_cleaned_title">尚未清理</string>
+    <string name="not_cleaned_text">“%1$s”尚未清理，无法直接转换。现在清理吗？它会出现在“已清理，待审阅”中。</string>
+    <string name="clean_it">清理</string>
+
+    <!-- voice picker -->
+    <string name="voice">声音</string>
+    <string name="stop_sample">停止试听</string>
+    <string name="hear_sample">试听 %1$s</string>
+
+    <!-- downloads (notification) -->
+    <string name="dl_channel">下载</string>
+    <string name="dl_title">正在下载书籍</string>
+    <string name="dl_downloading">正在下载</string>
+    <string name="dl_failed">下载失败：%1$s</string>
+    <string name="dl_bad_data">电脑返回的数据有误</string>
+</resources>

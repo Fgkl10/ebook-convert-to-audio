@@ -27,13 +27,8 @@ fun AppTheme(content: @Composable () -> Unit) {
     MaterialTheme(colorScheme = scheme, content = content)
 }
 
-/** Text for times and sizes. */
+/** Text for times and sizes that needs no translation (durations in words: durationText in Texts.kt). */
 object Format {
-    fun duration(ms: Long): String {
-        val minutes = (ms + 30_000) / 60_000
-        return if (minutes >= 60) "${minutes / 60} h ${minutes % 60} min" else "$minutes min"
-    }
-
     fun clock(ms: Long): String {
         val s = (ms.coerceAtLeast(0)) / 1000
         val h = s / 3600

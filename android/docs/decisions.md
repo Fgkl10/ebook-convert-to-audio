@@ -33,6 +33,11 @@ Consequences: trade-offs we accept
 | A-012 | Uploads streamed from the ContentResolver, resendable | api | |
 | A-013 | "Open with" / Share for book files | ui | |
 | A-014 | Delete from PC on the phone | library | uses `DELETE /books/{id}` |
+| A-015 | Read-along in the player screen | player | same rules as desktop D-039 |
+| A-016 | Sleep timer in the playback service | player | |
+| A-017 | English, Simplified and Traditional Chinese | all screens | desktop D-040 |
+| A-018 | Background-playback steps per phone maker | ui | generalizes A-007's HyperOS note |
+| A-019 | Language choice in Settings, through AppCompat | ui | amends A-017 |
 
 ## A-001 Kotlin + Jetpack Compose, one `:app` module
 Status: Accepted · Milestone: M4a
@@ -107,7 +112,8 @@ chapters: the downloaded file if present, else the streamed URL (`?token=`). See
 position (chapter + ms per book) is saved on play/pause, on chapter change, every 5 s while playing, and on destroy.
 Why: Media3 gives the media notification, lock screen, Bluetooth and foreground-service handling for free.
 Consequences: The service is exported (required for system controllers). HyperOS may still kill it unless the user
-sets battery "No restrictions" and Autostart; the Settings screen explains this and opens App info.
+sets battery "No restrictions" and Autostart; the Settings screen explains this and opens App info. Other makers
+have similar settings: the Settings screen shows the steps for the phone's maker (A-018).
 
 ## A-008 No Google services: QR codes with CameraX + ZXing
 Status: Accepted · Milestone: M4a
@@ -225,3 +231,57 @@ Decision:
 Why: A timer in the UI would stop when the screen is off. The fade avoids an abrupt cut while falling asleep.
 Consequences: `pauseAtEndOfMediaItems`, `DEFAULT_SESSION_COMMANDS` and `DEFAULT_PLAYER_COMMANDS` are Media3
 `@UnstableApi`, opted into in the service. No sleep timer on the web page (not asked for).
+
+## A-017 English, Simplified and Traditional Chinese
+Status: Accepted · Milestone: M6a
+Context: The user asked for Simplified and Traditional Chinese support. For now that means the interface; Chinese
+voices are a later milestone. The app's text was hard-coded English in Compose.
+Decision:
+- Every user-visible string moved to `res/values/strings.xml`, with translations in `values-b+zh+Hans` and
+  `values-b+zh+Hant`. Script qualifiers, not region ones (`zh-rCN`, `zh-rTW`): Android 7+ resolves zh-CN/SG to Hans
+  and zh-TW/HK/MO to Hant, so one folder covers each script. Traditional uses Taiwan wording.
+- The app follows the phone's language. On Android 13+ the system's per-app language setting lists the three
+  languages, from `generateLocaleConfig`. (At first there was no in-app picker; A-019 added one.)
+- `ConvertRules` returns values instead of English text (`StatusLabel`, `ApproveLabel`, `MixedVoice`), so it stays a
+  pure, tested function; `ConvertText.kt` maps them to resources. `Format.duration` became the composable
+  `durationText`.
+- Screens read strings in callbacks through `LocalResources.current` (lint flags `LocalContext.getString` as not
+  configuration-aware). `Resources.errorText` shows "not paired" in the app's language and otherwise the message
+  from the PC or the network.
+- Shared labels use the same words as the web page (D-040), e.g. "Other addresses" → 其他地址 / 其他位址, which the
+  pairing messages point to.
+Why: Android resources are the standard way: the system picks the language, lint checks completeness, and
+`pluralStringResource` handles English plurals (Chinese has one form).
+Consequences: Messages from the PC (errors, draft/job messages, cleaning reports) and OkHttp's network errors stay
+English. Adding a string means adding it to all three files, or lint fails the build.
+
+## A-018 Background-playback steps per phone maker
+Status: Accepted · Milestone: M6a
+Context: The Settings screen explained only HyperOS's battery settings (the test phone). The user wants the project
+to work on any Android phone. Each maker hides "let this app run in the background" somewhere else.
+Decision: `BackgroundTips.vendorOf(Build.MANUFACTURER, Build.BRAND)` picks one of Xiaomi (also Redmi, POCO),
+Huawei/Honor, Samsung, OPPO (also OnePlus, realme), vivo (also iQOO) or Other. The section "Playing with the screen
+off" shows a general line plus that maker's steps (a string per vendor) and keeps the **Open app info** button. The
+README has the same table and links dontkillmyapp.com.
+Why: Showing only the relevant steps is shorter than a list for every maker; the brand fallback catches phones whose
+manufacturer field is unusual. A pure function is unit-tested (`BackgroundTipsTest`).
+Consequences: The steps follow each vendor's documented settings and change between OS versions; only the Xiaomi
+steps were tried on a real phone. Unknown makers get the stock-Android steps.
+
+## A-019 Language choice in Settings, through AppCompat
+Status: Accepted · Milestone: M6a · Amends A-017
+Context: A-017 left the language to the system. On the test phone (HyperOS 2, Android 14) the user could not find
+the system's per-app language screen, and asked for a choice inside the app.
+Decision: Settings has a **Language** section: Phone's language / English / 简体中文 / 繁體中文. The language names are
+written in their own script and not translated, so each can be found whatever the current language. A tap calls
+`AppCompatDelegate.setApplicationLocales` (empty list = the phone's language), which recreates the activity in the
+new language. `AppLanguage.fromTags` maps the current locale list back to a choice, and treats zh-TW/HK/MO as
+Traditional because the system setting may store a region. To make this work on Android 8–12, `MainActivity`
+became an `AppCompatActivity` (theme parent `Theme.AppCompat.DayNight.NoActionBar`; Compose still draws
+everything), and the manifest enables AppCompat's `AppLocalesMetadataHolderService` with `autoStoreLocales`.
+Why: AndroidX AppCompat (open source, not a Google service) is the standard way to get one API for every Android
+version. On 13+ it writes through to the system's own setting, so the two never disagree. A hand-made
+`attachBaseContext` wrapper would need its own storage and would not update the system setting.
+Consequences: A new dependency, `androidx.appcompat:appcompat` 1.8.0. On Android 8–12 the choice reaches the
+activity only. The download notification there (built from the application context) and Media3's notification
+stay in the phone's language.

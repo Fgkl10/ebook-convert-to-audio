@@ -42,15 +42,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import app.ebookaudio.R
 import app.ebookaudio.api.ApiClient
 import app.ebookaudio.api.Book
 import app.ebookaudio.api.BookSummary
 import app.ebookaudio.api.NotPaired
 import app.ebookaudio.graph
 import app.ebookaudio.ui.Format
+import app.ebookaudio.ui.durationText
 import coil3.compose.AsyncImage
 import java.io.IOException
 
@@ -59,6 +64,7 @@ import java.io.IOException
 @Composable
 fun LibraryScreen(onOpen: (String) -> Unit, onSettings: () -> Unit, onPair: () -> Unit) {
     val graph = LocalContext.current.graph
+    val res = LocalResources.current
     var local by remember { mutableStateOf(graph.library.books()) }
     var tab by rememberSaveable { mutableIntStateOf(if (local.isEmpty()) 1 else 0) }
     var api by remember { mutableStateOf<ApiClient?>(null) }
@@ -82,10 +88,9 @@ fun LibraryScreen(onOpen: (String) -> Unit, onSettings: () -> Unit, onPair: () -
             error = null
         } catch (e: NotPaired) {
             notPaired = true
-            error = e.message
+            error = res.getString(R.string.not_paired_error)
         } catch (e: IOException) {
-            error = "Can't reach the PC (${api?.baseUrl}). Is the server running, and ZeroTier on? " +
-                "Books on this phone still play."
+            error = res.getString(R.string.library_cant_reach, api?.baseUrl.orEmpty())
         } finally {
             loading = false
         }
@@ -95,23 +100,26 @@ fun LibraryScreen(onOpen: (String) -> Unit, onSettings: () -> Unit, onPair: () -
         contentWindowInsets = WindowInsets(0),
         topBar = {
             TopAppBar(
-                title = { Text("Library") },
+                title = { Text(stringResource(R.string.library_title)) },
                 actions = {
-                    IconButton(onClick = { local = graph.library.books(); refresh++ }) { Icon(Icons.Filled.Refresh, "Refresh") }
-                    IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, "Settings") }
+                    IconButton(onClick = { local = graph.library.books(); refresh++ }) {
+                        Icon(Icons.Filled.Refresh, stringResource(R.string.refresh))
+                    }
+                    IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, stringResource(R.string.settings)) }
                 },
             )
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             PrimaryTabRow(selectedTabIndex = tab) {
-                Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("On this phone (${local.size})") })
-                Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("On the PC") })
+                Tab(selected = tab == 0, onClick = { tab = 0 },
+                    text = { Text(stringResource(R.string.tab_on_phone, local.size)) })
+                Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text(stringResource(R.string.tab_on_pc)) })
             }
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
             if (tab == 0) {
                 if (local.isEmpty()) {
-                    Message("No books on this phone yet. Open one on the PC tab and download it to listen offline.")
+                    Message(stringResource(R.string.library_empty_phone))
                 }
                 LazyColumn {
                     items(local, key = { it.id }) { book ->
@@ -127,13 +135,13 @@ fun LibraryScreen(onOpen: (String) -> Unit, onSettings: () -> Unit, onPair: () -
             } else {
                 if (notPaired) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(error ?: "This phone isn't paired with a PC yet.")
-                        Button(onClick = onPair) { Text("Pair with the PC") }
+                        Text(error ?: stringResource(R.string.not_paired_yet))
+                        Button(onClick = onPair) { Text(stringResource(R.string.pair_with_pc)) }
                     }
                 } else {
                     error?.let { Message(it, isError = true) }
                     val list = remote.orEmpty()
-                    if (remote != null && list.isEmpty()) Message("The PC's library is empty. Convert a book on the PC first.")
+                    if (remote != null && list.isEmpty()) Message(stringResource(R.string.pc_library_empty))
                     LazyColumn {
                         items(list, key = { it.id }) { book ->
                             val onPhone = local.firstOrNull { it.id == book.id }
@@ -152,16 +160,24 @@ fun LibraryScreen(onOpen: (String) -> Unit, onSettings: () -> Unit, onPair: () -
     }
 }
 
-private fun phoneLine(book: Book, bytes: Long) =
-    "${book.chapters.size} chapters · ${Format.duration(book.durationMs)} · ${Format.size(bytes)}"
+@Composable
+private fun phoneLine(book: Book, bytes: Long) = listOf(
+    pluralStringResource(R.plurals.chapters_count, book.chapters.size, book.chapters.size),
+    durationText(book.durationMs),
+    Format.size(bytes),
+).joinToString(" · ")
 
+@Composable
 private fun pcLine(book: BookSummary, onPhone: Book?): String {
-    val chapters = book.chaptersTotal?.let { total ->
-        if (book.chapters < total) "${book.chapters} of $total chapters" else "$total chapters"
-    } ?: "${book.chapters} chapters"
-    val parts = mutableListOf(chapters, Format.duration(book.durationMs), Format.size(book.sizeBytes))
-    if (book.converting) parts += "converting"
-    if (onPhone != null) parts += "${onPhone.chapters.size} on phone"
+    val total = book.chaptersTotal
+    val chapters = when {
+        total != null && book.chapters < total ->
+            pluralStringResource(R.plurals.chapters_of_total, total, book.chapters, total)
+        else -> (total ?: book.chapters).let { pluralStringResource(R.plurals.chapters_count, it, it) }
+    }
+    val parts = mutableListOf(chapters, durationText(book.durationMs), Format.size(book.sizeBytes))
+    if (book.converting) parts += stringResource(R.string.book_converting)
+    if (onPhone != null) parts += stringResource(R.string.on_phone_count, onPhone.chapters.size)
     return parts.joinToString(" · ")
 }
 

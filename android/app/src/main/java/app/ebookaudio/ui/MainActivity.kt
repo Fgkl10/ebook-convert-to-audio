@@ -5,7 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -33,12 +33,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.core.content.IntentCompat
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import app.ebookaudio.R
 import app.ebookaudio.convert.ConvertScreen
 import app.ebookaudio.convert.ReviewScreen
 import app.ebookaudio.convert.UploadScreen
@@ -52,7 +54,8 @@ import app.ebookaudio.player.PlayerScreen
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 
-class MainActivity : ComponentActivity() {
+/** An AppCompatActivity so the in-app language choice also applies on Android 8–12 (A-019). */
+class MainActivity : AppCompatActivity() {
     private lateinit var connection: PlayerConnection
 
     /** A book file handed in by "Open with" or Share (A-013), until the upload screen takes it. */
@@ -186,11 +189,11 @@ fun AppNav(connection: PlayerConnection, incoming: MutableStateFlow<Uri?>) {
                 NavigationBar(windowInsets = WindowInsets(0)) {
                     NavigationBarItem(
                         selected = route == "library", onClick = { nav.toTab("library") },
-                        icon = { Icon(Icons.AutoMirrored.Filled.LibraryBooks, null) }, label = { Text("Library") },
+                        icon = { Icon(Icons.AutoMirrored.Filled.LibraryBooks, null) }, label = { Text(stringResource(R.string.tab_library)) },
                     )
                     NavigationBarItem(
                         selected = route == "convert", onClick = { nav.toTab("convert") },
-                        icon = { Icon(Icons.Filled.Transform, null) }, label = { Text("Convert") },
+                        icon = { Icon(Icons.Filled.Transform, null) }, label = { Text(stringResource(R.string.tab_convert)) },
                     )
                 }
             }

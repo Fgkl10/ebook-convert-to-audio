@@ -7,7 +7,7 @@ plugins {
 android {
     namespace = "app.ebookaudio"
     // The newest AndroidX libraries need the Android 17.2 SDK (API 37.2) to compile against. targetSdk 37 only
-    // changes behavior on Android 16+; the phone runs Android 15 (HyperOS 2), and minSdk 26 is Android 8.
+    // changes behavior on Android 16+; the app runs on any Android phone from Android 8 (minSdk 26).
     compileSdk {
         version = release(37) { minorApiLevel = 2 }
     }
@@ -32,6 +32,11 @@ android {
     buildFeatures {
         compose = true
     }
+    // English, Simplified and Traditional Chinese (A-017): the generated locale config lists them for the per-app
+    // language setting on Android 13+; res/resources.properties names English as the default.
+    androidResources {
+        generateLocaleConfig = true
+    }
     testOptions {
         unitTests.isReturnDefaultValues = true
     }
@@ -44,6 +49,7 @@ android {
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.appcompat) // in-app language choice on Android 8–12 (A-019)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)

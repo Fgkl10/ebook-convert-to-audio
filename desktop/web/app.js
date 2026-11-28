@@ -18,8 +18,47 @@ const plainFetch = window.fetch.bind(window);
 window.fetch = (url, opts = {}) => TOKEN && String(url).startsWith(API)
   ? plainFetch(url, { ...opts, headers: { ...(opts.headers || {}), Authorization: `Bearer ${TOKEN}` } })
   : plainFetch(url, opts);
-const fmt = (ms) => { const s = Math.round(ms/1000), h = Math.floor(s/3600), m = Math.floor(s%3600/60); return h ? `${h}h ${m}m` : `${m}m ${s%60}s`; };
-const esc = (t) => t.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+// ---------------- languages (D-040): English, Simplified and Traditional Chinese. The text lives in
+// /static/i18n/<lang>.json; t(key, {name: …}) fills {name}. A missing key falls back to English, then to the key.
+const LANGS = ['en', 'zh-Hans', 'zh-Hant'];
+let LANG = 'en', STRINGS = {}, FALLBACK = {};
+function pickLang() {
+  try { const saved = localStorage.getItem('ebookAudioLang'); if (LANGS.includes(saved)) return saved; }
+  catch (e) { /* storage blocked: follow the browser */ }
+  for (const l of navigator.languages || [navigator.language || 'en']) {
+    const x = String(l).toLowerCase();
+    if (x.startsWith('zh')) return /hant|-tw|-hk|-mo/.test(x) ? 'zh-Hant' : 'zh-Hans';
+    if (x.startsWith('en')) return 'en';
+  }
+  return 'en';
+}
+const t = (key, vars = {}) => String(STRINGS[key] ?? FALLBACK[key] ?? key)
+  .replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m));
+async function loadStrings() {
+  LANG = pickLang();
+  const get = async (l) => { try { return await (await fetch(`/static/i18n/${l}.json`)).json(); } catch (e) { return {}; } };
+  FALLBACK = await get('en');
+  STRINGS = LANG === 'en' ? FALLBACK : await get(LANG);
+  document.documentElement.lang = LANG;
+  document.title = t('app.name');
+  document.querySelectorAll('[data-i18n]').forEach(el => el.textContent = t(el.dataset.i18n));
+  document.querySelectorAll('[data-i18n-html]').forEach(el => el.innerHTML = t(el.dataset.i18nHtml));  // our own files
+  document.querySelectorAll('[data-i18n-title]').forEach(el => el.title = t(el.dataset.i18nTitle));
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => el.placeholder = t(el.dataset.i18nPlaceholder));
+  document.querySelectorAll('[data-i18n-aria]').forEach(el => el.setAttribute('aria-label', t(el.dataset.i18nAria)));
+  document.querySelectorAll('#langs [data-lang]').forEach(b => {
+    b.classList.toggle('on', b.dataset.lang === LANG);
+    b.setAttribute('aria-pressed', b.dataset.lang === LANG);
+    // the choice is kept in this browser; a reload redraws every list in the new language
+    b.onclick = () => { try { localStorage.setItem('ebookAudioLang', b.dataset.lang); } catch (e) { /* this visit */ } location.reload(); };
+  });
+}
+
+const fmt = (ms) => {
+  const s = Math.round(ms/1000), h = Math.floor(s/3600), m = Math.floor(s%3600/60);
+  return h ? t('dur.hm', { h, m }) : t('dur.ms', { m, s: s % 60 });
+};
+const esc = (s) => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 // Every API error is JSON {"detail": ...}; a 422 (wrong field type) has a list there.
 async function errText(r) {
@@ -31,7 +70,7 @@ const getJSON = async (path) => (await fetch(API + path)).json();
 async function loadInfo() {
   const r = await fetch(`${API}/info`);
   if (r.status === 401) {  // another device without (or with an old) token
-    $('#url').textContent = 'not paired';
+    $('#url').textContent = t('app.not_paired');
     $('#unpaired').hidden = false;
     return;
   }
@@ -54,7 +93,7 @@ function pickAddress(i) {
   $('#url').textContent = a.url;
   $('#qr').innerHTML = a.qr_svg || '';
   $('#addrs').innerHTML = addrs.map((x, k) => `<button type="button" class="addr${k === i ? ' on' : ''}" data-k="${k}"
-    aria-pressed="${k === i}">${esc(x.address)} <span class="muted">${k === 0 && x.adapter !== 'typed' ? 'default · ' : ''}${esc(x.adapter || 'other')}</span></button>`).join('');
+    aria-pressed="${k === i}">${esc(x.address)} <span class="muted">${k === 0 && x.adapter !== 'typed' ? `${t('addr.default')} · ` : ''}${esc(x.adapter || t('addr.other'))}</span></button>`).join('');
   document.querySelectorAll('#addrs .addr').forEach(b => b.onclick = () => pickAddress(+b.dataset.k));
   try {
     localStorage.setItem('ebookAudioAddress', JSON.stringify(
@@ -95,7 +134,7 @@ document.querySelectorAll('.hear').forEach(btn => btn.onclick = async () => {
   sampleBtn = btn; btn.textContent = '…';  // the first sample of a session also loads the model (~10 s)
   sampleAudio.src = tok(`${API}/voices/${$(btn.dataset.for).value}/sample`);
   try { await sampleAudio.play(); if (sampleBtn === btn) btn.textContent = '■'; }
-  catch (e) { resetSample(); alert('Could not play the voice sample.'); }
+  catch (e) { resetSample(); alert(t('sample.error')); }
 });
 const goTab = (tab) => { show('#home'); location.hash = tab; showTab(); };
 
@@ -105,20 +144,21 @@ async function loadBooks() {
     <div class="book" data-id="${b.id}">
       ${b.cover ? `<img class="cover" src="${tok(`${API}/books/${b.id}/files/${b.cover}`)}">` : `<div class="cover"></div>`}
       <div class="t">${esc(b.title)}</div>
-      <div class="muted">${esc(b.author||'')}<br>${fmt(b.duration_ms)} · ${b.chapters_total && b.chapters < b.chapters_total ? `${b.chapters} of ${b.chapters_total}` : b.chapters} ch${b.converting ? ' · converting…' : ''}</div>
-    </div>`).join('') : '<div class="muted">No books yet.</div>';
+      <div class="muted">${esc(b.author||'')}<br>${fmt(b.duration_ms)} · ${t('library.chapters', { n: b.chapters_total && b.chapters < b.chapters_total ? t('library.of', { n: b.chapters, total: b.chapters_total }) : b.chapters })}${b.converting ? ` · ${t('library.converting')}` : ''}</div>
+    </div>`).join('') : `<div class="muted">${t('library.empty')}</div>`;
   document.querySelectorAll('.book').forEach(el => el.onclick = () => openBook(el.dataset.id));
 }
 
-const DRAFT_STATUS = { cleaning: 'cleaning', review: 'ready for review', queued: 'waiting to convert',
-  converting: 'converting', done: 'converted', error: 'failed' };
+const draftStatus = (s) => ({ cleaning: t('status.cleaning'), review: t('status.review'), queued: t('status.queued'),
+  converting: t('status.converting'), done: t('status.done'), error: t('status.error') })[s] || s;
+const jobStatus = (s) => ({ queued: t('job.queued'), running: t('job.running'), done: t('job.done'),
+  error: t('job.error'), cancelled: t('job.cancelled') })[s] || s;
 
 const CLEAN_STATES = ['cleaning', 'review', 'error'];
 
 function renderDrafts(drafts) {
-  draftList('#drafts', drafts.filter(d => CLEAN_STATES.includes(d.status)), 'Nothing here. Add a book above.');
-  draftList('#approved', drafts.filter(d => !CLEAN_STATES.includes(d.status)),
-            'No approved books yet. Approve one on the Clean page, or upload a cleaned book above.');
+  draftList('#drafts', drafts.filter(d => CLEAN_STATES.includes(d.status)), t('clean.empty'));
+  draftList('#approved', drafts.filter(d => !CLEAN_STATES.includes(d.status)), t('convert.approved_empty'));
   document.querySelectorAll('[data-review]').forEach(el => el.onclick = () => openReview(el.dataset.review));
   document.querySelectorAll('[data-open]').forEach(el => el.onclick = () => openBook(el.dataset.open));
   document.querySelectorAll('[data-discard]').forEach(el => el.onclick = () => discard(el.dataset.discard));
@@ -127,8 +167,7 @@ function renderDrafts(drafts) {
 
 // Stop a conversion (D-038): the server keeps running; finished chapters and sentences are kept for a resume.
 async function cancelConversion(path) {
-  if (!confirm('Cancel this conversion? Finished chapters stay in the library; approving again resumes ' +
-               'where it stopped.')) return;
+  if (!confirm(t('confirm.cancel'))) return;
   const r = await fetch(`${API}${path}/cancel`, { method: 'POST' });
   if (!r.ok) alert(await errText(r));
   pollNow();
@@ -137,16 +176,16 @@ async function cancelConversion(path) {
 function draftList(target, drafts, empty) {
   $(target).innerHTML = drafts.length ? `<div class="card">${drafts.map(d => {
     const pct = d.total ? (100*d.done/d.total).toFixed(0) : 0;
-    const info = d.chapters ? ` · ${d.chapters} ch${d.checks ? ` · <b>${d.checks} to check</b>` : ''}` : '';
+    const info = d.chapters ? ` · ${t('draft.chapters', { n: d.chapters })}${d.checks ? ` · <b>${t('draft.checks', { n: d.checks })}</b>` : ''}` : '';
     // "converted 3 of 12" when only some chapters are in the library (D-035)
     const some = d.converted && d.converted.length && d.converted.length < d.chapters
-      ? `converted ${d.converted.length} of ${d.chapters}` : '';
-    const label = some && d.status === 'done' ? some : (DRAFT_STATUS[d.status] || d.status) + (some ? ` · ${some}` : '');
+      ? t('draft.partial', { n: d.converted.length, total: d.chapters }) : '';
+    const label = some && d.status === 'done' ? some : draftStatus(d.status) + (some ? ` · ${some}` : '');
     const btns = [
-      ['queued', 'converting'].includes(d.status) ? `<button data-cancel="${d.id}">Cancel</button>` : '',
-      ['review', 'done'].includes(d.status) ? `<button data-review="${d.id}">Review</button>` : '',
-      d.status === 'done' && d.book_id ? `<button data-open="${d.book_id}">Listen</button>` : '',
-      ['review', 'done', 'error'].includes(d.status) ? `<button data-discard="${d.id}">Discard</button>` : '',
+      ['queued', 'converting'].includes(d.status) ? `<button data-cancel="${d.id}">${t('btn.cancel')}</button>` : '',
+      ['review', 'done'].includes(d.status) ? `<button data-review="${d.id}">${t('btn.review')}</button>` : '',
+      d.status === 'done' && d.book_id ? `<button data-open="${d.book_id}">${t('btn.listen')}</button>` : '',
+      ['review', 'done', 'error'].includes(d.status) ? `<button data-discard="${d.id}">${t('btn.discard')}</button>` : '',
     ].join(' ');
     return `<div class="job"><div class="row" style="justify-content:space-between"><b>${esc(d.file)}</b>
         <span class="muted">${label}${info}</span></div>
@@ -164,10 +203,10 @@ async function refresh() {
     const active = jobs.filter(j => !['done', 'cancelled'].includes(j.status) || Date.now()/1000 - j.created < 600);
     $('#jobs').innerHTML = active.length ? `<div class="card">${active.map(j => {
       const pct = j.total ? (100*j.done/j.total).toFixed(1) : 0;
-      const stop = ['queued', 'running'].includes(j.status) ? `<button data-canceljob="${j.id}">Cancel</button>` : '';
-      return `<div class="job"><div class="row" style="justify-content:space-between"><b>${esc(j.file)}</b><span class="muted">${j.status}${j.total?` · ${j.done}/${j.total} sentences · ${pct}%`:''}</span></div>
+      const stop = ['queued', 'running'].includes(j.status) ? `<button data-canceljob="${j.id}">${t('btn.cancel')}</button>` : '';
+      return `<div class="job"><div class="row" style="justify-content:space-between"><b>${esc(j.file)}</b><span class="muted">${jobStatus(j.status)}${j.total?` · ${t('job.progress', { done: j.done, total: j.total, pct })}`:''}</span></div>
         <div class="row" style="justify-content:space-between"><span class="muted">${esc(j.error || j.message)}</span><span>${stop}</span></div>${j.status==='running'?`<div class="bar"><div style="width:${pct}%"></div></div>`:''}</div>`;
-    }).join('')}</div>` : '<div class="muted">No conversions running.</div>';
+    }).join('')}</div>` : `<div class="muted">${t('job.empty')}</div>`;
     document.querySelectorAll('[data-canceljob]').forEach(el => el.onclick = () => cancelConversion(`/jobs/${el.dataset.canceljob}`));
     const sig = jobs.map(j => j.status + j.done).join();
     if (sig !== lastJobsSig) { lastJobsSig = sig; loadBooks(); }
@@ -189,16 +228,16 @@ async function cleanUpload(file, voice, speed, auto, ocr) {
   return r.ok ? null : await errText(r);
 }
 
-$('#auto').onchange = () => $('#go').textContent = $('#auto').checked ? 'Clean & convert' : 'Clean';
+$('#auto').onchange = () => $('#go').textContent = $('#auto').checked ? t('clean.go_auto') : t('clean.go');
 $('#form').onsubmit = async (e) => {
   e.preventDefault();
   const file = $('#file').files[0];
   $('#go').disabled = true;
-  formMsg('#cleanmsg', `Uploading ${file.name}…`);
+  formMsg('#cleanmsg', t('msg.uploading', { name: file.name }));
   const err = await cleanUpload(file, $('#voice').value, $('#speed').value, $('#auto').checked, $('#ocr').value);
   $('#go').disabled = false;
   if (err) { formMsg('#cleanmsg', err, true); return; }
-  formMsg('#cleanmsg', `${file.name}: uploaded, cleaning below.`);
+  formMsg('#cleanmsg', t('msg.uploaded', { name: file.name }));
   $('#file').value = ''; ocrForFile();
   pollNow();
 };
@@ -206,8 +245,7 @@ $('#form').onsubmit = async (e) => {
 function ocrForFile() {
   const pdf = /\.pdf$/i.test($('#file').files[0]?.name || '');
   $('#ocr').disabled = !pdf;
-  $('#ocrhint').textContent = pdf ? '' : 'OCR reads scanned PDFs. Pick a PDF to choose a mode; ' +
-    'EPUB and TXT files have their own text, so they need no OCR.';
+  $('#ocrhint').textContent = pdf ? '' : t('ocr.hint');
 }
 $('#file').onchange = () => { ocrForFile(); formMsg('#cleanmsg', ''); };
 
@@ -220,24 +258,23 @@ $('#stdform').onsubmit = async (e) => {
   fd.append('voice', voice);
   fd.append('speed', speed);
   $('#stdgo').disabled = true;
-  formMsg('#stdmsg', `Uploading ${file.name}…`);
+  formMsg('#stdmsg', t('msg.uploading', { name: file.name }));
   const r = await fetch(`${API}/drafts/cleaned`, { method: 'POST', body: fd });
   $('#stdgo').disabled = false;
   if (r.ok) {
-    formMsg('#stdmsg', `${file.name}: converting, see below.`);
+    formMsg('#stdmsg', t('msg.converting', { name: file.name }));
     $('#stdfile').value = ''; pollNow(); return;
   }
   const err = await errText(r);
   // An original book on this page: offer to clean it instead of only refusing (D-032 follow-up).
   if (r.status === 400 && /Not a cleaned book/.test(err) && /\.(epub|pdf|txt)$/i.test(file.name)) {
-    formMsg('#stdmsg', `${file.name} is not cleaned yet.`, true);
-    if (confirm(`"${file.name}" is not cleaned yet, so it can't be converted directly.\n\nClean it now? ` +
-                'It will appear on the Clean page for review.')) {
-      formMsg('#stdmsg', `Uploading ${file.name} to clean…`);
+    formMsg('#stdmsg', t('msg.not_cleaned', { name: file.name }), true);
+    if (confirm(t('confirm.clean', { name: file.name }))) {
+      formMsg('#stdmsg', t('msg.uploading_clean', { name: file.name }));
       const cleanErr = await cleanUpload(file, voice, speed, false, 'auto');
       if (cleanErr) { formMsg('#stdmsg', cleanErr, true); return; }
       formMsg('#stdmsg', ''); $('#stdfile').value = '';
-      goTab('clean'); formMsg('#cleanmsg', `${file.name}: uploaded, cleaning below.`); pollNow();
+      goTab('clean'); formMsg('#cleanmsg', t('msg.uploaded', { name: file.name })); pollNow();
     }
     return;
   }
@@ -246,7 +283,7 @@ $('#stdform').onsubmit = async (e) => {
 $('#stdfile').onchange = () => formMsg('#stdmsg', '');
 
 async function discard(id) {
-  if (!confirm('Discard this cleaned book? The uploaded file and the cleaned version are deleted.')) return false;
+  if (!confirm(t('confirm.discard'))) return false;
   const r = await fetch(`${API}/drafts/${id}`, { method: 'DELETE' });
   if (!r.ok) { alert(await errText(r)); return false; }
   return true;
@@ -266,14 +303,14 @@ async function openReview(id) {
   $('#rvvoice').value = draft.book_voice || draft.voice; $('#rvspeed').value = draft.book_speed || draft.speed;
   $('#rvdownload').href = tok(`${API}/drafts/${id}/std.epub`);
   $('#rvchecks').innerHTML = rep.checks.length
-    ? `<div class="card checks"><b>Check by hand (${rep.checks.length})</b>${list(rep.checks)}</div>` : '';
+    ? `<div class="card checks"><b>${t('review.checks', { n: rep.checks.length })}</b>${list(rep.checks)}</div>` : '';
   // Ticked by default: chapters not converted yet; after an interrupted or failed run, only the ones it was doing.
   const conv = new Set(draft.converted || []), last = draft.last_chapters;
   const resume = last && draft.status === 'review';
-  $('#rvchapters').innerHTML = rep.chapters.map(([t, n], i) => {
+  $('#rvchapters').innerHTML = rep.chapters.map(([title, n], i) => {
     const on = !conv.has(i + 1) && (!resume || last.includes(i + 1));
-    return `<div data-i="${i}"><input type="checkbox" class="pick" data-n="${i+1}"${on ? ' checked' : ''} aria-label="Convert chapter ${i+1}"> `
-      + `${i+1}. ${esc(t)} <span class="muted">${n.toLocaleString()} chars</span>${conv.has(i + 1) ? ' <span class="ok">✓ converted</span>' : ''}</div>`;
+    return `<div data-i="${i}"><input type="checkbox" class="pick" data-n="${i+1}"${on ? ' checked' : ''} aria-label="${esc(t('review.pick_aria', { n: i + 1 }))}"> `
+      + `${i+1}. ${esc(title)} <span class="muted">${t('review.chars', { n: n.toLocaleString() })}</span>${conv.has(i + 1) ? ` <span class="ok">${t('review.converted')}</span>` : ''}</div>`;
   }).join('');
   document.querySelectorAll('#rvchapters div').forEach(el => el.onclick = () => reviewChapter(+el.dataset.i));
   document.querySelectorAll('#rvchapters input.pick').forEach(cb => {
@@ -282,12 +319,12 @@ async function openReview(id) {
   });
   updatePick();
   const more = [
-    ['Removed', rep.removed.map(([why, text]) => `${why}: ${text}`)],
-    ['TOC entries ignored', rep.unconfirmed],
-    ['Notes', rep.notes],
+    [t('review.removed'), rep.removed.map(([why, text]) => `${why}: ${text}`)],
+    [t('review.toc_ignored'), rep.unconfirmed],
+    [t('review.notes'), rep.notes],
   ].filter(([, items]) => items.length);
   $('#rvmore').innerHTML = more.map(([title, items]) =>
-    `<details class="card" style="margin-top:10px"><summary>${title} (${items.length})</summary>${list(items)}</details>`).join('');
+    `<details class="card" style="margin-top:10px"><summary>${esc(t('review.count', { title, n: items.length }))}</summary>${list(items)}</details>`).join('');
   if (rep.chapters.length) reviewChapter(0);
 }
 
@@ -306,15 +343,14 @@ function updatePick() {
   const all = draft.report.chapters.length, n = picked().length;
   const btn = $('#rvapprove');
   btn.disabled = !n || !['review', 'done'].includes(draft.status);
-  btn.textContent = n === all ? (draft.status === 'done' ? 'Convert all again' : 'Approve & convert')
-    : `Convert ${n} chapter${n === 1 ? '' : 's'}`;
+  btn.textContent = n === all ? (draft.status === 'done' ? t('review.approve_all_again') : t('review.approve_all'))
+    : t(n === 1 ? 'review.approve_one' : 'review.approve_many', { n });
   // Warn when new chapters would be read in another voice than the ones already in the book.
   const kept = (draft.converted || []).filter(k => !picked().includes(k)).length;
   const mix = kept && draft.book_voice
     && ($('#rvvoice').value !== draft.book_voice || +$('#rvspeed').value !== draft.book_speed);
   $('#rvmix').hidden = !mix;
-  if (mix) $('#rvmix').textContent = `Other chapters of this book use ${draft.book_voice} at ${draft.book_speed}×; `
-    + 'the book will mix voices.';
+  if (mix) $('#rvmix').textContent = t('review.mix', { voice: draft.book_voice, speed: draft.book_speed });
 }
 $('#rvvoice').addEventListener('change', updatePick);
 $('#rvspeed').addEventListener('input', updatePick);
@@ -358,7 +394,7 @@ async function openBook(id) {
   show('#reader'); $('#player').hidden = false;
   $('#rtitle').textContent = book.title; $('#rauthor').textContent = book.author || '';
   $('#chapters').innerHTML = book.chapters.map((c, i) => `<div data-i="${i}">${c.number}. ${esc(c.title)} <span class="muted">${fmt(c.duration_ms)}</span>`
-    + `<a class="dl" href="${tok(`${API}/books/${esc(book.id)}/files/${esc(c.audio)}?download=1`)}" download title="Download this chapter" aria-label="Download ${esc(c.title)}">⬇</a></div>`).join('');
+    + `<a class="dl" href="${tok(`${API}/books/${esc(book.id)}/files/${esc(c.audio)}?download=1`)}" download title="${esc(t('reader.download'))}" aria-label="${esc(t('reader.download_aria', { title: c.title }))}">⬇</a></div>`).join('');
   document.querySelectorAll('#chapters div').forEach(el => el.onclick = () => loadChapter(+el.dataset.i, 0, true));
   document.querySelectorAll('#chapters a.dl').forEach(a => a.onclick = e => e.stopPropagation());  // download only, no chapter switch
   loadChapter(0, 0, false);
@@ -437,4 +473,5 @@ audio.onended = () => { if (chIdx + 1 < book.chapters.length) loadChapter(chIdx 
 $('#rate').onchange = () => audio.playbackRate = +$('#rate').value;
 $('#back').onclick = () => { audio.pause(); goTab('library'); $('#player').hidden = true; book = null; };
 
-showTab(); ocrForFile(); loadInfo(); refresh(); setInterval(refresh, 2000);
+showTab();
+loadStrings().then(() => { ocrForFile(); loadInfo(); refresh(); setInterval(refresh, 2000); });

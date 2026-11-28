@@ -45,8 +45,24 @@ flowchart LR
 | `library` | `LocalLibrary.kt`, `Versions.kt`, `LibraryScreen.kt`, `BookScreen.kt` | Books on the phone (A-004); chapter states and merging (A-009); the On this phone / On the PC tabs; the book screen (play/continue, download, delete, per-chapter state) |
 | `download` | `Downloader.kt`, `DownloadWorker.kt` | Range-resumable, size-checked, atomic chapter downloads in a WorkManager foreground worker (A-006) |
 | `player` | `PlaybackService.kt`, `PlayerConnection.kt`, `NowPlaying.kt`, `PlayerScreen.kt`, `ReadAlong.kt`, `SentenceSync.kt`, `SleepTimer.kt` | Media3 session + ExoPlayer (A-007); playlist = chapters (file or stream); position saving; the sleep timer and its `app.ebookaudio.SLEEP` session command (A-016); player screen with the read-along text or cover, sentence buttons, text size, keep-screen-on (A-015); mini player |
-| `convert` | `ConvertRules.kt`, `ConvertScreen.kt`, `UploadScreen.kt`, `ReviewScreen.kt`, `VoicePicker.kt` | The web page's conversion features (A-011): drafts and jobs lists polled every 2 s; upload with voice/speed/skip review/OCR or as a cleaned book (streamed, A-012); review with report, chapter text, chapter picks and the mixed-voice warning; voice samples in a separate short-lived player |
-| `ui` | `MainActivity.kt`, `SettingsScreen.kt`, `Theme.kt` (with `Format`) | Edge-to-edge activity, navigation with the Library / Convert bottom bar, "Open with"/Share intake (A-013), theme, settings with the HyperOS background-playback help |
+| `convert` | `ConvertRules.kt`, `ConvertText.kt`, `ConvertScreen.kt`, `UploadScreen.kt`, `ReviewScreen.kt`, `VoicePicker.kt` | The web page's conversion features (A-011): drafts and jobs lists polled every 2 s; upload with voice/speed/skip review/OCR or as a cleaned book (streamed, A-012); review with report, chapter text, chapter picks and the mixed-voice warning; voice samples in a separate short-lived player. `ConvertRules` returns values (`StatusLabel`, `ApproveLabel`, `MixedVoice`); `ConvertText` turns them into localized text (A-017) |
+| `ui` | `MainActivity.kt`, `SettingsScreen.kt`, `Theme.kt` (with `Format`), `Texts.kt`, `BackgroundTips.kt`, `AppLanguage.kt` | Edge-to-edge `AppCompatActivity`, the Settings language choice (A-019), navigation with the Library / Convert bottom bar, "Open with"/Share intake (A-013), theme, settings with background-playback steps for the phone's maker (A-018). `Texts.kt`: localized durations and error text (`durationText`, `Resources.errorText`) |
+
+## Text and languages (A-017)
+
+Every user-visible string is a resource: `res/values/strings.xml` (English, the default), `res/values-b+zh+Hans/`
+(Simplified Chinese) and `res/values-b+zh+Hant/` (Traditional Chinese, Taiwan wording). Counts use `<plurals>`.
+Composables read them with `stringResource` / `pluralStringResource`; code outside composition inside a screen uses
+`LocalResources.current` (lint `LocalContextGetResourceValueCall`); the download worker uses its context.
+Settings → Language sets the app's language with `AppCompatDelegate.setApplicationLocales` (A-019): on Android 13+
+that is the system's per-app language; on 8–12 AppCompat stores it (`AppLocalesMetadataHolderService`,
+`autoStoreLocales`) and applies it to the activity. `generateLocaleConfig` lists the three languages for the
+system's per-app language setting on Android 13+
+(`res/resources.properties`: default `en-US`). Lint's `MissingTranslation` / `ExtraTranslation` fail the build when the
+files drift apart.
+
+Not translated: text from the PC (error `detail`s, draft and job messages, cleaning-report entries, chapter titles),
+OkHttp's network error messages, and the media notification (Media3's own strings, which Media3 localizes).
 
 ## Data on the phone
 
@@ -95,7 +111,8 @@ them themselves.
 | Item | Value |
 |---|---|
 | Versions | `android/gradle/libs.versions.toml` (A-002) |
-| SDK | compileSdk 37.2, targetSdk 37, minSdk 26 |
+| SDK | compileSdk 37.2, targetSdk 37, minSdk 26 (Android 8.0, any vendor) |
+| Languages | English (default), `b+zh+Hans`, `b+zh+Hant`; `generateLocaleConfig` (A-017) |
 | JDK | 21 (Android Studio's `jbr` locally; Temurin 21 in CI); Java 17 bytecode |
 | Commands | `cd android; .\gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug` |
 | Output | `android/app/build/outputs/apk/debug/app-debug.apk` |

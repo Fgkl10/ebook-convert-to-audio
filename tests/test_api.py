@@ -486,7 +486,9 @@ def test_api27_draft_list_says_how_many_chapters_are_converted(api):  # noqa: F8
     [d] = api.get(f"{V1}/drafts").json()
     assert d["converted"] == [2] and d["chapters"] == 2
     js = (STATIC / "app.js").read_text(encoding="utf-8")
-    assert "converted ${d.converted.length} of ${d.chapters}" in js
+    assert "t('draft.partial', { n: d.converted.length, total: d.chapters })" in js
+    en = json.loads((STATIC / "i18n" / "en.json").read_text(encoding="utf-8"))
+    assert en["draft.partial"] == "converted {n} of {total}"
 
 
 def test_api14_delete_book(api, book):  # noqa: F811
