@@ -387,10 +387,13 @@ def test_api23_interrupted_chapter_write_is_cleaned_and_resumes(api, tmp_path, m
     assert [c["number"] for c in m["chapters"]] == [1, 2, 3, 4] and m["complete"] is True
 
 
-def test_api24_server_start_cleans_and_exits_promptly(monkeypatch):
+def test_api24_server_start_cleans_and_exits_promptly(monkeypatch, capsys):
     from desktop.server import app as server_app
+    from desktop.server import network
     seen = {}
-    monkeypatch.setattr(server_app, "advertise", lambda *args: None)
+    monkeypatch.setattr(server_app, "advertise", lambda port, addresses: seen.update(mdns=addresses))  # -> None
+    monkeypatch.setattr(network, "phone_addresses", lambda override=None: [
+        {"address": "192.168.24.154", "adapter": "Wi-Fi"}, {"address": "10.251.93.75", "adapter": "ZeroTier"}])
     monkeypatch.setattr(service, "clean_leftovers", lambda: seen.setdefault("cleaned", True) and [])
     monkeypatch.setattr("uvicorn.run", lambda app, **kw: seen.update(kw))
     monkeypatch.setattr("sys.argv", ["ebook-server", "--port", "8799"])
@@ -398,6 +401,11 @@ def test_api24_server_start_cleans_and_exits_promptly(monkeypatch):
     assert seen["cleaned"] and seen["port"] == 8799
     # the first Ctrl+C waits at most this long for open downloads before closing them
     assert seen["timeout_graceful_shutdown"] == server_app.SHUTDOWN_GRACE_S <= 2
+    # the banner sends the phone to the QR code (which holds the token) and lists no addresses; mDNS still gets them
+    out = capsys.readouterr().out
+    assert "Phone:        scan the QR code at http://localhost:8799" in out
+    assert "192.168.24.154" not in out and "10.251.93.75" not in out
+    assert seen["mdns"] == ["192.168.24.154", "10.251.93.75"]
 
 
 # ---------------------------------------------------------------- cancel, delete while converting (D-038)

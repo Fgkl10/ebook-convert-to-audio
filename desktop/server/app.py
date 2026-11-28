@@ -60,7 +60,7 @@ def advertise(port: int, addresses: list[str]):
     try:
         zc.register_service(svc)
     except Exception as e:  # noqa: BLE001 - discovery is optional
-        print(f"mDNS advertise failed ({e}); enter the address manually on the phone.")
+        print(f"mDNS advertise failed ({e}); scan the QR code on the page instead.")
         zc.close()
         return None
     return zc, svc
@@ -96,11 +96,11 @@ def main() -> None:
 
     addresses = network.phone_addresses(args.advertise)
     adv = advertise(args.port, [a["address"] for a in addresses if _is_ipv4(a["address"])])
-    others = "".join(f"\n                {network.base_url(a['address'], args.port)}  ({a['adapter'] or 'other'})"
-                     for a in addresses[1:])
+    # No phone addresses here: a phone needs the token, which only the QR code on the page carries (D-037). The page
+    # lists every address with its own QR code.
     print(f"\n  Ebook Audio Server\n  On this PC:   http://localhost:{args.port}\n"
-          f"  On the phone: {network.base_url(addresses[0]['address'], args.port)}  (scan the QR code on the page)"
-          f"{others}\n  API docs:     http://localhost:{args.port}/docs\n"
+          f"  Phone:        scan the QR code at http://localhost:{args.port}\n"
+          f"  API docs:     http://localhost:{args.port}/docs\n"
           f"  Data folder:  {service.LIBRARY.parent}\n")
     try:
         # On Ctrl+C uvicorn waits for open connections to close; a phone downloading a chapter could hold it for

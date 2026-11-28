@@ -43,7 +43,24 @@ def api(tmp_path, monkeypatch):
     jobs.tts = RecordingTTS()  # model() returns it; the real Kokoro is never loaded
     monkeypatch.setattr(service, "jobs", jobs)
     monkeypatch.setattr(service, "drafts", service.Drafts(tmp_path / "drafts"))
-    return TestClient(server.app)
+    yield TestClient(server.app)
+    # Stop this test's conversions before the next test starts. Its worker thread lives on and reads the patched
+    # build.ROOT when a job starts, so a leftover job would convert into the next test's folders. With the same book
+    # it would delete the shared cache folder when it completes (D-035), under the next test's own conversion.
+    _stop_jobs(jobs)
+
+
+def _stop_jobs(jobs, timeout=10):
+    for job_id, job in list(jobs.jobs.items()):
+        if job["status"] in ("queued", "running"):
+            try:
+                jobs.cancel(job_id)
+            except service.ServiceError:  # it ended in the meantime
+                pass
+    end = time.time() + timeout
+    while any(j["status"] == "running" for j in jobs.jobs.values()):
+        assert time.time() < end, "a conversion didn't stop at test teardown"
+        time.sleep(0.02)
 
 
 def _upload(api, name, data, **form):
