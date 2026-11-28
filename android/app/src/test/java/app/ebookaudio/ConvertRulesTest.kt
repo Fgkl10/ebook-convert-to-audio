@@ -4,6 +4,7 @@ import app.ebookaudio.api.Draft
 import app.ebookaudio.api.DraftDetail
 import app.ebookaudio.api.Job
 import app.ebookaudio.api.Report
+import app.ebookaudio.api.VoiceLanguage
 import app.ebookaudio.convert.ApproveLabel
 import app.ebookaudio.convert.ConvertRules
 import app.ebookaudio.convert.MixedVoice
@@ -98,6 +99,20 @@ class ConvertRulesTest {
         assertTrue(ConvertRules.mixedVoiceWarning(d, setOf(3), "af_heart", 1.2) != null) // other speed
         assertNull(ConvertRules.mixedVoiceWarning(d, setOf(1, 2, 3), "bm_george", 1.0))   // nothing kept
         assertNull(ConvertRules.mixedVoiceWarning(detail(), setOf(1), "bm_george", 1.0))  // no book yet
+    }
+
+    @Test
+    fun voicesByLanguage() {
+        val langs = listOf(VoiceLanguage("en", listOf("af_heart", "bm_george"), "af_heart"),
+            VoiceLanguage("zh", listOf("zf_xiaoxiao", "zm_yunxi"), "zf_xiaoxiao"))
+        assertEquals("zh", ConvertRules.languageOf(langs, "zm_yunxi"))
+        assertNull(ConvertRules.languageOf(langs, "zf_001"))                          // a voice the PC no longer offers
+        assertEquals("zm_yunxi", ConvertRules.voiceFor(langs, "zm_yunxi", "zh"))      // speaks it: kept
+        assertEquals("zf_xiaoxiao", ConvertRules.voiceFor(langs, "bm_george", "zh"))  // English voice, Chinese book
+        assertEquals("af_heart", ConvertRules.voiceFor(langs, "zf_001", "en"))
+        assertEquals("zf_xiaoxiao", ConvertRules.startVoice(langs, "zh"))
+        assertEquals("af_heart", ConvertRules.startVoice(langs, "en"))
+        assertEquals("af_heart", ConvertRules.voiceFor(emptyList(), "af_heart", "zh"))  // no list yet: unchanged
     }
 
     @Test

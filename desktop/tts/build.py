@@ -5,7 +5,9 @@ Usage:
     ebook-convert path/to/book.std.epub [--voice af_heart] [--speed 1.0] [--out library]
     ebook-convert path/to/book.epub --list-chapters
     ebook-convert path/to/book.epub --chapters 3        # or 2-4, or 1,3,5-6
-    ebook-convert path/to/book.epub --ignore-language   # skip the English check
+    ebook-convert path/to/book.epub --ignore-language   # skip the language check (read in the voice's language)
+
+A Chinese book with an English voice (or the other way round) is read with that language's default voice.
 
 --chapters converts only those chapters (1-based, as --list-chapters numbers them) into a
 separate library/<book_id>-ch<spec>/ folder, so a test conversion never touches the full book.
@@ -32,10 +34,10 @@ from typing import Callable
 import numpy as np
 
 from .. import PROJECT
-from ..core.language import check_language
+from ..core.language import LANGUAGE_NAMES, check_language, detect_language
 from ..core.parse import Book, load_book
 from ..core.segment import split_text
-from .kokoro import DEFAULT_VOICE, SAMPLE_RATE
+from .kokoro import DEFAULT_VOICE, SAMPLE_RATE, voice_for, voice_language
 
 # Data folder for library/, cache/ and drafts/: the project, unless EBOOK_AUDIO_DATA points elsewhere (D-032), so a
 # second server (e.g. for testing) can run without touching the first one's books.
@@ -119,9 +121,9 @@ def chapter_number(chapter: dict, pos: int, manifest: dict) -> int:
     return pos + 1  # an empty chapter inside the selection was skipped: which one is unknown
 
 
-def plan_chapters(book: Book) -> list[list[list[str]]]:
+def plan_chapters(book: Book, lang: str = "en") -> list[list[list[str]]]:
     """chapters -> paragraphs -> sentences"""
-    return [split_text(ch.text) for ch in book.chapters]
+    return [split_text(ch.text, lang) for ch in book.chapters]
 
 
 def assemble_chapter(
@@ -249,8 +251,14 @@ def build_book(
     source = Path(source)
     out_root = Path(out_root)
     book = load_book(source)
-    if not ignore_language:
-        check_language(book)  # before the TTS model loads
+    # Before the TTS model loads. Forced through, the book is read in the chosen voice's language.
+    if tts is not None:
+        voice = tts.voice  # a TTS passed in (the server's shared model) already holds the voice asked for
+    lang = (voice_language(voice) or "en") if ignore_language else check_language(book)
+    picked = voice_for(voice, lang)
+    if picked != voice and progress:
+        progress(0, 0, f"The book is in {LANGUAGE_NAMES[lang]}: reading it with {picked} instead of {voice}")
+    voice = picked
     book_id = make_book_id(book, source)
     selected = select_chapters(chapters, len(book.chapters))
     test_folder = isinstance(chapters, str) and not merge
@@ -259,8 +267,8 @@ def build_book(
     out_dir = out_root / book_id
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    plans = plan_chapters(book)
-    todo = [i for i in selected if plans[i]]  # chapters with no sentences are skipped
+    plans = plan_chapters(book, lang)
+    todo =[i for i in selected if plans[i]]  # chapters with no sentences are skipped
     # The numbers this folder should hold when it is complete: the selection for a test folder, else the whole book.
     wanted = {i + 1 for i in (todo if test_folder else range(len(plans))) if plans[i]}
     total = sum(len(p) for i in todo for p in plans[i])
@@ -275,7 +283,8 @@ def build_book(
         from .kokoro import KokoroTTS
 
         tts = KokoroTTS(voice=voice, speed=speed)
-    synth = CachedSynth(tts, ROOT / "cache" / book_id)
+    tts.voice = voice  # the language's default voice may have replaced the one asked for
+    synth =CachedSynth(tts, ROOT / "cache" / book_id)
 
     cover_name = None
     if book.cover:
@@ -294,6 +303,7 @@ def build_book(
         "id": book_id,
         "title": book.title,
         "author": book.author,
+        "language": lang,  # "en" or "zh" (D-042)
         "cover": cover_name,
         "voice": tts.voice,  # of the latest run; each chapter has its own
         "speed": tts.speed,
@@ -380,7 +390,7 @@ def main(argv: list[str] | None = None) -> None:
     except ValueError as e:
         sys.exit(f"error: {e}")
     if args.list_chapters:
-        for n, (ch, paras) in enumerate(zip(book.chapters, plan_chapters(book)), 1):
+        for n, (ch, paras) in enumerate(zip(book.chapters, plan_chapters(book, detect_language(book) or "en")), 1):
             print(f"{n:3}  {sum(map(len, paras)):5} sentences  {ch.title}")
         return
     if not book.normalized:  # the CLI converts only reviewed, standard EPUBs (D-019)

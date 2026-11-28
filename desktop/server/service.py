@@ -23,13 +23,16 @@ from ..core.normalize import OCR_MODES, normalize, write_std_epub
 from ..core.parse import load_book
 from ..tts.build import (LEFTOVER_SUFFIXES, ROOT, Cancelled, build_book, chapter_number, chapter_text_sha1,
                          encode_m4a, make_book_id, remove_leftovers, select_chapters)
-from ..tts.kokoro import DEFAULT_VOICE, VOICES
+from ..core.language import detect_language
+from ..tts.kokoro import DEFAULT_VOICE, all_voices, voice_for, voice_language
+from ..tts.models import ZH_REPO, ZH_VOICES, ZhModel
 
 CANCELLED_MESSAGE = "Cancelled: approve again to resume (finished chapters and sentences are kept)."
 LIBRARY = ROOT / "library"
 DRAFTS = ROOT / "drafts"
 SAMPLES = ROOT / "cache" / "voice-samples"
-SAMPLE_TEXT = "Hello! This is how I sound when I read your books aloud. I hope you enjoy listening."
+SAMPLE_TEXTS = {"en": "Hello! This is how I sound when I read your books aloud. I hope you enjoy listening.",
+                "zh": "你好！这就是我为你朗读书籍时的声音，希望你听得开心。"}
 BOOK_TYPES = (".epub", ".pdf", ".txt")
 STD = "book.std.epub"
 _ID_RE = re.compile(r"^[a-z0-9\-]{1,80}$")
@@ -66,7 +69,7 @@ _DRAFT_DEFAULTS = {
 
 
 def check_options(voice: str, speed: float) -> None:
-    if voice not in VOICES:
+    if voice not in all_voices():
         raise Invalid(f"Unknown voice {voice}")
     if not 0.5 <= speed <= 2.0:
         raise Invalid("Speed must be between 0.5 and 2.0")
@@ -184,6 +187,7 @@ class Drafts:
             _write_json(d / "draft.json", draft)
         self.set_report(draft_id, {
             "source": filename, "method": "uploaded cleaned book: converted as it is",
+            "language": detect_language(book) or "en",
             "chapters": [[c.title, len(c.text)] for c in book.chapters],
             "removed": [], "unconfirmed": [], "notes": [], "checks": []})
         self.approve(draft_id, voice, speed)
@@ -305,10 +309,16 @@ class Drafts:
         except ValueError as e:
             raise Invalid(str(e)) from None
         book_id = make_book_id(book, self.root / draft_id / STD)  # known now, so the library can say "converting"
-        job = jobs.submit(self.root / draft_id / STD, draft["file"], voice, speed, draft_id=draft_id,
+        # A voice in another language than the book's (picked at upload, before the language was known) gives way
+        # to that language's default voice (D-043).
+        lang = (self.report(draft_id) or {}).get("language") or detect_language(book) or "en"
+        picked = voice_for(voice, lang)
+        message = "Waiting to convert" if picked == voice else f"Waiting to convert, with {picked}: {voice} does not " \
+                                                              f"speak this book's language"
+        job = jobs.submit(self.root / draft_id / STD, draft["file"], picked, speed, draft_id=draft_id,
                           chapters=chapters, book_id=book_id)
-        self.update(draft_id, status="queued", voice=voice, speed=speed, job_id=job["id"], error=None,
-                    message="Waiting to convert", book_id=book_id, last_chapters=chapters)
+        self.update(draft_id, status="queued", voice=picked, speed=speed, job_id=job["id"], error=None,
+                    message=message, book_id=book_id, last_chapters=chapters)
         return job
 
     def delete(self, draft_id: str) -> None:
@@ -611,16 +621,39 @@ _sample_lock = threading.Lock()
 
 def voice_sample(voice: str) -> Path:
     """About 5 s of the voice reading one fixed sentence; made once, then kept in cache/voice-samples/."""
-    if voice not in VOICES:
+    if voice not in all_voices():
         raise NotFound("No such voice")
-    digest = hashlib.sha1(SAMPLE_TEXT.encode()).hexdigest()[:8]
+    text = SAMPLE_TEXTS[voice_language(voice) or "en"]
+    digest = hashlib.sha1(text.encode()).hexdigest()[:8]
     path = SAMPLES / f"{voice}-{digest}.m4a"
     with _sample_lock:  # two first clicks must not make the same file at once
         if not path.exists():
             SAMPLES.mkdir(parents=True, exist_ok=True)
-            audio = jobs.model().synth(SAMPLE_TEXT, voice=voice, speed=1.0)
+            audio = jobs.model().synth(text, voice=voice, speed=1.0)
             encode_m4a(audio, path)
     return path
+
+
+# ---------------------------------------------------------------- optional Kokoro v1.1-zh (D-044)
+
+zh_model = ZhModel()
+
+
+def install_zh_model() -> None:
+    zh_model.install()
+
+
+def remove_zh_model() -> None:
+    """Refused while a queued or running conversion reads with one of its voices; the loaded copy is dropped."""
+    with jobs.lock:
+        if any(j["status"] in ("queued", "running") and j["voice"] in ZH_VOICES for j in jobs.jobs.values()):
+            raise Conflict("A conversion is using a Kokoro v1.1-zh voice: wait for it or cancel it first")
+    try:
+        zh_model.remove()
+    except RuntimeError as e:
+        raise Conflict(str(e)) from None
+    if jobs.tts is not None:
+        jobs.tts.unload(ZH_REPO)
 
 
 jobs = Jobs()

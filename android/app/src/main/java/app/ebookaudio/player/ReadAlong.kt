@@ -79,9 +79,10 @@ fun ReadAlong(
         buildMap {
             paragraphs.forEachIndexed { p, list ->
                 var offset = 0
-                list.forEach { s ->
+                list.forEachIndexed { k, s ->
+                    if (k > 0) offset += SentenceSync.gap(list[k - 1].text, s.text).length
                     put(s.i, Triple(p, offset, offset + s.text.length))
-                    offset += s.text.length + 1
+                    offset += s.text.length
                 }
             }
         }
@@ -126,7 +127,7 @@ fun ReadAlong(
                 val text = remember(list, mine, highlight) {
                     buildAnnotatedString {
                         list.forEachIndexed { k, s ->
-                            if (k > 0) append(' ')
+                            if (k > 0) append(SentenceSync.gap(list[k - 1].text, s.text))
                             if (s.i == mine) withStyle(SpanStyle(background = highlight, color = onHighlight)) { append(s.text) }
                             else append(s.text)
                         }

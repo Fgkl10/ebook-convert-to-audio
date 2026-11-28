@@ -43,6 +43,15 @@ class SentenceSyncTest {
     }
 
     @Test
+    fun gapBetweenSentences() {
+        assertEquals(" ", SentenceSync.gap("One.", "Two."))
+        assertEquals("", SentenceSync.gap("机器人没有潜意识。", "它的每一个动作"))  // Chinese: no space
+        assertEquals("", SentenceSync.gap("「我們走吧。」", "他說。"))
+        assertEquals("", SentenceSync.gap("eBay 的設計。", "Gamification 很重要。"))      // ends in Chinese punctuation
+        assertEquals(" ", SentenceSync.gap("", "Two."))
+    }
+
+    @Test
     fun paragraphs() {
         assertEquals(listOf(listOf(0, 1), listOf(2)), SentenceSync.paragraphs(s).map { p -> p.map { it.i } })
         assertEquals(emptyList<List<Sentence>>(), SentenceSync.paragraphs(emptyList()))

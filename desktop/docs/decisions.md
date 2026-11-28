@@ -41,9 +41,9 @@ keyword, then read only that entry.
 | D-013 | CI with a lighter dependency set | tests, CI | | [archive](decisions-archive.md) |
 | D-014 | Synthetic EPUB fixtures built at test time | tests | | [archive](decisions-archive.md) |
 | D-015 | Lenient HTML parser for XHTML | core | | [archive](decisions-archive.md) |
-| D-016 | Skip EPUB front matter | core | | [archive](decisions-archive.md) |
+| D-016 | Skip EPUB front matter | core | Amended by D-042 (Chinese titles) | [archive](decisions-archive.md) |
 | D-017 | `--chapters` conversions go to their own folder | tts | Amended by D-035 | [archive](decisions-archive.md) |
-| D-018 | Refuse unsupported languages, judged from the text | core, tts | | here |
+| D-018 | Refuse unsupported languages, judged from the text | core, tts | Amended by D-042 (Chinese) | here |
 | D-019 | Clean every book into a standard EPUB | core, server | Web part superseded by D-029 | [archive](decisions-archive.md) |
 | D-020 | Cut chapters only at confirmed headings | core | Refined by D-024, D-025 | here |
 | D-021 | Scanned PDFs read with docTR (optional) | ocr | Extended by D-030 | [archive](decisions-archive.md) |
@@ -53,10 +53,10 @@ keyword, then read only that entry.
 | D-025 | Cut fewer rather than too many | core | Refines D-020, D-024 | here |
 | D-026 | Note-reference links stripped from running text | core | | [archive](decisions-archive.md) |
 | D-027 | Footnote paragraphs removed | core | Extends D-025, D-026 | [archive](decisions-archive.md) |
-| D-028 | Model caches live inside the project | tts, ocr | | [archive](decisions-archive.md) |
+| D-028 | Model caches live inside the project | tts, ocr | Amended by D-044 (jieba, v1.1-zh) | [archive](decisions-archive.md) |
 | D-029 | Cleaning is its own step on the website | server, web | Supersedes the web part of D-019 | [archive](decisions-archive.md) |
 | D-030 | OCR mode, Clean and Convert pages | ocr, server, web | Extends D-021, D-029 | [archive](decisions-archive.md) |
-| D-031 | One TTS model for both voice languages; voice samples | tts, server | | here |
+| D-031 | One TTS model for both voice languages; voice samples | tts, server | Amended by D-043, D-044 | here |
 | D-032 | Backend, JSON API v1 and web page as layers | server, web | Changes routes of D-029 to D-031; routes in [api.md](api.md) | here |
 | D-033 | Subpackages and one-way imports | all | | [archive](decisions-archive.md) |
 | D-034 | Per-chapter download with a readable name | server, web | | [archive](decisions-archive.md) |
@@ -67,6 +67,9 @@ keyword, then read only that entry.
 | D-039 | Web reader: sentence buttons and text size | web | same rules as android A-015 | here |
 | D-040 | Web page in English, Simplified and Traditional Chinese | web | android A-017 | here |
 | D-041 | README in three languages; MIT license | repo | exception to "everything in English" | here |
+| D-042 | Chinese books: detection, cleaning rules, sentences | core | Amends D-018, D-016 | here |
+| D-043 | Voices by language: two pickers, fallback, Chinese pronunciation | tts, server, web | Amends D-031; android A-021 | here |
+| D-044 | Optional Kokoro v1.1-zh for better Chinese voices | tts, server, web | Amends D-031, D-028 | here |
 
 ---
 
@@ -114,7 +117,7 @@ normalizer writes exactly one XHTML file per chapter. Format-specific chapter he
 - TXT: chapters come from heading lines ("Chapter N", "Part", "Prologue", …), falling back to ~20k-char parts. The encoding is tried as UTF-8, UTF-16, cp1252, then latin-1.
 
 ## D-018 Refuse books in languages the voices can't speak, judged from the text
-Status: Accepted · Milestone: M3
+Status: Accepted, amended by D-042 (Chinese is detected and accepted too) · Milestone: M3
 **Context:** All voices are English (`a*`/`b*`), and the sentence splitter is English-only. A Hungarian book
 would be read with English pronunciation. Internet books often have wrong `dc:language` metadata (the
 Hungarian Kokology's chapter files say `lang="en"` while its OPF says `hu`), and PDF/TXT usually have none.
@@ -215,7 +218,7 @@ A single-file book whose parts carry intro text (3 or more) is cut by part only,
 references ("…as Jung showed.12") are still read aloud and now point at notes that are not read (NORM-11; removed by D-026).
 
 ## D-031 One TTS model for both voice languages; cached voice samples
-Status: Accepted · Milestone: M3
+Status: Accepted, amended by D-043 (a Chinese pipeline on the same model) and D-044 (an optional second model) · Milestone: M3
 **Context:** The user wants to hear each voice before choosing one. A sample needs the TTS model, which may be busy
 with a conversion in the other voice language; before, the server reloaded the whole model whenever the language
 (American a / British b) changed, which would also break a running conversion.
@@ -490,3 +493,111 @@ in the repository is written in English.
 **Why:** Chinese-speaking users can read the setup in their language. The license makes reuse terms clear.
 **Consequences:** CLAUDE.md's Language rule names this exception. A README change must be made in all three files in the same PR. The vendor steps are written from
 the vendors' documented settings; only Xiaomi HyperOS was tried on a real phone.
+
+## D-042 Chinese books: language detection, cleaning rules, sentences
+Status: Accepted · Milestone: M7 (Chinese voices)
+**Context:** The roadmap's next item is converting Chinese books, Simplified and Traditional. D-018 refused everything
+that is not English. The user asked whether Chinese books should get a cleaner of their own. Two real samples
+(a Simplified `zh` and a Traditional `zh-TW` EPUB) showed what the English cleaner got wrong: 版权信息 and 参考文献
+were kept as chapters, and so were the title page and colophon (titled with the book's name). The part titles
+上篇 and 下篇 swallowed 第一章 and 第四章, because each part title shares its file with its first chapter.
+**Decision:**
+- **One cleaner, not two.** Almost all of `normalize.py` doesn't depend on the language: it confirms TOC entries against
+  headings and uses TOC nesting and h-tag levels. Only word lists and patterns are English-specific. The Chinese titles
+  don't overlap with the English ones, so they are simply added to the same sets. No per-language switch is needed.
+  - Front matter (D-016): 封面 扉页 书名页 版权 版权信息 版权页 目录 题献 献词, and the Traditional forms.
+  - Back matter: 参考文献 参考书目 索引 注释 尾注 附注, and the Traditional forms.
+  - Chapter labels (`_LABEL`): 第一章 / 第12节 / 第三卷… match a TOC entry without the label, like 'CHAPTER ONE'.
+    The TXT chapter-line rule knows 第…章, 序, 前言, 楔子, 后记, 结语.
+  - `_plausible_title` accepts a title with one Chinese character (序), instead of needing three letters.
+  - Figure labels: 图 1.1 / 圖 2-3 lines.
+- Two general rules, which English books get too:
+  - **Chapters under a part title:** when one child of a TOC entry opens its own file, all its siblings are
+    chapters, including the first one that shares the part's file. A part title with no text of its own is then read
+    with that chapter, as before.
+  - **Title page and colophon:** a "chapter" titled with the book's own title (or the start of it, before a subtitle)
+    and shorter than 1500 characters is removed.
+- **Detection** (`language.detect_language`): a book is Chinese when Chinese characters are ≥ 30 % of the letters
+  sampled and there are ≥ 100 of them, with next to no Japanese kana. Otherwise the English check of D-018 applies.
+  With too little text, a supported `dc:language` decides, else English. `check_language` returns the code
+  ("en"/"zh") and refuses anything else. The report, the std EPUB's `dc:language` (a matching tag such as `zh-TW` is
+  kept) and `book.json`'s `language` carry the result.
+- **Text:** a line break between two Chinese characters is joined without a space (`parse.unwrap`, PDF and TXT). A TXT
+  file with no blank line has one paragraph per line, and TXT files are read as GB18030 before cp1252. UTF-16 is only
+  tried with a BOM.
+- **Sentences** (`segment.py`): Chinese uses its own rule rather than pysbd, which cut `。”` apart. A sentence ends after
+  。！？ together with the closing quotes and brackets that follow; …… doesn't end one. A piece that starts with
+  closing punctuation (a cut inside 《a title！：its subtitle》) joins the one before. The length cap is 120 characters,
+  split at ，；：、——.
+- Both sample books cleaned as expected: 自序, 第一章 to 第八章, 结语, 后记; and 國際好評, 推薦序 ×4, 前言, 第1章 to
+  第18章, 感謝名單. The English samples' reports are unchanged.
+**Why:** A separate cleaner would copy about 500 lines, and every later fix would have to be made twice. Each new rule is
+general, matching the "fewer cuts, general rules" approach the cleaner already follows.
+**Consequences:**
+- Forewords (推薦序), praise pages (國際好評) and acknowledgements (感謝名單) are kept, as in English books.
+- The dedication on a Chinese title page goes with the page.
+- `book_id`'s slug only keeps ASCII letters, so Chinese books are `book-<hash>`. They are still unique, but the
+  folder name doesn't say which book it is.
+- Japanese and other CJK-script books are refused. Chinese **scanned** PDFs are not supported: docTR reads Latin
+  script only. This is a known gap (ZH-G01).
+
+## D-043 Voices by language: two pickers, fallback, Chinese pronunciation
+Status: Accepted · Milestone: M7 (Chinese voices)
+**Context:** Kokoro v1.0 has 8 Mandarin voices (`zf_*`, `zm_*`) on the model the server already loads. The user wanted
+two dropdowns, a Language and a Voice whose list follows it. They also wanted a voice in the wrong language for the
+book to give way to that language's default. The voice is chosen at upload, before cleaning has found the language.
+**Decision:**
+- `kokoro.py` groups voices by language (`V10_VOICES = {"en": […14], "zh": […8]}`). A voice's first letter is its
+  language (a/b → en, z → zh). `DEFAULT_VOICES = {"en": "af_heart", "zh": "zf_xiaoxiao"}`.
+  `voice_for(voice, lang)` keeps a voice that speaks the book's language and otherwise returns that language's default.
+- **Fallback:** `build_book` (CLI) and `Drafts.approve` (server) apply `voice_for` with the detected language. The job,
+  the draft and `book.json` record the voice actually used. The draft's message says so while the job is queued.
+- `GET /info` adds `languages: [{code, voices, default_voice}]` and keeps the flat `voices` and `default_voice` for
+  older apps. The voice sample reads a Chinese sentence for a Chinese voice.
+- **Pickers:** the web page and the app show Language ▸ Voice ▶ wherever a voice is chosen. The Review page starts on
+  the book's detected language. The web page keeps the last voice picked per language and the last language in
+  `localStorage`. With no saved choice, the page starts on Chinese when its interface is Chinese. The app starts on the
+  interface's language.
+- **Pronunciation:**
+  - Traditional text is converted to Simplified for G2P only (OpenCC `t2s`). jieba's word list is Simplified, and its
+    word split picks the reading of characters with several (raw 銀行 read *yín xíng*, converted *yín háng*). The text
+    on screen stays as printed.
+  - Latin words inside Chinese ("eBay", "Gamification") are read through an English G2P-only pipeline. misaki does
+    that only for v1.1-zh. For v1.0 it passed the letters to the model as phonemes, so `kokoro._v10_zh_g2p` does the
+    same split for v1.0 using misaki's own `legacy_call`. If misaki's internals change, it falls back to misaki as it is.
+  - jieba's dictionary cache goes to `models/jieba/` instead of the system temp folder (D-028).
+- Readers join Chinese sentences with no space. The web reader uses `book.language`. The app judges from the text
+  (`SentenceSync.gap`), so books downloaded earlier show right too.
+**Why:** Two dropdowns keep each list short and make the language choice explicit. The fallback means an English voice
+left in the upload form can't produce a Chinese book read with English phonemes.
+**Consequences:**
+- The fallback note is overwritten by the conversion's progress messages. Afterwards the voice shows in the draft and
+  the book, not as a message.
+- Server messages stay English (D-040).
+- New dependencies: `misaki[zh]` (jieba, pypinyin, cn2an) and `opencc-python-reimplemented`, in `requirements.txt` only.
+  CI doesn't load the TTS.
+
+## D-044 Optional Kokoro v1.1-zh for better Chinese voices
+Status: Accepted · Milestone: M7 (Chinese voices)
+**Context:** `hexgrad/Kokoro-82M-v1.1-zh` is a second Kokoro model (327 MB) with 100 Mandarin voices that sound clearly
+better than v1.0's. Using it means a second model on the GPU, which D-031 avoided. The user chose to offer it as an
+option that each user installs or leaves out.
+**Decision:**
+- `desktop/tts/models.py` lists its 100 voices (`zf_001`…`zm_100`), so the voice list needs no network. It also tells
+  whether the model is installed (`config.json` and `kokoro-v1_1-zh.pth` in the Hugging Face cache under
+  `models/huggingface/`). `ZhModel` downloads in a background thread and removes the model folder. Voice files
+  (~0.5 MB each) download on first use, as with v1.0.
+- Installed, the Chinese list shows v1.1-zh's voices instead of v1.0's 8, and the Chinese default becomes `zf_001`.
+  English stays on v1.0. A voice's model follows from its name (`repo_of`). `KokoroTTS` keeps one `KModel` per repo
+  and loads v1.1-zh on its first Chinese sentence. Pipelines are keyed by (language, repo).
+- API: `GET /models/zh` (status, and `done_bytes`: what has reached the cache so far; with Hugging Face's xet
+  transfer that stays 0 until the file is complete, so the page then says "Downloading about 327 MB…"), `POST` (install), `DELETE` (remove; 409 while a queued or running
+  conversion uses one of its voices, and the loaded copy is dropped). The web page has a "Better Chinese voices" box
+  under "Other addresses". The phone only sees the longer voice list.
+**Why:** It's the user's choice, and installing it costs nothing on PCs that never convert Chinese.
+**Consequences:**
+- With v1.1-zh loaded, two models share the GPU: about 330 MB more.
+- While it is installed, v1.0's Chinese voices are not offered. A book read with `zf_xiaoxiao` keeps its audio, but its
+  Review page offers v1.1-zh voices, with the mixed-voice warning for new chapters.
+- Removing it while the app shows a v1.1-zh voice: the next approve is refused with "Unknown voice" until the
+  user picks again.

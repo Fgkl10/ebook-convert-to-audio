@@ -39,6 +39,8 @@ data class Draft(
 data class Report(
     val source: String = "",
     val method: String = "",
+    /** "en" or "zh", detected from the text (desktop D-042). */
+    val language: String = "en",
     @SerialName("chapters") val chapterPairs: List<JsonArray> = emptyList(),
     @SerialName("removed") val removedPairs: List<JsonArray> = emptyList(),
     val unconfirmed: List<String> = emptyList(),

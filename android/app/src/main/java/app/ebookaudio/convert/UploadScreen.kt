@@ -88,6 +88,7 @@ private val MIME_TYPES = arrayOf("application/epub+zip", "application/pdf", "tex
 fun UploadScreen(initial: Uri?, book: MediaController?, onBack: () -> Unit, onUploaded: () -> Unit) {
     val context = LocalContext.current
     val res = LocalResources.current
+    val appLanguage = res.configuration.locales[0].language // "zh" for either Chinese interface
     val graph = context.graph
     val scope = rememberCoroutineScope()
     val sample = rememberSamplePlayer()
@@ -111,7 +112,7 @@ fun UploadScreen(initial: Uri?, book: MediaController?, onBack: () -> Unit, onUp
         try {
             api = graph.api()
             info = api?.info()
-            info?.let { voice = it.defaultVoice.ifBlank { it.voices.firstOrNull().orEmpty() } }
+            info?.let { voice = ConvertRules.startVoice(it.languages, appLanguage) }
         } catch (e: IOException) {
             message = res.errorText(e)
         }
@@ -180,7 +181,7 @@ fun UploadScreen(initial: Uri?, book: MediaController?, onBack: () -> Unit, onUp
             }
 
             info?.let { i ->
-                VoiceAndSpeed(i.voices, voice, speed, { voice = it }, { speed = it }, api, sample, book)
+                VoiceAndSpeed(i.languages, voice, speed, { voice = it }, { speed = it }, api, sample, book)
             }
 
             if (!cleaned) {

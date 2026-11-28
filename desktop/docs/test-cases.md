@@ -141,12 +141,37 @@ Tests: `tests/test_language.py` (one case in `tests/test_server.py`)
 | ID | Case | Steps / input | Expected | Status |
 |---|---|---|---|---|
 | LANG-01 | English accepted | English prose; the `samples/` books Counselling (0.44), Smart Notes (0.40), Kokology PDF with noisy OCR (0.32) | Accepted | Automated `test_lang01_english_accepted`; real books Manual |
-| LANG-02 | Non-English refused | Hungarian and German prose written for the test; the Hungarian Kokology EPUB in `samples/` (0.00) | `ValueError` "doesn't look like English", naming the metadata language and the supported voices | Automated `test_lang02_non_english_refused`, `test_lang02_message_mentions_metadata_and_voices` |
+| LANG-02 | Non-English refused | Hungarian and German prose written for the test; the Hungarian Kokology EPUB in `samples/` (0.00) | `ValueError` "doesn't look like English or Chinese", naming the metadata language and the languages the voices speak (English, Chinese) | Automated `test_lang02_non_english_refused`, `test_lang02_message_mentions_metadata_and_voices` |
 | LANG-03 | Too short to judge | Fewer than 100 sampled words | Accepted | Automated `test_lang03_too_short_to_judge_is_accepted` |
 | LANG-04 | Wrong metadata | EPUB with `dc:language` = `hu` but English text | Accepted: the text decides, metadata is only a hint | Automated `test_lang04_text_wins_over_wrong_metadata` |
 | LANG-05 | Refused before work starts | `build_book` on a Hungarian TXT | Raises before TTS runs, and no library folder is created | Automated `test_lang05_build_refuses_before_tts` |
 | LANG-06 | Refusal in CLI and web UI | `ebook-convert <hungarian book>`; upload it in the web UI | CLI prints `error: …` and exits 1. In the web UI the draft fails while cleaning, with the same message | CLI Manual (checked); web UI Automated `test_srv10_language_refusal_is_a_draft_error` |
 | LANG-07 | Override a wrong refusal | `build_book(..., ignore_language=True)` / CLI `--ignore-language` on a refused book | No language check, and the book converts. The refusal message suggests the flag | Automated `test_lang07_ignore_language_overrides` (CLI flag Manual) |
+
+## Chinese books (`core/language.py`, `normalize.py`, `parse.py`, `segment.py`, `tts/kokoro.py`, `tts/models.py`, D-042–D-044)
+
+Tests: `tests/test_chinese.py` (all Chinese text written for the tests). The real samples are the user's
+`samples/认知觉醒….epub` (Simplified, `zh`) and `samples/遊戲化實戰全書….epub` (Traditional, `zh-TW`).
+
+| ID | Case | Steps / input | Expected | Status |
+|---|---|---|---|---|
+| ZH-01 | Chinese detected, English unchanged | Simplified and Traditional prose; English prose; English with one Chinese sentence quoted | `zh`, `zh`, `en`, `en` | Automated `test_zh01_chinese_detected`, `test_zh01_english_still_english` |
+| ZH-02 | Other CJK refused; short text | Japanese prose (kana); one short Chinese line with `dc:language` `zh-TW`; one short English line | Japanese refused ("English or Chinese"); the short ones follow the metadata, else English | Automated `test_zh02_japanese_refused`, `test_zh02_too_little_text_follows_the_metadata` |
+| ZH-03 | Chinese EPUB cleaned | Synthetic book: 扉页, 版权信息, 自序, part 上篇 sharing its file with 第一章 (sections 第一节/第二节), 第二章 in its own file, 参考文献 | Chapters 自序, 第一章, 第二章; 第一章 starts with the part title; sections stay inside; 版权信息 / 参考文献 removed; report and std EPUB say `zh` | Automated `test_zh03_chinese_book_cleaned` |
+| ZH-04 | Labels, short titles, title page | `第一章 X` = `第1章 X` = `X`; title 序; a short chapter named like the book (with a subtitle) | Labels ignored when matching; 序 is plausible; the title page and colophon are removed, a long chapter with the same name is not | Automated `test_zh04_chapter_labels_and_titles`, `test_zh04_title_page_and_colophon_removed` |
+| ZH-05 | Chinese TXT and line wraps | GB18030 TXT with no blank lines and 第一章 / 后记 lines; wrapped lines | Read as GB18030, one paragraph per line, cut at the chapter lines; wraps between Chinese characters joined with no space | Automated `test_zh05_txt_in_gb18030_one_paragraph_per_line`, `test_zh05_hard_wraps_joined_without_spaces` |
+| ZH-06 | Chinese sentences | Closing quotes after 。, 「…」他说, …… inside a sentence, a cut inside 《title！：subtitle》, a 300-character sentence | Quotes stay with their sentence, …… doesn't split, the title joins back, long sentences split at ， to ≤120 characters; English unchanged | Automated `test_zh06_*` |
+| ZH-07 | Voices by language | `voice_language`, `voice_for`, `voices()` with v1.1-zh not installed and installed | English voice + Chinese book → `zf_xiaoxiao` (installed: `zf_001`); installed lists the 100 v1.1-zh voices for Chinese only | Automated `test_zh07_voices_by_language` |
+| ZH-08 | `/info` by language | `GET /info` | `languages` en and zh with defaults; the flat `voices` is their union | Automated `test_zh08_info_lists_voices_by_language` |
+| ZH-09 | Wrong-language voice gives way | Upload a Chinese TXT with `af_heart`, approve with `af_heart` | Report language `zh`; the job, the book and every chapter use `zf_xiaoxiao`; `book.json` language `zh`; sentences split the Chinese way | Automated `test_zh09_english_voice_gives_way_for_a_chinese_book` |
+| ZH-10 | Chinese voice sample | `GET /voices/zf_xiaoxiao/sample`; `zf_001` while v1.1-zh is not installed | Reads the Chinese sample sentence; 404 | Automated `test_zh10_chinese_voice_sample_reads_chinese` |
+| ZH-11 | Install and remove v1.1-zh (API) | `GET`/`POST`/`DELETE /models/zh` with a fake model; a running job on `zf_001` | Status follows; remove refused (409) while the job runs, then removes and unloads the model | Automated `test_zh11_install_and_remove_the_zh_model` |
+| ZH-M01 | Real samples cleaned | `ebook-normalize` both samples | 认知觉醒: 自序, 第一章–第八章, 结语, 后记 (扉页, 版权信息, 目录, 参考文献 removed). 遊戲化: 國際好評, 推薦序 ×4, 前言, 第1章–第18章, 感謝名單 (title page and colophon removed). English samples' reports unchanged | Manual, pass (2026-11-28) |
+| ZH-M02 | Chinese speech, v1.0 | Convert one chapter of each sample with `zf_xiaoxiao`; listen | Mandarin; 銀行 read *yín háng* (OpenCC); "eBay" read in English | Manual: converted (2026-11-28); phonemes checked; listening by the user pending |
+| ZH-M03 | Install v1.1-zh and convert | Web page box → Install; convert a chapter with `zf_001`; Remove; Install again | Download into `models/huggingface/`; 100 voices listed; converts; removal goes back to 8 voices | Manual, pass through the API on a test server (2026-11-28); the page's box not yet clicked through |
+| ZH-M04 | Language ▸ Voice pickers (web) | Clean / Convert / Review forms; switch the language; reload | The Voice list follows the Language; the last voice per language is remembered; Review starts on the book's language | Manual, pending |
+| ZH-G01 | Chinese scanned PDF | A scanned Chinese PDF | **Gap:** docTR reads Latin script only, so the OCR text is not Chinese and the book is refused or garbled (D-042) | Gap |
+| ZH-G02 | Fallback note | Approve a Chinese book with an English voice | **Gap:** the "with zf_xiaoxiao: af_heart does not speak this book's language" message shows only while the job is queued; progress messages replace it (D-043) | Gap (known limitation) |
 
 ## TTS (`tts/kokoro.py`)
 

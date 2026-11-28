@@ -43,6 +43,7 @@ keyword, then read only that entry.
 | A-018 | Background-playback steps per phone maker | ui | generalizes A-007's HyperOS note | here |
 | A-019 | Language choice in Settings, through AppCompat | ui | amends A-017 | here |
 | A-020 | APK built and signed by GitHub Actions | build, CI | | here |
+| A-021 | Chinese voices: Language and Voice pickers, Chinese read-along | convert, player | desktop D-042, D-043 | here |
 
 ## A-002 Latest stable versions; compileSdk 37.2, JDK 21
 Status: Accepted · Milestone: M4a
@@ -197,3 +198,26 @@ Consequences:
 - The first install with the new key needed one uninstall of the earlier build, which used the old local debug
   key.
 - Release builds are not minified (`isMinifyEnabled = false`), as before.
+
+## A-021 Chinese voices: Language and Voice pickers, Chinese read-along
+Status: Accepted · Milestone: M7 (Chinese voices)
+Context: The PC converts Chinese books and groups its voices by language (desktop D-042, D-043). The user wanted two
+dropdowns, a Language and a Voice that follows it, on the phone as on the PC's page. Chinese has no spaces between
+sentences, and the read-along joined sentences with one.
+Decision:
+- `Info.languages` (`[{code, voices, default_voice}]`). With a PC before D-043 it is one English entry made from the
+  flat `voices` list, so the app still works with an older PC.
+- `VoiceAndSpeed` shows a Language dropdown (hidden when there is only one) above the Voice dropdown. Choosing a
+  language picks that language's default voice. The language shown is the current voice's.
+- `ConvertRules`, tested like the other rules (A-011):
+  - `languageOf` and `voiceFor` (the voice when it speaks the language, else the language's default);
+  - `startVoice` (Upload starts in the interface's language: Chinese for 简体 / 繁體).
+  Review starts on `report.language`, keeping the book's voice when it speaks it.
+- Read-along joins two sentences with nothing when either side is a Chinese character or Chinese punctuation
+  (`SentenceSync.gap`), and with a space otherwise. It is judged from the text, not `book.json`'s `language`, so books
+  downloaded before that field show right too.
+- Installing Kokoro v1.1-zh (desktop D-044) stays on the PC's page; the phone just gets the longer Chinese list.
+Why: Same behaviour as the web page, and the rules stay pure functions with unit tests.
+Consequences:
+- The app doesn't remember the last voice per language; a language switch starts on that language's default.
+- A mixed English–Chinese paragraph joins an English sentence after a Chinese one without a space.

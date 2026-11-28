@@ -33,9 +33,53 @@
     "bf_isabella",
     "bm_george",
     "bm_fable",
-    "bm_lewis"
+    "bm_lewis",
+    "zf_xiaoxiao",
+    "zf_xiaobei",
+    "zf_xiaoni",
+    "zf_xiaoyi",
+    "zm_yunxi",
+    "zm_yunjian",
+    "zm_yunxia",
+    "zm_yunyang"
   ],
   "default_voice": "af_heart",
+  "languages": [
+    {
+      "code": "en",
+      "voices": [
+        "af_heart",
+        "af_bella",
+        "af_nicole",
+        "af_sarah",
+        "af_sky",
+        "am_michael",
+        "am_fenrir",
+        "am_puck",
+        "am_adam",
+        "bf_emma",
+        "bf_isabella",
+        "bm_george",
+        "bm_fable",
+        "bm_lewis"
+      ],
+      "default_voice": "af_heart"
+    },
+    {
+      "code": "zh",
+      "voices": [
+        "zf_xiaoxiao",
+        "zf_xiaobei",
+        "zf_xiaoni",
+        "zf_xiaoyi",
+        "zm_yunxi",
+        "zm_yunjian",
+        "zm_yunxia",
+        "zm_yunyang"
+      ],
+      "default_voice": "zf_xiaoxiao"
+    }
+  ],
   "ocr_modes": [
     "auto",
     "always",

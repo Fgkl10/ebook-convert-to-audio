@@ -10,18 +10,18 @@ flowchart TD
     A([book.epub / .pdf / .txt]) --> SC{"PDF read with OCR?<br/>ocr=always: yes · never: no<br/>auto: when it is a scan (D-030)"}
     SC -- yes --> OCR["OCR rebuild (section 0b)"] --> LANG
     SC -- no --> L["load_book() for metadata, cover,<br/>labelled front matter;<br/>footnote paragraphs removed (D-027), then note markers<br/>stripped (sup, number-only note links, D-026)"]
-    L --> LANG{English?}
+    L --> LANG{"English or Chinese?<br/>(Chinese characters ≥30 % of letters;<br/>else English function words, D-042)"}
     LANG -- no --> X([refused: error names metadata language<br/>--ignore-language to override])
-    LANG -- yes --> F{format}
+    LANG -- "yes: en / zh<br/>(in the report and dc:language)" --> F{format}
     F -- "text PDF / TXT" --> P["repackage parsed chapters"]
     F -- "scanned PDF" --> W
     F -- EPUB --> B["flatten spine into text blocks<br/>map every id anchor to a block<br/>mark contents pages (≥5 short all-link paragraphs)"]
-    B --> C["candidates = navigation TOC + contents-page links<br/>nested TOC: top level only, plus nested entries that open<br/>their own file; no contents-page links (D-024)<br/>drop N.M subsections when chapter N exists"]
-    C --> D{"plausible title?<br/>≤120 chars, ≥3 letters, capital first,<br/>no glued footnote number"}
+    B --> C["candidates = navigation TOC + contents-page links<br/>nested TOC: top level only, plus nested entries that open<br/>their own file, and all their siblings (chapters under a part title,<br/>the first sharing the part's file, D-042); no contents-page links (D-024)<br/>drop N.M subsections when chapter N exists"]
+    C --> D{"plausible title?<br/>≤120 chars, ≥3 letters or a Chinese character,<br/>capital first, no glued footnote number"}
     D -- no --> IGN["ignored (in report)"]
     D -- yes --> E{"whole-file entry<br/>(no #anchor)?"}
     E -- yes --> CUT["cut at the file start"]
-    E -- no --> H["search for a heading equal to the title,<br/>starting at the anchor: a block's opening element,<br/>or its first lines joined (split headings);<br/>a leading label is ignored: '1 X' = 'CHAPTER ONE' + 'X'"]
+    E -- no --> H["search for a heading equal to the title,<br/>starting at the anchor: a block's opening element,<br/>or its first lines joined (split headings);<br/>a leading label is ignored: '1 X' = 'CHAPTER ONE' + 'X' = '第一章 X'"]
     H -- found --> CUT
     H -- "not found" --> IGN
     CUT --> G{"any cut?"}
@@ -29,7 +29,7 @@ flowchart TD
     G -- yes --> LV["chapter level = heading level of the cuts with real text<br/>(file-opening cuts; single file: highest level with 3+)"]
     LV --> HF["also cut at every file that opens<br/>with &lt;h1&gt;-&lt;h3&gt; at or above the chapter level<br/>(missing from the TOC), except files the TOC labels front matter"]
     HF --> SEC["flat TOC: mid-file cuts below the chapter level<br/>(or on no heading, when most cuts are headings)<br/>stay inside the chapter before them (D-025)"]
-    SEC --> R["text before first cut, contents pages,<br/>front-matter titles, Bibliography / References / Index / Notes / Endnotes,<br/>label-only figure lines ('FIGURE' + '1.1')<br/>→ removed (in report)<br/>short part headings → read with next chapter"]
+    SEC --> R["text before first cut, contents pages,<br/>front-matter titles (版权信息, 目录…), Bibliography / References / Index / Notes / Endnotes<br/>(参考文献, 索引…), a short chapter titled with the book's own title (title page, colophon),<br/>label-only figure lines ('FIGURE' + '1.1', '图 1.1')<br/>→ removed (in report)<br/>short part headings → read with next chapter"]
     R --> W
     P --> W
     FB --> W["write &lt;name&gt;.std.epub (one file per chapter)<br/>+ &lt;name&gt;.std.report.txt"]
@@ -82,13 +82,14 @@ flowchart TD
     A([source file]) --> B["parse.load_book()<br/>EPUB / PDF / TXT → Book"]
     B --> B1{any chapter<br/>≥ 40 chars?}
     B1 -- no --> X1([ValueError: no readable text])
-    B1 -- yes --> C["make_book_id()<br/>slug + sha1(file)[:8]"]
+    B1 -- yes --> LG["check_language() → en / zh (D-042)<br/>voice = voice_for(voice, lang): a voice in another<br/>language gives way to that language's default (D-043)"]
+    LG --> C["make_book_id()<br/>slug + sha1(file)[:8]"]
     C --> S["select_chapters(chapters)<br/>None = all · spec '2-4' (CLI) · [2, 4] (server)"]
     S --> S1{CLI spec,<br/>merge=False?}
     S1 -- yes --> S2["folder &lt;book_id&gt;-ch&lt;spec&gt;/<br/>(test conversion, D-017)"]
     S1 -- no --> S3["folder &lt;book_id&gt;/"]
     S2 --> D
-    S3 --> D["plan_chapters()<br/>segment.split_text per chapter<br/>todo = selected chapters with text"]
+    S3 --> D["plan_chapters(book, lang)<br/>segment.split_text per chapter (Chinese rule for zh)<br/>todo = selected chapters with text"]
     D --> E["count todo sentences<br/>report progress 0/total"]
     E --> F{tts passed in?}
     F -- no --> F1["load KokoroTTS(voice, speed)"]
@@ -118,7 +119,7 @@ flowchart TD
     L0 --> N{next sentence?}
     N -- yes --> C{"cache hit?<br/>sha1(voice|speed|text)"}
     C -- yes --> R["np.load(.npy)"]
-    C -- no --> T["KokoroTTS.synth(text)<br/>np.save(.npy)"]
+    C -- no --> T["KokoroTTS.synth(text)<br/>(zh: Traditional → Simplified, Latin words<br/>via English G2P, D-043)<br/>np.save(.npy)"]
     R --> ST
     T --> ST["record start_ms = pos<br/>append audio, pos += len"]
     ST --> G{last sentence<br/>of paragraph?}
@@ -175,7 +176,7 @@ sequenceDiagram
     participant Q as service.Jobs: queue + convert worker
     participant B as build_book
 
-    U->>UI: pick file, voice, speed, (skip review?) → Clean
+    U->>UI: pick file, language ▸ voice, speed, (skip review?) → Clean
     UI->>API: POST /api/v1/drafts (multipart)
     API->>C: Drafts.create(): validate voice, 0.5≤speed≤2, ocr, ext ∈ {epub,pdf,txt}
     C->>C: drafts/<id>/ with the upload + draft.json, status=cleaning
@@ -192,10 +193,10 @@ sequenceDiagram
     opt fix in Sigil
         U->>API: GET …/std.epub, edit, PUT …/std.epub
     end
-    UI->>UI: chapter checkboxes: ✓ converted ones (detail.converted) start unticked;<br/>voice/speed default to the library book's (warning if they differ)
+    UI->>UI: chapter checkboxes: ✓ converted ones (detail.converted) start unticked;<br/>language = report.language; voice/speed default to the library book's (warning if they differ)
     U->>UI: Approve & convert / Convert N chapters (voice, speed, ticked chapters)
     UI->>API: POST /api/v1/drafts/{id}/approve, JSON {"voice", "speed", "chapters"} (all optional; all ticked → chapters null)
-    API->>Q: check chapters (400 if bad); book_id = make_book_id(std);<br/>submit(book.std.epub, draft_id, chapters, book_id) → draft status=queued, book_id, last_chapters; → {job_id}
+    API->>Q: check chapters (400 if bad); book_id = make_book_id(std);<br/>voice = voice_for(voice, report.language) (D-043);<br/>submit(book.std.epub, draft_id, chapters, book_id) → draft status=queued, voice, book_id, last_chapters; → {job_id}
     Q->>Q: draft status=converting; one shared model (D-031)
     Q->>B: build_book(std, LIBRARY, ..., progress, tts, chapters, merge=True, cancel=job event)
     B-->>Q: progress(done, total, msg) / out_dir
@@ -220,7 +221,7 @@ stop (D-032).
 flowchart TD
     A([click a book]) --> B["GET /api/v1/books/{id}<br/>→ book.json"]
     B --> C["render chapter list"]
-    C --> D["loadChapter(i)<br/>render one span per sentence,<br/>grouped into &lt;p&gt; by p"]
+    C --> D["loadChapter(i)<br/>render one span per sentence,<br/>grouped into &lt;p&gt; by p<br/>(no space between them when book.language is zh)"]
     D --> E["audio.src = /files/chNNN.m4a"]
     E --> F["requestAnimationFrame loop"]
     F --> G["i = binary search:<br/>last sentence with start_ms ≤ currentTime"]
@@ -294,3 +295,30 @@ sequenceDiagram
 | cleaning a book | the draft in `cleaning` | the draft is marked failed: upload again |
 | converting | the draft in `queued`/`converting` | the draft is back in review; approving again resumes from the cache |
 | a client downloading a chapter | nothing (read-only) | the client resumes with HTTP Range |
+| downloading Kokoro v1.1-zh | a `*.incomplete` file in its cache folder | not installed: Install again downloads it again (D-044) |
+
+## 5. Optional Kokoro v1.1-zh: better Chinese voices (D-044)
+
+```mermaid
+sequenceDiagram
+    actor U as User (PC's page)
+    participant UI as app.js: "Better Chinese voices" box
+    participant API as /api/v1/models/zh
+    participant M as tts/models.py ZhModel
+    participant T as KokoroTTS (shared, D-031)
+
+    UI->>API: GET → {installed: false}
+    U->>UI: Install
+    UI->>API: POST
+    API->>M: install(): background thread, hf_hub_download(config.json, kokoro-v1_1-zh.pth)<br/>into models/huggingface/
+    loop every 1.5 s while installing
+        UI->>API: GET → installing (done_bytes stays 0 with xet: "Downloading about 327 MB…")
+    end
+    M-->>API: installed
+    UI->>API: GET /info → languages.zh = zf_001 … zm_100, default zf_001
+    Note over T: first sentence of a v1.1-zh voice loads its KModel<br/>next to v1.0's; English stays on v1.0
+    U->>UI: Remove (confirm)
+    UI->>API: DELETE (409 while a queued/running job uses one of its voices)
+    API->>T: unload(v1.1-zh repo)
+    API->>M: delete the model folder → Chinese is v1.0's 8 voices again
+```

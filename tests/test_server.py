@@ -202,7 +202,7 @@ def test_srv30_voice_sample_made_once_and_cached(api):
     tts = service.jobs.tts
     r = api.get(f"{V1}/voices/bm_george/sample")
     assert r.status_code == 200 and r.headers["content-type"] == "audio/mp4" and len(r.content) > 1000
-    assert tts.calls == [("bm_george", service.SAMPLE_TEXT)]
+    assert tts.calls == [("bm_george", service.SAMPLE_TEXTS["en"])]
     assert api.get(f"{V1}/voices/bm_george/sample").content == r.content
     assert len(tts.calls) == 1  # the second click is served from the file
     assert api.get(f"{V1}/voices/zz_nobody/sample").status_code == 404
@@ -216,7 +216,7 @@ def test_srv31_sample_does_not_change_a_conversions_voice(api):
     api.get(f"{V1}/voices/bm_george/sample")  # while (or just before) the book converts
     d = _wait(api, draft_id, "done")
     assert api.get(f"{V1}/books/{d['book_id']}").json()["voice"] == "af_heart"
-    assert {v for v, text in tts.calls if text != service.SAMPLE_TEXT} == {"af_heart"}
+    assert {v for v, text in tts.calls if text != service.SAMPLE_TEXTS["en"]} == {"af_heart"}
     assert tts.voice == "af_heart"  # the sample passed its own voice instead of setting the model's
 
 

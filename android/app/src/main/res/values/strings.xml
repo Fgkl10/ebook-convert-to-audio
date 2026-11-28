@@ -224,6 +224,9 @@
 
     <!-- voice picker -->
     <string name="voice">Voice</string>
+    <string name="voice_language">Language</string>
+    <string name="voice_lang_en">English</string>
+    <string name="voice_lang_zh">Chinese</string>
     <string name="stop_sample">Stop the sample</string>
     <string name="hear_sample">Hear a sample of %1$s</string>
 
