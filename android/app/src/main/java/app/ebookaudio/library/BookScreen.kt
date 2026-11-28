@@ -20,9 +20,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Update
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -40,6 +43,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,12 +63,14 @@ import app.ebookaudio.player.Playlist
 import app.ebookaudio.player.rememberNowPlaying
 import app.ebookaudio.ui.Format
 import coil3.compose.AsyncImage
+import kotlinx.coroutines.launch
 import java.io.IOException
 
 /** One book: play or continue it, download it (all or chapter by chapter), see what changed on the PC. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BookScreen(bookId: String, controller: MediaController?, onBack: () -> Unit, onPlayer: () -> Unit) {
+    val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val graph = context.graph
     val library = graph.library
@@ -73,6 +79,9 @@ fun BookScreen(bookId: String, controller: MediaController?, onBack: () -> Unit,
     var api by remember { mutableStateOf<ApiClient?>(null) }
     var serverError by remember { mutableStateOf<String?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var menu by remember { mutableStateOf(false) }
+    var confirmPcDelete by remember { mutableStateOf(false) }
+    var pcMessage by remember { mutableStateOf<String?>(null) }
     val downloadFlow = remember(bookId) { Downloads.state(context, bookId) }
     val (download, failure) = downloadFlow.collectAsState(null to null).value
     val position by remember(bookId) { graph.settings.positionFlow(bookId) }.collectAsState(null)
@@ -95,6 +104,15 @@ fun BookScreen(bookId: String, controller: MediaController?, onBack: () -> Unit,
             TopAppBar(
                 title = { Text(server?.title ?: local?.title ?: "", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
+                actions = {
+                    if (server != null) {
+                        IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More") }
+                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            DropdownMenuItem(text = { Text("Delete from PC") },
+                                onClick = { menu = false; confirmPcDelete = true })
+                        }
+                    }
+                },
             )
         },
     ) { padding ->
@@ -166,6 +184,7 @@ fun BookScreen(bookId: String, controller: MediaController?, onBack: () -> Unit,
                     if (download == null && failure != null) {
                         Text(failure, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                     }
+                    pcMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary) }
                     if (server == null && serverError != null) {
                         Text("The PC is out of reach: only the chapters on this phone play.",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
@@ -185,6 +204,32 @@ fun BookScreen(bookId: String, controller: MediaController?, onBack: () -> Unit,
                 )
             }
         }
+    }
+
+    if (confirmPcDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmPcDelete = false },
+            title = { Text("Delete from the PC?") },
+            text = {
+                Text("The book and its audio are deleted on the PC; it can only come back by converting it again. " +
+                    if (local != null) "The copy on this phone stays." else "")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmPcDelete = false
+                    val a = api ?: return@TextButton
+                    scope.launch {
+                        try {
+                            a.deleteBook(bookId) // 409 while it's converting (A-014)
+                            if (local == null) onBack() else { server = null; pcMessage = "Deleted from the PC. The copy on this phone stays." }
+                        } catch (e: IOException) {
+                            pcMessage = e.message
+                        }
+                    }
+                }) { Text("Delete") }
+            },
+            dismissButton = { TextButton(onClick = { confirmPcDelete = false }) { Text("Cancel") } },
+        )
     }
 
     if (confirmDelete) {

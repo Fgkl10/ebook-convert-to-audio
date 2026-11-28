@@ -55,3 +55,25 @@ flowchart TD
   F --> D
   I[App reopened] --> J[Book screen shows Continue · ch N, m:ss] --> A
 ```
+
+## Convert on the PC from the phone (M4b)
+
+```mermaid
+flowchart TD
+  A["Convert tab: Add a book"] --> B["Upload screen"]
+  O["Open with / Share from another app"] --> P{Paired?}
+  P -- no --> PR[Pair screen] --> B
+  P -- yes --> B
+  B --> C{Already cleaned?}
+  C -- "yes (.std.epub)" --> D["POST /drafts/cleaned"]
+  D -- "400 Not a cleaned book" --> E["Clean it now?"] --> F
+  D -- ok --> J
+  C -- no --> F["POST /drafts (voice, speed, auto, ocr)"]
+  F --> G["PC cleans it: draft 'cleaning'"]
+  G -- "auto (skip review)" --> J
+  G --> H["Review: report, chapter text, picks, voice + sample, speed"]
+  H -- "Approve (chapters, or null = all)" --> J["Job runs: Convert tab shows progress (polled every 2 s)"]
+  H -- Discard --> X[Draft deleted]
+  J -- Cancel --> K["Job cancelled; finished chapters kept"]
+  J -- done --> L["Listen: book screen (stream or download)"]
+```

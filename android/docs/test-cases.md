@@ -18,8 +18,29 @@ Status legend: Automated · Manual · Gap
 
 | ID | Case | Steps / input | Expected | Status |
 |---|---|---|---|---|
-| AND-01 | Fixtures match the server | Convert a made-up story with the fake TTS; compare `/info`, `/books`, `/books/{id}` with the fixtures | Same keys and types at every level; no real host, address or token in the fixtures | Automated `tests/test_android_contract.py::test_and01_android_fixtures_match_the_server` |
+| AND-01 | Fixtures match the server | Convert a made-up story with the fake TTS; compare `/info`, `/books`, `/books/{id}`, `/drafts`, `/drafts/{id}`, `/drafts/{id}/chapters/0`, `/jobs` with the fixtures | Same keys and types at every level; no real host, address, token or PC path in the fixtures | Automated `tests/test_android_contract.py::test_and01_android_fixtures_match_the_server` |
+| AND-06 | The Convert tab decodes the server's JSON | Decode `drafts.json`, `draft.json`, `draft_chapter.json`, `jobs.json` (made by AND-01) and a hand-written report | Drafts, report (chapter and removed pairs), chapter text and jobs decode | Automated `ConvertModelsTest` |
 | AND-03 | The app decodes the server's JSON | Decode the fixtures | `Info`, `BookSummary`, `Book` decode; every `pair_url` parses; chapter audio names, sizes, times; sentences end at the chapter's duration; unknown fields ignored | Automated `ModelsTest` (`info`, `books`, `book`, `ignoresFieldsItDoesNotKnow`) |
+
+## Convert tab (M4b)
+
+| ID | Case | Steps / input | Expected | Status |
+|---|---|---|---|---|
+| AND-07 | The web page's rules | Status labels, buttons per status, visible jobs, default picks (fresh, partly converted, interrupted run), "New only", approve label and chapters (`null` = all), mixed-voice warning, uploadable names | Same results as `desktop/web/app.js` | Automated `ConvertRulesTest` |
+| AND-08 | Requests | Multipart upload (fields, exact file bytes, progress), cleaned upload route, approve body with `"chapters": null` and with a list, cancel/discard/delete methods and paths, 409/401 errors, voice sample URL | As listed | Automated `ApiClientTest` |
+| AND-08b | Upload over a closed pooled connection | The server closes the connection after a 400; the next upload reuses it | Resent on a fresh connection; succeeds | Automated `ApiClientTest.uploadRetriesWhenThePooledConnectionWasClosed` |
+| AND-M12 | Upload, review, convert one chapter | Picker → .txt → sample ▶ → Upload & clean → Review → read a chapter → untick one → Convert 1 chapter → progress → Listen | Only the ticked chapter is converted | Manual, pass (2026-11-28) |
+| AND-M13 | Mixed-voice warning | Review again after a partial conversion; pick another voice | Warning shown | Manual, pass (2026-11-28) |
+| AND-M14 | Skip review | Upload a one-chapter .txt with "Skip review" | Cleans and converts by itself | Manual, pass (2026-11-28) |
+| AND-M15 | Cleaned upload | Upload a .std.epub with "Already cleaned" | Converts at once | Manual, pass (2026-11-28) |
+| AND-M16 | Not a cleaned book | Upload an original .epub with "Already cleaned"; wait 10 s; "Clean it" | Offer to clean; uploaded to clean (failed with "unexpected end of stream" before the A-012 fix) | Manual, pass (2026-11-28) |
+| AND-M17 | OCR option | Pick a PDF, then a .txt | OCR modes enabled only for the PDF | Manual, pass (2026-11-28) |
+| AND-M18 | Cancel a conversion | Start a ~70-sentence chapter, cancel while running | Job "cancelled" partway (55/71 seen) | Manual, pass (2026-11-28) |
+| AND-M19 | Discard a draft | Discard a draft in review | Gone from the list and the PC | Manual, pass (2026-11-28) |
+| AND-M20 | Open with / Share | Share a .txt from the file manager; open an .epub from WeChat with "Open with other app" | The app opens Add a book with the file chosen | Manual, pass (2026-11-28) |
+| AND-M21 | Delete from PC | Book → ⋮ → Delete from PC → confirm | Gone from the PC tab | Manual, pass (2026-11-28) |
+| AND-G03 | Delete from PC while converting | Delete a book whose conversion runs | The 409 message on the book screen | Gap (409 mapping covered by AND-08, not run on the phone) |
+| AND-G04 | Leaving the Upload screen during an upload | Press Back while uploading | The upload is cancelled (A-012) | Gap (known limitation, not tested) |
 
 ## Pairing
 
@@ -62,5 +83,7 @@ Status legend: Automated · Manual · Gap
 - `PlaybackService` and `DownloadWorker` themselves are only tested on the phone; their logic (`Downloader`,
   `Versions`, `Position`) is unit-tested.
 - Cleartext HTTP on plain Wi-Fi (A-005, desktop AUTH-06).
+- Test setup: files copied to the phone with `adb push` don't show in the file picker until the media scanner indexes
+  them (`adb shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file:///sdcard/...`).
 - The PC's firewall must allow the server's port on the network the phone uses (found when a test server on another
   port was unreachable over ZeroTier).
