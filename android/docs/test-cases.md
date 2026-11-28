@@ -53,8 +53,8 @@ Status legend: Automated · Manual · Gap
 | AND-M07 | Lock screen and notification controls | Play, lock the phone | Controls shown; audio continues | Manual, pass (2026-11-28) |
 | AND-M08 | Resume after the app is killed | Pause at a point; swipe the app away; reopen the book | "Continue · ch N, m:ss"; resumes there | Manual, pass (2026-11-28) |
 | AND-M09 | Streaming | Play a book that isn't downloaded | Streams from the PC | Manual, pass (2026-11-28) |
-| AND-M10 | Headphones unplugged | Unplug or disconnect headphones while playing | Pauses | Manual, not yet run |
-| AND-M11 | Long playback with the screen off on HyperOS | Battery "No restrictions" + Autostart; play 30+ min screen off | Keeps playing | Manual, not yet run |
+| AND-M10 | Headphones unplugged | Unplug or disconnect headphones while playing | Pauses | Manual, pass (2026-11-28) |
+| AND-M11 | Long playback with the screen off on HyperOS | Battery "No restrictions" + Autostart; play 30+ min screen off | Keeps playing | Manual, pass (2026-11-28) |
 
 ## Known gaps
 
